@@ -1,0 +1,10 @@
+.root {
+  padding: var(--space-4);
+  max-width: var(--content-max-width);
+  margin-inline: auto;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+}

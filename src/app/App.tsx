@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from 'react-router'
 import { useLocation } from 'react-router'
 import { HomeScreen } from '../screens/HomeScreen/HomeScreen'
 import { CategoryScreen } from '../screens/CategoryScreen/CategoryScreen'
+import { AboutScreen } from '../screens/AboutScreen/AboutScreen'
 import { SiteHeader } from '../features/site-header/ui/SiteHeader'
 import { SiteFooter } from '../features/site-footer/ui/SiteFooter'
 import { useCartStore } from '../features/cart'
@@ -59,6 +60,7 @@ export function App() {
       <Routes>
         <Route index element={<HomeScreen />} />
         <Route path="menu/:categoryId" element={<CategoryScreen />} />
+        <Route path="about" element={<AboutScreen />} />
       </Routes>
       <SiteFooter />
       {isCartOpen && (

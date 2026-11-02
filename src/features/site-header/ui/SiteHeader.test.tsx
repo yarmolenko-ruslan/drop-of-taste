@@ -14,4 +14,16 @@ test('номер в шапке открывает звонок без подпи
     'tel:+79991234567',
   )
   expect(screen.queryByText('Звонок бесплатный')).not.toBeInTheDocument()
+  expect(screen.getByRole('navigation', { name: 'Категории меню' })).toBeInTheDocument()
+})
+
+test('скрывает меню категорий на странице «О кафе»', () => {
+  render(
+    <MemoryRouter initialEntries={['/about']}>
+      <SiteHeader />
+    </MemoryRouter>,
+  )
+
+  expect(screen.queryByRole('navigation', { name: 'Категории меню' })).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Капела вкуса — главная' })).toBeInTheDocument()
 })

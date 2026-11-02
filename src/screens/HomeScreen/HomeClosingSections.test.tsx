@@ -19,4 +19,6 @@ test('показывает блоки от соусов до информаци�
     screen.getByRole('heading', { name: 'Больше, чем еда — это наш край' }),
   ).toBeInTheDocument()
   expect(screen.queryByText(/Доставка домашней еды в/)).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'О кафе' })).toHaveAttribute('href', '/about')
+  expect(screen.queryByRole('link', { name: 'Адреса кафе' })).not.toBeInTheDocument()
 })

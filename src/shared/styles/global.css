@@ -6,6 +6,10 @@
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -16,7 +20,16 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+section[id],
+footer[id] {
+  scroll-margin-top: 16px;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   *,
   *::before,
   *::after {

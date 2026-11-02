@@ -165,9 +165,9 @@ export function HomeClosingSections({ onSauceAction }: { onSauceAction?: (name: 
             Домашняя кухня, выпечка из печи каждое утро и кофе, ради которого хочется вернуться.
             Пара предложений об истории кафе и шеф-поваре.
           </p>
-          <a href="#contacts" className={styles.aboutButton}>
-            Адреса кафе
-          </a>
+          <Link to="/about" className={styles.aboutButton}>
+            О кафе
+          </Link>
         </div>
       </section>
     </>

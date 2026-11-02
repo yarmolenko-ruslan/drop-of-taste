@@ -25,7 +25,9 @@ type SiteHeaderProps = {
 
 export function SiteHeader({ phoneNumber, addressLabel, onAddressClick }: SiteHeaderProps) {
   const dialNumber = phoneNumber?.replace(/[^+\d]/g, '')
-  const isHome = useLocation().pathname === '/'
+  const { pathname } = useLocation()
+  const isHome = pathname === '/'
+  const showCategories = pathname !== '/about'
   const count = useCartStore((state) => cartCount(state.lines))
   const openCart = useCartStore((state) => state.open)
 
@@ -110,19 +112,21 @@ export function SiteHeader({ phoneNumber, addressLabel, onAddressClick }: SiteHe
         </div>
       </div>
 
-      <nav className={styles.categoryBar} aria-label="Категории меню">
-        <div className={`${styles.container} ${styles.categoryList}`}>
-          {categories.map(([label, anchor]) => (
-            <a
-              className={`${styles.category} ${anchor === 'promotions' ? styles.promotion : ''} ${anchor === 'new' ? styles.current : ''}`}
-              href={`${isHome ? '' : '/'}#${anchor}`}
-              key={anchor}
-            >
-              {label}
-            </a>
-          ))}
-        </div>
-      </nav>
+      {showCategories && (
+        <nav className={styles.categoryBar} aria-label="Категории меню">
+          <div className={`${styles.container} ${styles.categoryList}`}>
+            {categories.map(([label, anchor]) => (
+              <a
+                className={`${styles.category} ${anchor === 'promotions' ? styles.promotion : ''} ${anchor === 'new' ? styles.current : ''}`}
+                href={`${isHome ? '' : '/'}#${anchor}`}
+                key={anchor}
+              >
+                {label}
+              </a>
+            ))}
+          </div>
+        </nav>
+      )}
     </header>
   )
 }

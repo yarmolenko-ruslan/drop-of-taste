@@ -1,0 +1,362 @@
+.header {
+  width: 100%;
+  font-family: Arial, Helvetica, sans-serif;
+}
+.container {
+  width: min(100% - 48px, var(--content-max-width));
+  margin-inline: auto;
+}
+.utilityBar {
+  background: var(--color-burgundy);
+  color: #e9d7c8;
+  font-size: 12px;
+}
+.utilityBar .container {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 24px;
+}
+.utilityLinks {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 20px;
+}
+.utilityLinks a {
+  color: inherit;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.utilityLinks a:hover {
+  color: white;
+}
+.mainBar {
+  background: var(--color-brand-red);
+  color: #fff8ef;
+}
+.mainContent {
+  min-height: 88px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 272px;
+  min-width: 0;
+  color: var(--color-gold-light);
+  text-decoration: none;
+}
+.brand img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  flex: none;
+}
+.brandText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.brandName {
+  color: #ffd16e;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 25px;
+  line-height: 1.05;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  letter-spacing: -0.045em;
+}
+.brandTagline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  color: #b2d66a;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.035em;
+  flex-wrap: wrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.taglineRule {
+  width: 16px;
+  height: 1px;
+  flex: none;
+  background: currentColor;
+}
+.taglineDot {
+  font-size: 11px;
+  line-height: 0;
+}
+.address,
+.login,
+.cart {
+  font: inherit;
+  cursor: pointer;
+}
+.address {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 166px;
+  min-height: 50px;
+  padding: 6px 11px;
+  text-align: left;
+  color: #fff9f0;
+  background: transparent;
+  border: 1px dashed #e6b8a5;
+  border-radius: 15px;
+}
+.address svg {
+  width: 19px;
+  height: 19px;
+  stroke: var(--color-gold-light);
+  stroke-width: 1.8;
+  flex: none;
+}
+.address > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.addressLabel {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.address strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 250px;
+  min-width: 135px;
+  height: 50px;
+  padding: 0 15px;
+  background: #fffaf3;
+  border-radius: 14px;
+}
+.search svg {
+  width: 19px;
+  height: 19px;
+  stroke: #7b665b;
+  stroke-width: 2;
+  flex: none;
+}
+.search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #41252a;
+  font: inherit;
+  font-size: 14px;
+}
+.search input::placeholder {
+  color: #827b76;
+  opacity: 1;
+}
+.phone {
+  flex: 0 0 auto;
+  max-width: 185px;
+  color: #fff8f1;
+  font-size: 17px;
+  line-height: 1.15;
+  font-weight: 700;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-width: 84px;
+  min-height: 48px;
+  padding-inline: 7px;
+  border: 1px solid #d5ad83;
+  border-radius: 13px;
+  background: transparent;
+  color: #e7c18d;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+.login svg,
+.cart svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+.cart {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 129px;
+  min-height: 48px;
+  padding-inline: 8px;
+  border: 0;
+  border-radius: 13px;
+  background: var(--color-gold);
+  color: #46171a;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.cartCount {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-brand-red);
+  color: #fff;
+  font-size: 12px;
+}
+.categoryBar {
+  background: #fffefa;
+  border-bottom: 1px solid #eadbc8;
+}
+.categoryList {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  padding-block: 12px;
+}
+.category {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-height: 38px;
+  padding: 0 15px;
+  border: 1px solid #ead4b7;
+  border-radius: 999px;
+  color: #4c2026;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.category.promotion {
+  background: #f8e8c5;
+  color: #8b5d1d;
+}
+.category.current {
+  background: var(--color-brand-red);
+  border-color: var(--color-brand-red);
+  color: #fff;
+}
+.category:not(.current):hover {
+  background: #f8ead7;
+}
+.header :is(a, button, input):focus-visible {
+  outline: 3px solid var(--color-gold-light);
+  outline-offset: 3px;
+}
+@media (max-width: 1250px) {
+  .mainContent {
+    gap: 12px;
+  }
+  .brand {
+    flex-basis: 236px;
+  }
+  .brandName {
+    font-size: 21px;
+  }
+  .brand img {
+    width: 56px;
+    height: 56px;
+  }
+  .address {
+    flex-basis: 155px;
+  }
+  .phone {
+    font-size: 15px;
+  }
+  .cart {
+    flex-basis: 113px;
+  }
+}
+@media (max-width: 1050px) {
+  .mainContent {
+    flex-wrap: wrap;
+    padding-block: 12px;
+  }
+  .search {
+    order: 2;
+    flex-basis: 100%;
+  }
+  .brand {
+    margin-right: auto;
+  }
+  .utilityLinks {
+    gap: 10px;
+  }
+}
+@media (max-width: 720px) {
+  .container {
+    width: min(100% - 32px, var(--content-max-width));
+  }
+  .utilityBar,
+  .phone,
+  .address,
+  .login {
+    display: none;
+  }
+  .mainContent {
+    min-height: 72px;
+    gap: 10px;
+  }
+  .brand {
+    flex-basis: auto;
+  }
+  .brand img {
+    width: 48px;
+    height: 48px;
+  }
+  .brandName {
+    font-size: 18px;
+  }
+  .brandTagline {
+    font-size: 7px;
+  }
+  .taglineRule {
+    width: 11px;
+  }
+  .cart {
+    flex-basis: auto;
+    width: 44px;
+    font-size: 0;
+  }
+  .cartCount {
+    font-size: 12px;
+  }
+  .categoryList {
+    min-height: 56px;
+  }
+}

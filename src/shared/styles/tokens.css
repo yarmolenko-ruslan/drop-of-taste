@@ -1,7 +1,11 @@
 :root {
-  --color-bg: #ffffff;
-  --color-text: #1a1a1a;
-  --color-accent: #e4572e;
+  --color-bg: #fcf6ee;
+  --color-text: #46171a;
+  --color-accent: #a70d22;
+  --color-brand-red: #a70d22;
+  --color-burgundy: #3f080e;
+  --color-gold: #dfb86f;
+  --color-gold-light: #e9c78c;
 
   --space-2: 8px;
   --space-4: 16px;
@@ -13,5 +17,5 @@
   --font-size-base: 1rem;
   --font-size-xl: 1.75rem;
 
-  --content-max-width: 1200px;
+  --content-max-width: 1280px;
 }

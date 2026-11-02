@@ -1,0 +1,29 @@
+.action {
+  width: 96px;
+  min-height: 36px;
+  flex: none;
+  padding: 0 14px;
+  border: 1px solid var(--color-brand-red);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--color-brand-red);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.action:hover,
+.action:focus-visible {
+  background: var(--color-brand-red);
+  color: #fff;
+}
+
+.action:focus-visible {
+  outline: 3px solid var(--color-gold);
+  outline-offset: 3px;
+}

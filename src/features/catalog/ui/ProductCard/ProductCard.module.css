@@ -1,0 +1,117 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 21px;
+  background: #fff;
+  box-shadow: 0 7px 20px rgb(73 36 30 / 7%);
+}
+
+.photoWrap {
+  position: relative;
+  height: 200px;
+  flex: none;
+  overflow: hidden;
+  background: #f2e5d0;
+}
+
+.photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+}
+
+.badges {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-width: calc(100% - 24px);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.new {
+  background: var(--color-gold);
+  color: #512317;
+}
+.lenten {
+  background: #326b30;
+  color: #fff;
+}
+
+.hit,
+.discount {
+  background: var(--color-brand-red);
+  color: #fff;
+}
+
+.spicy {
+  border: 1px solid var(--color-brand-red);
+  background: #fff;
+  color: var(--color-brand-red);
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  padding: 17px 17px 16px;
+}
+
+.name {
+  margin: 0 0 6px;
+  color: #5b292c;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  margin: 0 0 8px;
+  color: #8a736b;
+  font-size: 12px;
+}
+
+.details {
+  min-height: 35px;
+  margin: 0;
+  color: #745e55;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  margin-top: auto;
+  padding-top: 13px;
+}
+
+.price {
+  color: #47252a;
+  font-size: 18px;
+  line-height: 1;
+  white-space: nowrap;
+}

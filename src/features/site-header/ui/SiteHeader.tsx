@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router'
+import { cartCount, useCartStore } from '../../cart'
 import styles from './SiteHeader.module.css'
 
 const categories = [
@@ -18,11 +19,15 @@ const categories = [
 
 type SiteHeaderProps = {
   phoneNumber?: string
+  addressLabel?: string
+  onAddressClick?: () => void
 }
 
-export function SiteHeader({ phoneNumber }: SiteHeaderProps) {
+export function SiteHeader({ phoneNumber, addressLabel, onAddressClick }: SiteHeaderProps) {
   const dialNumber = phoneNumber?.replace(/[^+\d]/g, '')
   const isHome = useLocation().pathname === '/'
+  const count = useCartStore((state) => cartCount(state.lines))
+  const openCart = useCartStore((state) => state.open)
 
   return (
     <header className={styles.header}>
@@ -57,14 +62,19 @@ export function SiteHeader({ phoneNumber }: SiteHeaderProps) {
             </span>
           </Link>
 
-          <button className={styles.address} type="button" aria-label="Указать адрес доставки">
+          <button
+            className={styles.address}
+            type="button"
+            aria-label="Указать адрес доставки"
+            onClick={onAddressClick}
+          >
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M12 21s7-5.3 7-11a7 7 0 1 0-14 0c0 5.7 7 11 7 11Z" />
               <circle cx="12" cy="10" r="2.5" />
             </svg>
             <span>
               <span className={styles.addressLabel}>Адрес доставки</span>
-              <strong>Укажите адрес</strong>
+              <strong>{addressLabel ?? 'Укажите адрес'}</strong>
             </span>
           </button>
 
@@ -91,11 +101,11 @@ export function SiteHeader({ phoneNumber }: SiteHeaderProps) {
             </svg>
             Войти
           </button>
-          <button className={styles.cart} type="button">
+          <button className={styles.cart} type="button" onClick={openCart}>
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M4 8h16l-1.5 12h-13L4 8ZM9 8V6a3 3 0 0 1 6 0v2" />
             </svg>
-            Корзина <span className={styles.cartCount}>0</span>
+            Корзина <span className={styles.cartCount}>{count}</span>
           </button>
         </div>
       </div>

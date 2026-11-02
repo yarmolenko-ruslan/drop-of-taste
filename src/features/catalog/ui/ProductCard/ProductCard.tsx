@@ -38,9 +38,19 @@ export function ProductCard({ product, onAction }: ProductCardProps) {
           <strong className={styles.price}>
             {product.priceRub === null ? '000' : product.priceRub.toLocaleString('ru-RU')} ₽
           </strong>
-          <CatalogActionButton onClick={() => onAction?.(product)} />
+          <span className={styles.actionWrap}>
+            <CatalogActionButton onClick={() => onAction?.(product)} />
+          </span>
         </div>
       </div>
+      {onAction && (
+        <button
+          className={styles.cardHitArea}
+          type="button"
+          aria-label={`Подробнее о блюде «${product.name}»`}
+          onClick={() => onAction(product)}
+        />
+      )}
     </article>
   )
 }

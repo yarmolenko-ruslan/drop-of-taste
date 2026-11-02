@@ -1,11 +1,44 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router'
+import {
+  dialogItemFromProduct,
+  dialogItemFromSauce,
+  type DialogItem,
+} from '../../features/catalog/model/dialogContent'
+import { ProductDialog } from '../../features/catalog/ui/ProductDialog/ProductDialog'
 import { homeCategories } from '../../features/catalog/model/homeCatalog'
 import { ProductCard } from '../../features/catalog/ui/ProductCard/ProductCard'
+import { SauceGrid } from '../HomeScreen/HomeClosingSections'
 import styles from './CategoryScreen.module.css'
 
 export function CategoryScreen() {
+  const [selectedItem, setSelectedItem] = useState<DialogItem | null>(null)
   const { categoryId } = useParams()
   const category = homeCategories.find(({ id }) => id === categoryId)
+
+  if (categoryId === 'sauces') {
+    return (
+      <>
+        <main className={styles.root}>
+          <nav className={styles.breadcrumbs} aria-label="Навигационная цепочка">
+            <Link to="/">Главная</Link>
+            <span aria-hidden="true">/</span>
+            <span>Соусы</span>
+          </nav>
+          <h1 className={styles.heading}>Соусы</h1>
+          <p className={styles.subtitle}>Добавьте вкуса любимому блюду</p>
+          <SauceGrid onSauceAction={(name) => setSelectedItem(dialogItemFromSauce(name))} />
+        </main>
+        {selectedItem && (
+          <ProductDialog
+            key={selectedItem.id}
+            item={selectedItem}
+            onClose={() => setSelectedItem(null)}
+          />
+        )}
+      </>
+    )
+  }
 
   if (!category) {
     return (
@@ -19,19 +52,32 @@ export function CategoryScreen() {
   }
 
   return (
-    <main className={styles.root}>
-      <nav className={styles.breadcrumbs} aria-label="Навигационная цепочка">
-        <Link to="/">Главная</Link>
-        <span aria-hidden="true">/</span>
-        <span>{category.title}</span>
-      </nav>
-      <h1 className={styles.heading}>{category.title}</h1>
-      <p className={styles.subtitle}>{category.subtitle}</p>
-      <div className={styles.grid}>
-        {category.products.map((item) => (
-          <ProductCard key={item.id} product={item} />
-        ))}
-      </div>
-    </main>
+    <>
+      <main className={styles.root}>
+        <nav className={styles.breadcrumbs} aria-label="Навигационная цепочка">
+          <Link to="/">Главная</Link>
+          <span aria-hidden="true">/</span>
+          <span>{category.title}</span>
+        </nav>
+        <h1 className={styles.heading}>{category.title}</h1>
+        <p className={styles.subtitle}>{category.subtitle}</p>
+        <div className={styles.grid}>
+          {category.products.map((item) => (
+            <ProductCard
+              key={item.id}
+              product={item}
+              onAction={(product) => setSelectedItem(dialogItemFromProduct(product))}
+            />
+          ))}
+        </div>
+      </main>
+      {selectedItem && (
+        <ProductDialog
+          key={selectedItem.id}
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+        />
+      )}
+    </>
   )
 }

@@ -27,6 +27,7 @@
 }
 
 .comboCard {
+  position: relative;
   display: grid;
   grid-template-columns: 32% minmax(0, 1fr);
   min-height: 216px;
@@ -34,6 +35,25 @@
   border-radius: 21px;
   background: #fff;
   box-shadow: 0 7px 20px rgb(73 36 30 / 7%);
+}
+
+.comboHitArea {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.comboHitArea:focus-visible {
+  outline: 3px solid var(--color-brand-red);
+  outline-offset: -3px;
+  border-radius: inherit;
+}
+.comboActionWrap {
+  position: relative;
+  z-index: 2;
 }
 
 .comboImageWrap {

@@ -6,10 +6,17 @@ import {
   type HomeCombo,
 } from '../../model/homeCatalog'
 import { CatalogActionButton } from '../CatalogActionButton/CatalogActionButton'
+import type { CatalogProduct } from '../../model/product'
 import { ProductCard } from '../ProductCard/ProductCard'
 import styles from './HomeCatalog.module.css'
 
-function ComboCard({ combo }: { combo: HomeCombo }) {
+function ComboCard({
+  combo,
+  onAction,
+}: {
+  combo: HomeCombo
+  onAction?: (combo: HomeCombo) => void
+}) {
   return (
     <article className={styles.comboCard}>
       <div className={styles.comboImageWrap}>
@@ -23,14 +30,30 @@ function ComboCard({ combo }: { combo: HomeCombo }) {
         <p className={styles.comboNote}>На комбо не распространяются другие акции и промокоды</p>
         <div className={styles.comboFooter}>
           <strong className={styles.comboPrice}>000 ₽</strong>
-          <CatalogActionButton />
+          <span className={styles.comboActionWrap}>
+            <CatalogActionButton onClick={() => onAction?.(combo)} />
+          </span>
         </div>
       </div>
+      {onAction && (
+        <button
+          className={styles.comboHitArea}
+          type="button"
+          aria-label={`Подробнее о наборе «${combo.name}»`}
+          onClick={() => onAction(combo)}
+        />
+      )}
     </article>
   )
 }
 
-function CategorySection({ category }: { category: HomeCategory }) {
+function CategorySection({
+  category,
+  onProductAction,
+}: {
+  category: HomeCategory
+  onProductAction?: (product: CatalogProduct) => void
+}) {
   return (
     <section className={styles.category} id={category.id} aria-labelledby={`${category.id}-title`}>
       <div className={styles.categoryHeadingRow}>
@@ -46,14 +69,20 @@ function CategorySection({ category }: { category: HomeCategory }) {
       </div>
       <div className={styles.productGrid}>
         {category.products.map((item) => (
-          <ProductCard key={item.id} product={item} />
+          <ProductCard key={item.id} product={item} onAction={onProductAction} />
         ))}
       </div>
     </section>
   )
 }
 
-export function HomeCatalog() {
+export function HomeCatalog({
+  onProductAction,
+  onComboAction,
+}: {
+  onProductAction?: (product: CatalogProduct) => void
+  onComboAction?: (combo: HomeCombo) => void
+}) {
   return (
     <div className={styles.catalog}>
       <section id="combo" aria-labelledby="combos-title">
@@ -65,12 +94,12 @@ export function HomeCatalog() {
         </p>
         <div className={styles.comboGrid}>
           {homeCombos.map((combo) => (
-            <ComboCard combo={combo} key={combo.id} />
+            <ComboCard combo={combo} onAction={onComboAction} key={combo.id} />
           ))}
         </div>
       </section>
       {homeCategories.map((category) => (
-        <CategorySection category={category} key={category.id} />
+        <CategorySection category={category} onProductAction={onProductAction} key={category.id} />
       ))}
     </div>
   )

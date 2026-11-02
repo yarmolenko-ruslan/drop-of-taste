@@ -34,7 +34,7 @@ const slides = [
 
 export function HeroSlider() {
   return (
-    <section className={styles.slider} aria-label="Предложения кафе">
+    <section className={styles.slider} id="promotions" aria-label="Предложения кафе">
       {slides.length > 1 && <div className={styles.pagination} aria-label="Выбор слайда" />}
       {slides.length > 1 && (
         <>

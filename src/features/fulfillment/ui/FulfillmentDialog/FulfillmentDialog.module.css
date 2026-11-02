@@ -1,0 +1,181 @@
+.dialog {
+  width: min(calc(100vw - 48px), 1080px);
+}
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 47%) minmax(0, 53%);
+  min-height: 635px;
+}
+.content {
+  display: flex;
+  flex-direction: column;
+  padding: 46px 38px 34px;
+  background: #fffdfa;
+}
+.eyebrow {
+  color: #2e6a36;
+  font:
+    800 11px Arial,
+    sans-serif;
+  letter-spacing: 0.16em;
+}
+.content h2 {
+  margin: 10px 55px 5px 0;
+  font:
+    42px/1.1 Georgia,
+    serif;
+  color: var(--color-burgundy);
+}
+.intro {
+  margin: 0 0 25px;
+  color: #806b62;
+  font:
+    14px/1.4 Arial,
+    sans-serif;
+}
+.switch {
+  display: flex;
+  gap: 5px;
+  padding: 5px;
+  margin-bottom: 25px;
+  border-radius: 999px;
+  background: #f3e5d0;
+}
+.switch button {
+  flex: 1;
+  min-height: 45px;
+  padding: 8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text);
+  font:
+    700 14px Arial,
+    sans-serif;
+  cursor: pointer;
+}
+.switch .active {
+  background: var(--color-brand-red);
+  color: #fff;
+}
+.form {
+  display: grid;
+  gap: 18px;
+}
+.form label {
+  display: grid;
+  gap: 7px;
+  color: #4d2528;
+  font:
+    700 13px Arial,
+    sans-serif;
+}
+.form input,
+.form textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid #e3caa9;
+  border-radius: 11px;
+  outline: 0;
+  background: #fcf6ee;
+  color: var(--color-text);
+  font:
+    14px Arial,
+    sans-serif;
+}
+.form input:focus,
+.form textarea:focus {
+  border-color: var(--color-accent);
+}
+.form textarea {
+  resize: vertical;
+}
+.fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.pickup {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+.pickup p {
+  margin: 0 0 6px;
+  color: #806b62;
+  font:
+    14px/1.4 Arial,
+    sans-serif;
+}
+.pickup label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 15px;
+  border: 1px solid #e4cba9;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.pickup .selectedCafe {
+  border-color: var(--color-brand-red);
+  background: #fff4f0;
+}
+.pickup input {
+  accent-color: var(--color-brand-red);
+}
+.pickup span {
+  display: grid;
+  gap: 4px;
+}
+.pickup strong {
+  font:
+    700 14px Arial,
+    sans-serif;
+}
+.pickup small {
+  color: #8a7068;
+  font:
+    12px Arial,
+    sans-serif;
+}
+.save {
+  min-height: 50px;
+  margin-top: auto;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-brand-red);
+  color: white;
+  font:
+    700 14px Arial,
+    sans-serif;
+  cursor: pointer;
+}
+.mapSpace {
+  min-height: 100%;
+  background: #f1e3cf;
+}
+@media (max-width: 720px) {
+  .dialog {
+    width: calc(100vw - 24px);
+  }
+  .layout {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+  }
+  .content {
+    padding: 28px 20px;
+  }
+  .content h2 {
+    font-size: 33px;
+  }
+  .mapSpace {
+    min-height: 220px;
+    order: -1;
+  }
+  .save {
+    margin-top: 24px;
+  }
+}

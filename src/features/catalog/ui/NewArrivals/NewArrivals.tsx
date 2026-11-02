@@ -2,10 +2,15 @@ import { A11y, Navigation } from 'swiper/modules'
 import { Swiper, SwiperSlide } from 'swiper/react'
 import 'swiper/css'
 import { newArrivals } from '../../model/newArrivals'
+import type { CatalogProduct } from '../../model/product'
 import { ProductCard } from '../ProductCard/ProductCard'
 import styles from './NewArrivals.module.css'
 
-export function NewArrivals() {
+export function NewArrivals({
+  onProductAction,
+}: {
+  onProductAction?: (product: CatalogProduct) => void
+}) {
   return (
     <section className={styles.section} id="new" aria-labelledby="new-arrivals-title">
       <div className={styles.headingRow}>
@@ -33,6 +38,7 @@ export function NewArrivals() {
         speed={550}
         grabCursor
         simulateTouch
+        focusableElements="input, select, option, textarea, video, label"
         navigation={{ prevEl: `.${styles.previous}`, nextEl: `.${styles.next}` }}
         breakpoints={{
           640: { slidesPerView: 2.2, spaceBetween: 16 },
@@ -42,7 +48,7 @@ export function NewArrivals() {
       >
         {newArrivals.map((product) => (
           <SwiperSlide className={styles.productSlide} key={product.id}>
-            <ProductCard product={product} />
+            <ProductCard product={product} onAction={onProductAction} />
           </SwiperSlide>
         ))}
       </Swiper>

@@ -1,0 +1,83 @@
+.dialog {
+  width: min(calc(100vw - 48px), 1120px);
+  max-width: none;
+  max-height: min(calc(100vh - 48px), 820px);
+  margin: auto;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 28px;
+  background: transparent;
+  color: var(--color-text);
+  box-shadow: 0 22px 70px rgb(25 5 8 / 24%);
+}
+
+.dialog::backdrop {
+  background: rgb(39 16 21 / 58%);
+}
+
+.right {
+  width: min(100vw, 500px);
+  height: 100dvh;
+  max-height: none;
+  margin: 0 0 0 auto;
+  border-radius: 24px 0 0 24px;
+}
+
+.right .panel {
+  height: 100%;
+}
+
+.right .close {
+  top: 20px;
+  right: 20px;
+}
+
+.panel {
+  position: relative;
+  overflow: hidden;
+  border-radius: inherit;
+  background: #fffdfa;
+}
+
+.close {
+  position: absolute;
+  z-index: 2;
+  top: 18px;
+  right: 18px;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 0;
+  border-radius: 50%;
+  background: #f3e4ce;
+  color: #4d161d;
+  cursor: pointer;
+}
+
+.close svg {
+  width: 20px;
+  height: 20px;
+}
+.close:hover {
+  background: #e8d0ad;
+}
+.close:focus-visible {
+  outline: 3px solid var(--color-brand-red);
+  outline-offset: 3px;
+}
+
+@media (max-width: 720px) {
+  .dialog {
+    width: min(calc(100vw - 24px), 1120px);
+    max-height: calc(100vh - 24px);
+  }
+
+  .right {
+    width: min(100vw, 500px);
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0;
+  }
+}

@@ -348,8 +348,14 @@
   border-radius: 50%;
   background: #f2e3cc;
   color: #bd9257;
-  font-size: 100px;
-  line-height: 1;
+}
+.emptyIcon svg {
+  width: 64px;
+  height: 64px;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .empty h3 {
   margin: 0 0 8px;

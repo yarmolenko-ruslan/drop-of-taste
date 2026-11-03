@@ -23,6 +23,7 @@ test('клик внутри не закрывает окно, а фон, кре�
   fireEvent.click(screen.getByRole('heading', { name: 'Блюдо' }))
   expect(onClose).not.toHaveBeenCalled()
 
+  fireEvent.mouseDown(dialog)
   fireEvent.click(dialog)
   expect(onClose).toHaveBeenCalledTimes(1)
 
@@ -31,6 +32,20 @@ test('клик внутри не закрывает окно, а фон, кре�
 
   fireEvent(dialog, new Event('cancel', { cancelable: true }))
   expect(onClose).toHaveBeenCalledTimes(3)
+})
+
+test('не закрывает окно, если мышь отпущена вне модалки после нажатия внутри', () => {
+  const onClose = vi.fn()
+  render(
+    <Dialog titleId="drag-title" onClose={onClose}>
+      <h2 id="drag-title">Блюдо</h2>
+    </Dialog>,
+  )
+
+  const dialog = screen.getByRole('dialog')
+  fireEvent.mouseDown(screen.getByRole('heading', { name: 'Блюдо' }))
+  fireEvent.click(dialog)
+  expect(onClose).not.toHaveBeenCalled()
 })
 
 test('ставит фокус на закрытие и возвращает его на исходную кнопку', () => {

@@ -14,7 +14,6 @@ export type DialogItem = {
   priceRub: number | null
   ingredients: readonly string[]
   allergenNote?: string
-  variants: readonly string[]
   extras: readonly string[]
 }
 
@@ -215,7 +214,6 @@ export function dialogItemFromProduct(product: CatalogProduct): DialogItem {
             : sweetIds.has(product.id) || bakeryIds.has(product.id)
               ? 'Может содержать молоко, яйцо и глютен.'
               : 'Информацию об аллергенах уточняйте при заказе.',
-    variants: product.measure === 'мл' ? ['300 мл', '500 мл'] : ['Обычная', 'Большая'],
     extras: extrasForProduct(product.id),
   }
 }
@@ -234,7 +232,6 @@ export function dialogItemFromCombo(combo: HomeCombo): DialogItem {
     priceRub: null,
     ingredients: combo.details.split(', '),
     allergenNote: 'Состав и аллергены блюд набора уточняйте при заказе.',
-    variants: ['Один набор'],
     extras: ['Сметана', 'Соус на выбор', 'Приборы'],
   }
 }
@@ -272,7 +269,6 @@ export function dialogItemFromSauce(name: string): DialogItem {
         : name === 'Сметана' || name === 'Чесночный'
           ? 'Содержит молочные продукты.'
           : undefined,
-    variants: ['Одна порция'],
     extras: [],
   }
 }

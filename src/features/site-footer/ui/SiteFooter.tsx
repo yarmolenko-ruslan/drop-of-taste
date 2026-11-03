@@ -25,8 +25,12 @@ export function SiteFooter() {
             </Link>
             <p>Домашняя кухня, выпечка и кофе с доставкой.</p>
             <div className={styles.socials} aria-label="Социальные сети">
-              <span>VK</span>
-              <span>TG</span>
+              <a href="https://vk.com/" target="_blank" rel="noreferrer">
+                VK
+              </a>
+              <a href="https://t.me/" target="_blank" rel="noreferrer">
+                TG
+              </a>
             </div>
           </div>
           <nav aria-label="Меню в подвале">
@@ -43,7 +47,7 @@ export function SiteFooter() {
             <h2>ПОКУПАТЕЛЯМ</h2>
             <ul>
               <li>
-                <a href="/#promotions">Акции</a>
+                <Link to="/promotions">Акции</Link>
               </li>
               <li>
                 <a href="/#bonuses">Бонусная программа</a>
@@ -52,16 +56,13 @@ export function SiteFooter() {
                 <a href="/#delivery">Доставка и оплата</a>
               </li>
               <li>
-                <span>Адреса кафе</span>
+                <Link to="/about">О нас</Link>
               </li>
               <li>
-                <a href="/#about">О нас</a>
+                <Link to="/privacy">Политика конфиденциальности</Link>
               </li>
               <li>
-                <span>Политика конфиденциальности</span>
-              </li>
-              <li>
-                <span>Согласие на обработку данных</span>
+                <Link to="/data-consent">Согласие на обработку данных</Link>
               </li>
             </ul>
           </nav>
@@ -70,7 +71,7 @@ export function SiteFooter() {
             <a className={styles.phone} href="tel:+71234567890">
               +7 123 456-78-90
             </a>
-            <p>Ежедневно 08:00–22:00</p>
+            <p>Ежедневно 08:00–20:00</p>
             <span>[почта]</span>
           </div>
         </div>

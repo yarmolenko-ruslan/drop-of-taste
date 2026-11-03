@@ -39,7 +39,7 @@ export function ProductCard({ product, onAction }: ProductCardProps) {
             {product.priceRub === null ? '000' : product.priceRub.toLocaleString('ru-RU')} ₽
           </strong>
           <span className={styles.actionWrap}>
-            <CatalogActionButton onClick={() => onAction?.(product)} />
+            <CatalogActionButton item={product} />
           </span>
         </div>
       </div>

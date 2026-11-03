@@ -4,7 +4,7 @@ import { AboutScreen } from './AboutScreen'
 
 const cafeAddress = 'г. Красноярск, улица Петра Подзолкова, 3и'
 
-test('показывает описание кафе и карту конкретной организации', () => {
+test('показывает описание ресторана и карту конкретной организации', () => {
   render(
     <MemoryRouter>
       <AboutScreen />

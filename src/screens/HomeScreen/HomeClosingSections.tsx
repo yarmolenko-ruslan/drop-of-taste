@@ -1,4 +1,6 @@
 import { Link } from 'react-router'
+import { addOneToCart } from '../../features/cart'
+import { dialogItemFromSauce } from '../../features/catalog/model/dialogContent'
 import styles from './HomeClosingSections.module.css'
 
 const sauces = ['Сметана', 'Чесночный', 'Горчица', 'Хрен со свёклой', 'Аджика']
@@ -68,14 +70,16 @@ export function SauceGrid({ onSauceAction }: { onSauceAction?: (name: string) =>
               000 г · 000 ккал · <strong>000 ₽</strong>
             </p>
           </div>
-          <button
-            type="button"
-            aria-label={`Выбрать соус «${name}»`}
-            className={styles.sauceAdd}
-            onClick={() => onSauceAction?.(name)}
-          >
-            +
-          </button>
+          <span className={styles.sauceActionWrap}>
+            <button
+              type="button"
+              aria-label={`Добавить соус «${name}» в корзину`}
+              className={styles.sauceAdd}
+              onClick={() => addOneToCart(dialogItemFromSauce(name))}
+            >
+              +
+            </button>
+          </span>
           {onSauceAction && (
             <button
               className={styles.sauceHitArea}
@@ -107,7 +111,13 @@ function Sauces({ onSauceAction }: { onSauceAction?: (name: string) => void }) {
   )
 }
 
-export function HomeClosingSections({ onSauceAction }: { onSauceAction?: (name: string) => void }) {
+export function HomeClosingSections({
+  onSauceAction,
+  onLogin,
+}: {
+  onSauceAction?: (name: string) => void
+  onLogin?: () => void
+}) {
   return (
     <>
       <Sauces onSauceAction={onSauceAction} />
@@ -133,7 +143,7 @@ export function HomeClosingSections({ onSauceAction }: { onSauceAction?: (name: 
             подарок от шефа.
           </p>
           <div className={styles.bonusActions}>
-            <button type="button" className={styles.goldButton}>
+            <button type="button" className={styles.goldButton} onClick={onLogin}>
               Войти по номеру
             </button>
             <a href="#bonus-steps" className={styles.outlineButton}>

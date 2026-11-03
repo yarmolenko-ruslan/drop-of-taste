@@ -6,34 +6,6 @@
   width: min(100% - 48px, var(--content-max-width));
   margin-inline: auto;
 }
-.utilityBar {
-  background: var(--color-burgundy);
-  color: #e9d7c8;
-  font-size: 12px;
-}
-.utilityBar .container {
-  min-height: 32px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 24px;
-}
-.utilityLinks {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 20px;
-}
-.utilityLinks a {
-  color: inherit;
-  text-decoration: none;
-  overflow-wrap: anywhere;
-}
-.utilityLinks a:hover {
-  color: white;
-}
 .mainBar {
   background: var(--color-brand-red);
   color: #fff8ef;
@@ -76,7 +48,7 @@
 .brandTagline {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   margin-top: 5px;
   color: #b2d66a;
   font-family: Georgia, 'Times New Roman', serif;
@@ -84,19 +56,22 @@
   font-weight: 700;
   line-height: 1;
   letter-spacing: 0.035em;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
   max-width: 100%;
-  overflow-wrap: anywhere;
 }
 .taglineRule {
-  width: 16px;
+  width: 10px;
   height: 1px;
   flex: none;
   background: currentColor;
 }
 .taglineDot {
-  font-size: 11px;
-  line-height: 0;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
 }
 .address,
 .login,
@@ -107,15 +82,24 @@
 .address {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 9px;
-  flex: 0 0 166px;
+  flex: 0 1 auto;
+  max-width: 160px;
   min-height: 50px;
-  padding: 6px 11px;
-  text-align: left;
+  padding: 6px 7px;
+  text-align: center;
   color: #fff9f0;
   background: transparent;
   border: 1px dashed #e6b8a5;
   border-radius: 15px;
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease;
+}
+.address:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: #ffd16e;
 }
 .address svg {
   width: 19px;
@@ -123,26 +107,27 @@
   stroke: var(--color-gold-light);
   stroke-width: 1.8;
   flex: none;
+  transition: stroke 0.3s ease;
+}
+.address:hover svg {
+  stroke: #ffd16e;
 }
 .address > span {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex: 1;
   min-width: 0;
 }
-.addressLabel {
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
 .address strong {
-  font-size: 13px;
-  overflow-wrap: anywhere;
+  display: block;
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .search {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex: 1 1 250px;
+  flex: 1 1 200px;
   min-width: 135px;
   height: 50px;
   padding: 0 15px;
@@ -170,67 +155,102 @@
   color: #827b76;
   opacity: 1;
 }
-.phone {
+.phoneBlock {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
   flex: 0 0 auto;
-  max-width: 185px;
+  min-width: 0;
+}
+.hours {
+  color: #f3ddc9;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.phone {
   color: #fff8f1;
   font-size: 17px;
   line-height: 1.15;
   font-weight: 700;
   text-decoration: none;
   overflow-wrap: anywhere;
+  transition: color 0.3s ease;
+}
+.phone:hover {
+  color: #ffd16e;
 }
 .login {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
   flex: 0 0 auto;
-  min-width: 84px;
-  min-height: 48px;
-  padding-inline: 7px;
+  width: 48px;
+  height: 48px;
+  padding: 0;
   border: 1px solid #d5ad83;
   border-radius: 13px;
   background: transparent;
   color: #e7c18d;
-  font-size: 13px;
-  font-weight: 700;
-  text-align: center;
-  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    color 0.3s ease;
 }
-.login svg,
-.cart svg {
-  width: 16px;
-  height: 16px;
+.login:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #ffd16e;
+  color: #ffd16e;
+}
+.login svg {
+  width: 22px;
+  height: 22px;
   stroke: currentColor;
   stroke-width: 1.8;
 }
 .cart {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  flex: 0 0 129px;
-  min-height: 48px;
-  padding-inline: 8px;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  padding: 0;
   border: 0;
   border-radius: 13px;
   background: var(--color-gold);
   color: #46171a;
-  font-size: 14px;
-  font-weight: 700;
-  text-align: center;
-  overflow-wrap: anywhere;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+.cart:hover {
+  background: #e9cd8f;
+}
+.cart svg {
+  width: 24px;
+  height: 24px;
+  stroke: currentColor;
+  stroke-width: 1.8;
 }
 .cartCount {
+  position: absolute;
+  top: -6px;
+  right: -6px;
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-gold);
   border-radius: 50%;
   background: var(--color-brand-red);
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  transition: border-color 0.3s ease;
+}
+.cart:hover .cartCount {
+  border-color: #e9cd8f;
 }
 .categoryBar {
   background: #fffefa;
@@ -261,6 +281,7 @@
   text-decoration: none;
   text-align: center;
   overflow-wrap: anywhere;
+  transition: background-color 0.3s ease;
 }
 .category.promotion {
   background: #f8e8c5;
@@ -292,14 +313,8 @@
     width: 56px;
     height: 56px;
   }
-  .address {
-    flex-basis: 155px;
-  }
   .phone {
     font-size: 15px;
-  }
-  .cart {
-    flex-basis: 113px;
   }
 }
 @media (max-width: 1050px) {
@@ -314,23 +329,23 @@
   .brand {
     margin-right: auto;
   }
-  .utilityLinks {
-    gap: 10px;
-  }
 }
 @media (max-width: 720px) {
   .container {
     width: min(100% - 32px, var(--content-max-width));
   }
-  .utilityBar,
-  .phone,
-  .address,
-  .login {
+  .phoneBlock,
+  .address {
     display: none;
   }
   .mainContent {
     min-height: 72px;
     gap: 10px;
+  }
+  .login,
+  .cart {
+    width: 44px;
+    height: 44px;
   }
   .brand {
     flex-basis: auto;
@@ -346,17 +361,30 @@
     font-size: 7px;
   }
   .taglineRule {
-    width: 11px;
-  }
-  .cart {
-    flex-basis: auto;
-    width: 44px;
-    font-size: 0;
+    width: 7px;
   }
   .cartCount {
-    font-size: 12px;
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
   }
   .categoryList {
     min-height: 56px;
+  }
+}
+
+@media (max-width: 400px) {
+  .mainContent {
+    gap: 7px;
+  }
+  .brand {
+    gap: 7px;
+  }
+  .brand img {
+    width: 40px;
+    height: 40px;
+  }
+  .brandName {
+    font-size: 15px;
   }
 }

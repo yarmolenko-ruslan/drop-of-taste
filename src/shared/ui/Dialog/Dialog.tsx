@@ -32,12 +32,18 @@ export function Dialog({
     document.body.style.overflow = 'hidden'
     closeRef.current?.focus()
 
-    function handleBackdropClick(event: MouseEvent) {
-      if (event.target === dialog) onClose()
+    let pressedOnBackdrop = false
+    function handleMouseDown(event: MouseEvent) {
+      pressedOnBackdrop = event.target === dialog
     }
+    function handleBackdropClick(event: MouseEvent) {
+      if (event.target === dialog && pressedOnBackdrop) onClose()
+    }
+    dialog.addEventListener('mousedown', handleMouseDown)
     dialog.addEventListener('click', handleBackdropClick)
 
     return () => {
+      dialog.removeEventListener('mousedown', handleMouseDown)
       dialog.removeEventListener('click', handleBackdropClick)
       if (dialog.open) dialog.close()
       document.body.style.overflow = previousOverflow

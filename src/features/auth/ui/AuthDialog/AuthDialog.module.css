@@ -1,0 +1,147 @@
+.dialog {
+  width: min(calc(100vw - 48px), 560px);
+  max-height: calc(100dvh - 48px);
+}
+
+.content {
+  max-height: calc(100dvh - 48px);
+  padding: 48px;
+  overflow-y: auto;
+  background: #fffdfa;
+}
+
+.eyebrow {
+  color: #8b673e;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.content h2 {
+  margin: 12px 50px 10px 0;
+  color: var(--color-burgundy);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 38px;
+  font-weight: 400;
+  line-height: 1.1;
+}
+
+.intro {
+  margin: 0 0 28px;
+  color: #806b62;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.form {
+  display: grid;
+  gap: 18px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  color: #4d2528;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.field input {
+  width: 100%;
+  min-height: 54px;
+  padding: 13px 16px;
+  border: 1px solid #dfc4a2;
+  border-radius: 12px;
+  outline: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 18px;
+}
+
+.field input:focus {
+  border-color: var(--color-brand-red);
+  box-shadow: 0 0 0 3px rgb(167 13 34 / 10%);
+}
+
+.submit {
+  min-height: 52px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-brand-red);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.submit:hover {
+  background: #8f0b1d;
+}
+
+.submit:disabled {
+  background: #c9b7aa;
+  cursor: not-allowed;
+}
+
+.consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  color: #5d4140;
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.consent input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  flex: none;
+  accent-color: var(--color-brand-red);
+}
+
+.consent a {
+  color: var(--color-brand-red);
+  text-underline-offset: 3px;
+}
+
+.legal,
+.error {
+  margin: 18px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.legal {
+  color: #806b62;
+}
+
+.error {
+  margin-top: -8px;
+  color: var(--color-brand-red);
+}
+
+.content :is(input, button):focus-visible {
+  outline: 3px solid var(--color-gold);
+  outline-offset: 3px;
+}
+
+@media (max-width: 560px) {
+  .dialog {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+
+  .content {
+    max-height: calc(100dvh - 24px);
+    padding: 34px 22px 28px;
+  }
+
+  .content h2 {
+    margin-right: 36px;
+    font-size: 31px;
+  }
+}

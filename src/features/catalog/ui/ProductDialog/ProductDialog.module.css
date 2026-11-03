@@ -4,11 +4,14 @@
   height: min(calc(100vh - 48px), 820px);
   min-height: 560px;
 }
+
 .visual {
   position: relative;
+  min-height: 0;
   overflow: hidden;
   background: #f3e6d2;
 }
+
 .visual > img {
   display: block;
   width: 100%;
@@ -16,6 +19,7 @@
   object-fit: cover;
   object-position: center;
 }
+
 .sauceVisual {
   display: flex;
   flex-direction: column;
@@ -27,10 +31,12 @@
   font-size: 18px;
   letter-spacing: 0.1em;
 }
+
 .sauceVisual span:first-child {
   font-size: 110px;
   line-height: 1;
 }
+
 .badges {
   position: absolute;
   top: 22px;
@@ -40,6 +46,7 @@
   gap: 6px;
   max-width: calc(100% - 44px);
 }
+
 .badge {
   padding: 8px 13px;
   border-radius: 999px;
@@ -47,20 +54,24 @@
   font-weight: 800;
   white-space: nowrap;
 }
+
 .hit,
 .discount,
 .spicy {
   background: var(--color-brand-red);
   color: #fff;
 }
+
 .new {
   background: var(--color-gold);
   color: #4e1e1a;
 }
+
 .lenten {
   background: #316b31;
   color: #fff;
 }
+
 .nutrition {
   position: absolute;
   right: 20px;
@@ -70,6 +81,7 @@
   border-radius: 17px;
   background: rgb(255 253 248 / 94%);
 }
+
 .nutrition > strong {
   display: block;
   margin-bottom: 10px;
@@ -77,6 +89,7 @@
   font-size: 12px;
   letter-spacing: 0.12em;
 }
+
 .nutrition > div {
   display: flex;
   justify-content: space-between;
@@ -84,9 +97,11 @@
   gap: 8px;
   font-size: 13px;
 }
+
 .nutrition b {
   color: #3d1b20;
 }
+
 .right {
   display: flex;
   flex-direction: column;
@@ -94,6 +109,7 @@
   min-height: 0;
   background: #fffdfa;
 }
+
 .details {
   flex: 1;
   min-height: 0;
@@ -101,6 +117,7 @@
   padding: 38px 38px 24px;
   scrollbar-color: #a88c7a transparent;
 }
+
 .details h2 {
   max-width: calc(100% - 48px);
   margin: 0 0 11px;
@@ -111,87 +128,57 @@
   line-height: 1.07;
   overflow-wrap: anywhere;
 }
+
 .meta {
   margin: 0 0 22px;
   color: #735d55;
   font-size: 16px;
 }
-.description {
-  margin: 0 0 26px;
+
+.description,
+.ingredientList {
   color: #614b43;
   font-size: 16px;
   line-height: 1.52;
   overflow-wrap: anywhere;
 }
-.variants {
-  display: flex;
-  margin-bottom: 25px;
-  padding: 4px;
-  border-radius: 999px;
-  background: #f1e0c7;
+
+.description {
+  margin: 0 0 28px;
 }
-.variants button {
-  flex: 1;
-  min-width: 0;
-  min-height: 47px;
-  padding: 8px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: #491e24;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.variants .selectedVariant {
-  background: #fffdfa;
-  color: var(--color-brand-red);
-  box-shadow: 0 4px 12px rgb(82 38 27 / 10%);
-}
-.details h3 {
-  margin: 0 0 12px;
+
+.ingredients h3 {
+  margin: 0 0 10px;
   color: #4c1b23;
-  font-size: 17px;
+  font-size: 18px;
 }
-.ingredients {
-  margin-bottom: 25px;
+
+.ingredientList {
+  margin: 0;
 }
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.chips button {
-  min-height: 40px;
-  padding: 7px 13px;
-  border: 1px solid #dbbf98;
-  border-radius: 999px;
-  background: #fff;
-  color: #3d1c22;
-  font: inherit;
-  font-size: 14px;
-  cursor: pointer;
-}
-.chips button span {
-  padding-left: 2px;
-  font-weight: 700;
-}
-.chips .removedChip {
-  border-color: var(--color-brand-red);
-  background: #f9e8e8;
-  color: var(--color-brand-red);
-  text-decoration: line-through;
-}
-.ingredients p {
+
+.allergenNote {
   margin: 14px 0 0;
   color: #80695f;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.5;
 }
+
+.extras {
+  margin-top: 25px;
+}
+
 .extraList {
   display: grid;
   gap: 8px;
 }
+
+.extras h3 {
+  margin: 0 0 12px;
+  color: #4c1b23;
+  font-size: 17px;
+}
+
 .extra {
   display: flex;
   align-items: center;
@@ -201,17 +188,20 @@
   border: 1px solid #ead8be;
   border-radius: 14px;
 }
+
 .extra > span {
   min-width: 0;
   flex: 1;
   overflow-wrap: anywhere;
   font-size: 14px;
 }
+
 .extra > strong {
   color: #715a52;
   font-size: 13px;
   white-space: nowrap;
 }
+
 .extraCounter {
   display: flex;
   align-items: center;
@@ -222,6 +212,7 @@
   border-radius: 999px;
   background: #f2e2cb;
 }
+
 .extraCounter button {
   width: 25px;
   height: 25px;
@@ -234,14 +225,18 @@
     sans-serif;
   cursor: pointer;
 }
-.extraCounter button:disabled {
+
+.extraCounter button:disabled,
+.quantity button:disabled {
   opacity: 0.4;
   cursor: default;
 }
+
 .extraCounter span {
   font-size: 14px;
   font-weight: 700;
 }
+
 .footer {
   display: flex;
   align-items: center;
@@ -250,6 +245,7 @@
   border-top: 1px solid #ead8be;
   background: #fffdfa;
 }
+
 .quantity {
   display: flex;
   align-items: center;
@@ -258,6 +254,7 @@
   border-radius: 999px;
   background: #f2e2cb;
 }
+
 .quantity button {
   width: 39px;
   height: 39px;
@@ -270,15 +267,13 @@
     sans-serif;
   cursor: pointer;
 }
-.quantity button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
+
 .quantity span {
   min-width: 12px;
   text-align: center;
   font-weight: 700;
 }
+
 .addButton {
   display: flex;
   align-items: center;
@@ -295,17 +290,22 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
+  transition: background-color 0.3s ease;
 }
+
 .addButton strong {
   white-space: nowrap;
 }
+
 .addButton:hover {
   background: #800b1b;
 }
+
 .dialog :is(button):focus-visible {
   outline: 3px solid var(--color-brand-red);
   outline-offset: 2px;
 }
+
 @media (max-width: 720px) {
   .layout {
     grid-template-columns: 1fr;
@@ -313,26 +313,27 @@
     min-height: 0;
     overflow-y: auto;
   }
+
   .visual {
-    min-height: 270px;
     height: 33vh;
-    flex: none;
+    min-height: 250px;
   }
+
   .nutrition {
     display: none;
   }
-  .right {
-    min-height: 0;
-  }
+
   .details {
     overflow: visible;
     padding: 25px 22px;
   }
+
   .footer {
     position: sticky;
     bottom: 0;
     padding: 12px;
   }
+
   .addButton {
     font-size: 12px;
   }

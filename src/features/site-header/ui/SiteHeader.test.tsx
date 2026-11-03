@@ -17,7 +17,7 @@ test('номер в шапке открывает звонок без подпи
   expect(screen.getByRole('navigation', { name: 'Категории меню' })).toBeInTheDocument()
 })
 
-test('скрывает меню категорий на странице «О кафе»', () => {
+test('скрывает меню категорий на странице «О ресторане»', () => {
   render(
     <MemoryRouter initialEntries={['/about']}>
       <SiteHeader />

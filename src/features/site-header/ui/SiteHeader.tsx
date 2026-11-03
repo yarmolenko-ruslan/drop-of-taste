@@ -20,10 +20,18 @@ const categories = [
 type SiteHeaderProps = {
   phoneNumber?: string
   addressLabel?: string
+  accountLabel?: string
   onAddressClick?: () => void
+  onAccountClick?: () => void
 }
 
-export function SiteHeader({ phoneNumber, addressLabel, onAddressClick }: SiteHeaderProps) {
+export function SiteHeader({
+  phoneNumber,
+  addressLabel,
+  accountLabel,
+  onAddressClick,
+  onAccountClick,
+}: SiteHeaderProps) {
   const dialNumber = phoneNumber?.replace(/[^+\d]/g, '')
   const { pathname } = useLocation()
   const isHome = pathname === '/'
@@ -33,19 +41,6 @@ export function SiteHeader({ phoneNumber, addressLabel, onAddressClick }: SiteHe
 
   return (
     <header className={styles.header}>
-      <div className={styles.utilityBar}>
-        <div className={styles.container}>
-          <span>Ежедневно 08:00–22:00</span>
-          <nav className={styles.utilityLinks} aria-label="Информация">
-            <a href={`${isHome ? '' : '/'}#promotions`}>Акции</a>
-            <a href={`${isHome ? '' : '/'}#delivery`}>Доставка и оплата</a>
-            <a href={`${isHome ? '' : '/'}#contacts`}>Контакты</a>
-            <a href={`${isHome ? '' : '/'}#about`}>О нас</a>
-            <a href={`${isHome ? '' : '/'}#vacancies`}>Вакансии</a>
-          </nav>
-        </div>
-      </div>
-
       <div className={styles.mainBar}>
         <div className={`${styles.container} ${styles.mainContent}`}>
           <Link className={styles.brand} to="/" aria-label="Капела вкуса — главная">
@@ -55,9 +50,7 @@ export function SiteHeader({ phoneNumber, addressLabel, onAddressClick }: SiteHe
               <span className={styles.brandTagline}>
                 <span className={styles.taglineRule} aria-hidden="true" />
                 <span>ДОМАШНЯЯ КУХНЯ</span>
-                <span className={styles.taglineDot} aria-hidden="true">
-                  •
-                </span>
+                <span className={styles.taglineDot} aria-hidden="true" />
                 <span>КАФЕ</span>
                 <span className={styles.taglineRule} aria-hidden="true" />
               </span>
@@ -67,7 +60,7 @@ export function SiteHeader({ phoneNumber, addressLabel, onAddressClick }: SiteHe
           <button
             className={styles.address}
             type="button"
-            aria-label="Указать адрес доставки"
+            aria-label="Выбрать способ получения"
             onClick={onAddressClick}
           >
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -75,8 +68,7 @@ export function SiteHeader({ phoneNumber, addressLabel, onAddressClick }: SiteHe
               <circle cx="12" cy="10" r="2.5" />
             </svg>
             <span>
-              <span className={styles.addressLabel}>Адрес доставки</span>
-              <strong>{addressLabel ?? 'Укажите адрес'}</strong>
+              <strong>{addressLabel ?? 'Адрес кафе'}</strong>
             </span>
           </button>
 
@@ -88,26 +80,38 @@ export function SiteHeader({ phoneNumber, addressLabel, onAddressClick }: SiteHe
             <input type="search" aria-label="Искать блюда" placeholder="Искать блюда" />
           </div>
 
-          {dialNumber ? (
-            <a className={styles.phone} href={`tel:${dialNumber}`}>
-              {phoneNumber}
-            </a>
-          ) : (
-            <span className={styles.phone}>+7 (000) 000-00-00</span>
-          )}
+          <div className={styles.phoneBlock}>
+            {dialNumber ? (
+              <a className={styles.phone} href={`tel:${dialNumber}`}>
+                {phoneNumber}
+              </a>
+            ) : (
+              <span className={styles.phone}>+7 (000) 000-00-00</span>
+            )}
+            <span className={styles.hours}>Ежедневно 08:00–20:00</span>
+          </div>
 
-          <button className={styles.login} type="button">
+          <button
+            className={styles.login}
+            type="button"
+            aria-label={accountLabel ?? 'Войти'}
+            onClick={onAccountClick}
+          >
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <circle cx="12" cy="8" r="3.2" />
               <path d="M5.5 20c.5-4 2.7-6 6.5-6s6 2 6.5 6" />
             </svg>
-            Войти
           </button>
-          <button className={styles.cart} type="button" onClick={openCart}>
+          <button
+            className={styles.cart}
+            type="button"
+            aria-label={`Корзина, ${count} поз.`}
+            onClick={openCart}
+          >
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M4 8h16l-1.5 12h-13L4 8ZM9 8V6a3 3 0 0 1 6 0v2" />
             </svg>
-            Корзина <span className={styles.cartCount}>{count}</span>
+            <span className={styles.cartCount}>{count}</span>
           </button>
         </div>
       </div>

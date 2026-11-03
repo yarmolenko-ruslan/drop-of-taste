@@ -14,6 +14,12 @@ dist-ssr
 
 CLAUDE.md
 CHANGES.md
+graphify-out
+graphify-out/*
+coverage
+coverage/*
+.kimi-assets
+.kimi-assets/*
 
 # Editor directories and files
 .vscode/*

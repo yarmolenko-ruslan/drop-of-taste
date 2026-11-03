@@ -12,9 +12,7 @@
   font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
-  transition:
-    background-color 180ms ease,
-    color 180ms ease;
+  transition: background-color 0.3s ease;
 }
 
 .action:hover,
@@ -26,4 +24,46 @@
 .action:focus-visible {
   outline: 3px solid var(--color-gold);
   outline-offset: 3px;
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 96px;
+  min-height: 36px;
+  padding: 0 6px;
+  border: 1px solid var(--color-brand-red);
+  border-radius: 999px;
+  background: var(--color-brand-red);
+  color: #fff;
+  white-space: nowrap;
+}
+
+.stepper > span {
+  min-width: 18px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.stepper button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.stepper button:hover {
+  background: rgba(255, 255, 255, 0.22);
 }

@@ -98,9 +98,6 @@
   background: #d9bd95;
   opacity: 1;
   cursor: pointer;
-  transition:
-    width 180ms ease,
-    background-color 180ms ease;
 }
 
 .pagination :global(.swiper-pagination-bullet-active) {
@@ -180,11 +177,5 @@
   }
   .title {
     font-size: clamp(29px, 7vw, 40px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pagination :global(.swiper-pagination-bullet) {
-    transition: none;
   }
 }

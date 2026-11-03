@@ -40,7 +40,7 @@ export const cartCount = (lines: readonly CartLine[]) =>
   lines.reduce((sum, line) => sum + line.quantity, 0)
 
 export const cartTotal = (lines: readonly CartLine[]) =>
-  lines.some((line) => line.unitPriceRub === null)
+  lines.some((line) => line.unitPriceRub === null || line.extras.length > 0)
     ? null
     : lines.reduce((sum, line) => sum + (line.unitPriceRub ?? 0) * line.quantity, 0)
 
@@ -98,3 +98,12 @@ export const useCartStore = create<CartState>((set) => ({
     })),
   clear: () => set({ lines: [] }),
 }))
+
+export function addOneToCart(item: CartProduct) {
+  useCartStore.getState().add(item, {
+    variant: '',
+    removedIngredients: [],
+    extras: {},
+    quantity: 1,
+  })
+}

@@ -50,7 +50,10 @@ export function CartDrawer({
         {count === 0 ? (
           <div className={styles.empty}>
             <div className={styles.emptyIcon} aria-hidden="true">
-              ◌
+              <svg viewBox="0 0 64 64" fill="none">
+                <path d="M9 23h46l-5 29H14L9 23Z" />
+                <path d="M21 23v-7a11 11 0 0 1 22 0v7M23 33v10m9-10v10m9-10v10" />
+              </svg>
             </div>
             <h3>Пока тут пусто</h3>
             <p>Выберите что-нибудь вкусное из нашего меню — блюда появятся здесь.</p>
@@ -159,18 +162,20 @@ export function CartDrawer({
                 >
                   <h3 id="cart-recommendations-title">Добавить к заказу</h3>
                   <div className={styles.recommendationList}>
-                    {recommendations.map((item) => (
-                      <article className={styles.recommendation} key={item.id}>
-                        <img src={item.image} alt="" loading="lazy" />
-                        <div>
-                          <strong>{item.name}</strong>
-                          <span>{formatCartPrice(item.priceRub)}</span>
-                          <button type="button" onClick={() => onAddRecommendation(item)}>
-                            В корзину
-                          </button>
-                        </div>
-                      </article>
-                    ))}
+                    {recommendations
+                      .filter((item) => !lines.some((line) => line.productId === item.id))
+                      .map((item) => (
+                        <article className={styles.recommendation} key={item.id}>
+                          <img src={item.image} alt="" loading="lazy" />
+                          <div>
+                            <strong>{item.name}</strong>
+                            <span>{formatCartPrice(item.priceRub)}</span>
+                            <button type="button" onClick={() => onAddRecommendation(item)}>
+                              В корзину
+                            </button>
+                          </div>
+                        </article>
+                      ))}
                   </div>
                 </section>
               )}

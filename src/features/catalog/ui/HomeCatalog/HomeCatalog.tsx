@@ -31,7 +31,9 @@ function ComboCard({
         <div className={styles.comboFooter}>
           <strong className={styles.comboPrice}>000 ₽</strong>
           <span className={styles.comboActionWrap}>
-            <CatalogActionButton onClick={() => onAction?.(combo)} />
+            <CatalogActionButton
+              item={{ id: combo.id, name: combo.name, image: combo.image, priceRub: null }}
+            />
           </span>
         </div>
       </div>

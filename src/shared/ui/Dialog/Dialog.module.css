@@ -54,6 +54,7 @@
   background: #f3e4ce;
   color: #4d161d;
   cursor: pointer;
+  transition: background-color 0.3s ease;
 }
 
 .close svg {

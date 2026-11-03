@@ -1,9 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { vi } from 'vitest'
+import { useCartStore } from '../../../cart'
 import type { CatalogProduct } from '../../model/product'
 import { ProductCard } from './ProductCard'
 
-test('карточка принимает данные и передаёт выбранный товар обработчику', () => {
+test('кнопка добавляет блюдо, а нажатие на карточку открывает описание', () => {
+  useCartStore.setState({ lines: [], isOpen: false })
   const product: CatalogProduct = {
     id: 'test',
     name: 'Тестовое блюдо',
@@ -27,10 +29,46 @@ test('карточка принимает данные и передаёт вы�
   expect(screen.getByText('420 ₽')).toBeInTheDocument()
   const action = screen.getByRole('button', { name: 'В корзину' })
   fireEvent.mouseEnter(action)
-  expect(screen.getByRole('button', { name: 'Выбрать' })).toBeInTheDocument()
-  fireEvent.mouseLeave(action)
   expect(screen.getByRole('button', { name: 'В корзину' })).toBeInTheDocument()
-  fireEvent.focus(action)
-  fireEvent.click(screen.getByRole('button', { name: 'Выбрать' }))
+  fireEvent.click(action)
+  expect(useCartStore.getState().lines[0]).toMatchObject({ productId: 'test', quantity: 1 })
+  expect(useCartStore.getState().isOpen).toBe(false)
+  expect(onAction).not.toHaveBeenCalled()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Подробнее о блюде «Тестовое блюдо»' }))
   expect(onAction).toHaveBeenCalledWith(product)
+})
+
+test('после добавления кнопка меняется на счётчик количества, минус при единице убирает блюдо', () => {
+  useCartStore.setState({ lines: [], isOpen: false })
+  const product: CatalogProduct = {
+    id: 'stepper',
+    name: 'Блюдо со счётчиком',
+    details: 'Описание',
+    image: '/products/ukha.jpg',
+    imageAlt: 'Блюдо на тарелке',
+    badges: [],
+    action: 'choose',
+    measure: 'г',
+    amount: 300,
+    calories: 200,
+    priceRub: 300,
+  }
+
+  render(<ProductCard product={product} />)
+
+  fireEvent.click(screen.getByRole('button', { name: 'В корзину' }))
+  expect(screen.queryByRole('button', { name: 'В корзину' })).not.toBeInTheDocument()
+  expect(screen.getByText('1')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Добавить «Блюдо со счётчиком» в корзину' }))
+  expect(screen.getByText('2')).toBeInTheDocument()
+  expect(useCartStore.getState().lines[0]).toMatchObject({ quantity: 2 })
+
+  fireEvent.click(screen.getByRole('button', { name: 'Убрать «Блюдо со счётчиком» из корзины' }))
+  expect(screen.getByText('1')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Убрать «Блюдо со счётчиком» из корзины' }))
+  expect(useCartStore.getState().lines).toHaveLength(0)
+  expect(screen.getByRole('button', { name: 'В корзину' })).toBeInTheDocument()
 })

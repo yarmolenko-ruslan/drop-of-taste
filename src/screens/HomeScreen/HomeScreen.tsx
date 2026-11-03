@@ -12,7 +12,7 @@ import { HomeClosingSections } from './HomeClosingSections'
 import { HeroSlider } from './HeroSlider'
 import styles from './HomeScreen.module.css'
 
-export function HomeScreen() {
+export function HomeScreen({ onLogin }: { onLogin?: () => void }) {
   const [selectedItem, setSelectedItem] = useState<DialogItem | null>(null)
   return (
     <>
@@ -26,7 +26,10 @@ export function HomeScreen() {
           onProductAction={(product) => setSelectedItem(dialogItemFromProduct(product))}
           onComboAction={(combo) => setSelectedItem(dialogItemFromCombo(combo))}
         />
-        <HomeClosingSections onSauceAction={(name) => setSelectedItem(dialogItemFromSauce(name))} />
+        <HomeClosingSections
+          onSauceAction={(name) => setSelectedItem(dialogItemFromSauce(name))}
+          onLogin={onLogin}
+        />
       </main>
       {selectedItem && (
         <ProductDialog

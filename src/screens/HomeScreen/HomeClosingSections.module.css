@@ -32,8 +32,10 @@
   font-size: 12px;
   font-weight: 700;
   text-decoration: none;
+  transition: color 0.3s ease;
 }
 .sectionHeading a:hover {
+  color: #8f0b1d;
   text-decoration: underline;
 }
 .sectionHeading a span {
@@ -112,9 +114,15 @@
   color: #482026;
   white-space: nowrap;
 }
-.sauceAdd {
+.sauceActionWrap {
   position: relative;
   z-index: 2;
+  display: block;
+  width: 38px;
+  height: 38px;
+  flex: none;
+}
+.sauceAdd {
   display: grid;
   place-items: center;
   width: 38px;
@@ -128,7 +136,9 @@
     700 23px/1 Arial,
     sans-serif;
   cursor: pointer;
+  transition: background-color 0.3s ease;
 }
+.sauceActionWrap:hover .sauceAdd,
 .sauceAdd:hover {
   background: #7f0b19;
 }
@@ -236,16 +246,28 @@
   line-height: 1.2;
   text-decoration: none;
   cursor: pointer;
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    color 0.3s ease;
 }
 .goldButton {
   border: 1px solid var(--color-gold);
   background: var(--color-gold);
   color: #4b2024;
 }
+.goldButton:hover {
+  border-color: #e9cd8f;
+  background: #e9cd8f;
+}
 .outlineButton {
   border: 1px solid #efb6ac;
   background: transparent;
   color: #fff;
+}
+.outlineButton:hover {
+  border-color: #ffd16e;
+  background: rgba(255, 255, 255, 0.12);
 }
 .bonusSteps {
   display: grid;

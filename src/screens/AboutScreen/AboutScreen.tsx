@@ -43,7 +43,7 @@ export function AboutScreen() {
           <section aria-labelledby="visit-title">
             <h2 id="visit-title">Приходите в гости</h2>
             <address>{cafeAddress}</address>
-            <p>Ежедневно с 08:00 до 22:00</p>
+            <p>Ежедневно с 08:00 до 20:00</p>
           </section>
           <section aria-labelledby="menu-title">
             <h2 id="menu-title">Что вас ждёт</h2>

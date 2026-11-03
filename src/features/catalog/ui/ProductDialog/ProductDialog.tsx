@@ -20,9 +20,6 @@ type ProductDialogProps = {
 
 export function ProductDialog({ item, onClose }: ProductDialogProps) {
   const addToCart = useCartStore((state) => state.add)
-  const openCart = useCartStore((state) => state.open)
-  const [variant, setVariant] = useState(item.variants[0] ?? '')
-  const [removed, setRemoved] = useState<readonly string[]>([])
   const [extras, setExtras] = useState<Record<string, number>>({})
   const [quantity, setQuantity] = useState(1)
   const price = item.priceRub === null ? '000' : (item.priceRub * quantity).toLocaleString('ru-RU')
@@ -79,50 +76,13 @@ export function ProductDialog({ item, onClose }: ProductDialogProps) {
             </p>
             <p className={styles.description}>{item.description}</p>
 
-            {item.variants.length > 1 && (
-              <div className={styles.variants} role="group" aria-label="Размер порции">
-                {item.variants.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    className={option === variant ? styles.selectedVariant : ''}
-                    aria-pressed={option === variant}
-                    onClick={() => setVariant(option)}
-                  >
-                    {item.measure === 'мл' ? option : `${option} · 000 ${item.measure}`}
-                  </button>
-                ))}
-              </div>
-            )}
-
             {item.ingredients.length > 0 && (
               <section className={styles.ingredients} aria-label="Состав блюда">
-                <h3>Убрать ингредиенты</h3>
-                <div className={styles.chips}>
-                  {item.ingredients.map((ingredient) => {
-                    const isRemoved = removed.includes(ingredient)
-                    return (
-                      <button
-                        key={ingredient}
-                        type="button"
-                        aria-pressed={isRemoved}
-                        className={isRemoved ? styles.removedChip : ''}
-                        onClick={() =>
-                          setRemoved(
-                            isRemoved
-                              ? removed.filter((value) => value !== ingredient)
-                              : [...removed, ingredient],
-                          )
-                        }
-                      >
-                        {ingredient} <span aria-hidden="true">{isRemoved ? '+' : '×'}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-                {item.allergenNote && <p>{item.allergenNote}</p>}
+                <h3>Состав</h3>
+                <p className={styles.ingredientList}>{item.ingredients.join(', ')}</p>
               </section>
             )}
+            {item.allergenNote && <p className={styles.allergenNote}>{item.allergenNote}</p>}
 
             {item.extras.length > 0 && (
               <section className={styles.extras} aria-label="Добавки к блюду">
@@ -179,9 +139,8 @@ export function ProductDialog({ item, onClose }: ProductDialogProps) {
               className={styles.addButton}
               type="button"
               onClick={() => {
-                addToCart(item, { variant, removedIngredients: removed, extras, quantity })
+                addToCart(item, { variant: '', removedIngredients: [], extras, quantity })
                 onClose()
-                openCart()
               }}
             >
               Добавить в корзину <strong>{price} ₽</strong>

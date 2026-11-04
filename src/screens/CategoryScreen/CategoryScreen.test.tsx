@@ -29,6 +29,18 @@ test('раздел соусов открывается по ссылке с гл
   expect(screen.getAllByRole('article')).toHaveLength(5)
 })
 
+test('страница комбо открывается как отдельный раздел', () => {
+  render(
+    <MemoryRouter initialEntries={['/menu/combo']}>
+      <Routes>
+        <Route path="/menu/:categoryId" element={<CategoryScreen />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  expect(screen.getByRole('heading', { level: 1, name: 'Комбо' })).toBeInTheDocument()
+  expect(screen.getAllByRole('article')).toHaveLength(4)
+})
+
 test('карточка открывает описание выбранного блюда', () => {
   HTMLDialogElement.prototype.showModal = function () {
     this.setAttribute('open', '')

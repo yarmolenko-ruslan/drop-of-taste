@@ -8,6 +8,9 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:db": "node --experimental-strip-types scripts/dev-db.ts",
+    "dev:api": "node --env-file-if-exists=.env --watch --experimental-strip-types server/index.ts",
+    "start:api": "node --env-file-if-exists=.env --experimental-strip-types server/index.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
@@ -18,10 +21,13 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "fastify": "^5.12.8",
+    "mongodb": "^7.8.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router": "^7.18.4",
     "swiper": "^14.4.0",
+    "zod": "^4.6.7",
     "zustand": "^5.0.16"
   },
   "devDependencies": {
@@ -42,6 +48,7 @@
     "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^17.13.0",
     "jsdom": "^29.1.1",
+    "mongodb-memory-server": "^10.4.3",
     "prettier": "^3.9.10",
     "typescript": "~6.0",
     "typescript-eslint": "^8.72.0",

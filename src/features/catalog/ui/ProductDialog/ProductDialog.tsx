@@ -4,6 +4,7 @@ import { useCartStore } from '../../../cart'
 import type { DialogItem } from '../../model/dialogContent'
 import type { ProductBadge } from '../../model/product'
 import styles from './ProductDialog.module.css'
+import { useCatalogItem } from '../../api/CatalogProvider'
 
 const badgeLabels: Record<ProductBadge, string> = {
   new: 'НОВИНКА',
@@ -18,11 +19,18 @@ type ProductDialogProps = {
   onClose: () => void
 }
 
-export function ProductDialog({ item, onClose }: ProductDialogProps) {
+export function ProductDialog({ item: inputItem, onClose }: ProductDialogProps) {
+  const live = useCatalogItem(inputItem.id)
+  const item = live
+    ? { ...inputItem, ...live, id: live._id, priceRub: live.priceKopecks / 100 }
+    : inputItem
   const addToCart = useCartStore((state) => state.add)
   const [extras, setExtras] = useState<Record<string, number>>({})
   const [quantity, setQuantity] = useState(1)
-  const price = item.priceRub === null ? '000' : (item.priceRub * quantity).toLocaleString('ru-RU')
+  const price =
+    item.priceRub === null
+      ? 'Цена уточняется'
+      : `${(item.priceRub * quantity).toLocaleString('ru-RU')} ₽`
   const titleId = `dialog-title-${item.id}`
 
   function changeExtra(name: string, difference: number) {
@@ -50,29 +58,14 @@ export function ProductDialog({ item, onClose }: ProductDialogProps) {
               ))}
             </div>
           )}
-          <div className={styles.nutrition}>
-            <strong>ПИЩЕВАЯ ЦЕННОСТЬ НА 100 {item.measure}</strong>
-            <div>
-              <span>
-                Белки <b>0,0</b>
-              </span>
-              <span>
-                Жиры <b>0,0</b>
-              </span>
-              <span>
-                Углев. <b>0,0</b>
-              </span>
-              <span>
-                Ккал <b>{item.calories ?? '000'}</b>
-              </span>
-            </div>
-          </div>
+          <div className={styles.nutrition}>Пищевая ценность уточняется</div>
         </div>
         <div className={styles.right}>
           <div className={styles.details}>
             <h2 id={titleId}>{item.name}</h2>
             <p className={styles.meta}>
-              {item.amount ?? '000'} {item.measure} · {item.calories ?? '000'} ккал
+              {item.amount ? `${item.amount} ${item.measure}` : 'Вес уточняется'} ·{' '}
+              {item.calories ? `${item.calories} ккал` : 'Калорийность уточняется'}
             </p>
             <p className={styles.description}>{item.description}</p>
 
@@ -91,7 +84,7 @@ export function ProductDialog({ item, onClose }: ProductDialogProps) {
                   {item.extras.map((extra) => (
                     <div className={styles.extra} key={extra}>
                       <span>{extra}</span>
-                      <strong>+000 ₽</strong>
+                      <strong>Цена уточняется</strong>
                       <div className={styles.extraCounter}>
                         <button
                           type="button"
@@ -143,7 +136,7 @@ export function ProductDialog({ item, onClose }: ProductDialogProps) {
                 onClose()
               }}
             >
-              Добавить в корзину <strong>{price} ₽</strong>
+              Добавить в корзину <strong>{price}</strong>
             </button>
           </div>
         </div>

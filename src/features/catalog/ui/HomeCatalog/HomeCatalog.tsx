@@ -9,6 +9,7 @@ import { CatalogActionButton } from '../CatalogActionButton/CatalogActionButton'
 import type { CatalogProduct } from '../../model/product'
 import { ProductCard } from '../ProductCard/ProductCard'
 import styles from './HomeCatalog.module.css'
+import { useCatalog, useCatalogItem } from '../../api/CatalogProvider'
 
 function ComboCard({
   combo,
@@ -17,22 +18,26 @@ function ComboCard({
   combo: HomeCombo
   onAction?: (combo: HomeCombo) => void
 }) {
+  const live = useCatalogItem(combo.id)
+  const priceRub = live ? live.priceKopecks / 100 : null
   return (
     <article className={styles.comboCard}>
       <div className={styles.comboImageWrap}>
         <img className={styles.comboImage} src={combo.image} alt={combo.name} loading="lazy" />
-        <span className={styles.comboBadge}>ВЫГОДА 000 ₽</span>
+        <span className={styles.comboBadge}>ГОТОВЫЙ НАБОР</span>
       </div>
       <div className={styles.comboBody}>
         <h3 className={styles.comboName}>{combo.name}</h3>
-        <p className={styles.comboMeta}>000 г · {combo.portions}</p>
+        <p className={styles.comboMeta}>{combo.portions}</p>
         <p className={styles.comboDetails}>{combo.details}</p>
         <p className={styles.comboNote}>На комбо не распространяются другие акции и промокоды</p>
         <div className={styles.comboFooter}>
-          <strong className={styles.comboPrice}>000 ₽</strong>
+          <strong className={styles.comboPrice}>
+            {priceRub === null ? 'Цена уточняется' : `${priceRub.toLocaleString('ru-RU')} ₽`}
+          </strong>
           <span className={styles.comboActionWrap}>
             <CatalogActionButton
-              item={{ id: combo.id, name: combo.name, image: combo.image, priceRub: null }}
+              item={{ id: combo.id, name: combo.name, image: combo.image, priceRub }}
             />
           </span>
         </div>
@@ -85,6 +90,21 @@ export function HomeCatalog({
   onProductAction?: (product: CatalogProduct) => void
   onComboAction?: (combo: HomeCombo) => void
 }) {
+  const catalog = useCatalog()?.data
+  const combos = catalog
+    ? (catalog.categories.find((category) => category.id === 'combo')?.products ?? []).map(
+        (item) => ({
+          id: item._id,
+          name: item.name,
+          image: item.image ?? '',
+          portions: item.portions ?? '',
+          details: item.details,
+        }),
+      )
+    : homeCombos
+  const categories = catalog
+    ? catalog.categories.filter((category) => !['combo', 'sauces'].includes(category.id))
+    : homeCategories
   return (
     <div className={styles.catalog}>
       <section id="combo" aria-labelledby="combos-title">
@@ -95,12 +115,12 @@ export function HomeCatalog({
           Собрали готовые обеды и наборы на компанию — выгоднее, чем по отдельности.
         </p>
         <div className={styles.comboGrid}>
-          {homeCombos.map((combo) => (
+          {combos.map((combo) => (
             <ComboCard combo={combo} onAction={onComboAction} key={combo.id} />
           ))}
         </div>
       </section>
-      {homeCategories.map((category) => (
+      {categories.map((category) => (
         <CategorySection category={category} onProductAction={onProductAction} key={category.id} />
       ))}
     </div>

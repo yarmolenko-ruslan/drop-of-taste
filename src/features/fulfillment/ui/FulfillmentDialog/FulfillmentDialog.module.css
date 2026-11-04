@@ -113,6 +113,22 @@
 .optional {
   opacity: 0.55;
 }
+.field {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.error {
+  margin: 0;
+  color: var(--color-brand-red);
+  font:
+    400 12px/1.4 Arial,
+    sans-serif;
+}
+.form input[aria-invalid='true'],
+.form textarea[aria-invalid='true'] {
+  border-color: var(--color-brand-red);
+}
 .form input:disabled {
   background: #f4ece1;
   cursor: not-allowed;

@@ -35,8 +35,10 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
-  { files: ['src/screens/**'], rules: layerRestrictions(['app']) },
-  { files: ['src/features/**'], rules: layerRestrictions(['app', 'screens']) },
-  { files: ['src/shared/**'], rules: layerRestrictions(['app', 'screens', 'features']) },
+  { files: ['src/app/**'], rules: layerRestrictions(['server']) },
+  { files: ['src/screens/**'], rules: layerRestrictions(['app', 'server']) },
+  { files: ['src/features/**'], rules: layerRestrictions(['app', 'screens', 'server']) },
+  { files: ['src/shared/**'], rules: layerRestrictions(['app', 'screens', 'features', 'server']) },
+  { files: ['shared/**'], rules: layerRestrictions(['app', 'screens', 'features', 'src']) },
   prettier,
 ])

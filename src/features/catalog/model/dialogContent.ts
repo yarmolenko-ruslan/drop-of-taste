@@ -1,5 +1,5 @@
-import type { CatalogProduct, ProductBadge } from './product'
-import type { HomeCombo } from './homeCatalog'
+import type { CatalogProduct, ProductBadge } from './product.ts'
+import type { HomeCombo } from './homeCatalog.ts'
 
 export type DialogItem = {
   id: string

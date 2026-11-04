@@ -45,7 +45,7 @@ export const cartTotal = (lines: readonly CartLine[]) =>
     : lines.reduce((sum, line) => sum + (line.unitPriceRub ?? 0) * line.quantity, 0)
 
 export const formatCartPrice = (value: number | null) =>
-  `${value === null ? '000' : value.toLocaleString('ru-RU')} ₽`
+  value === null ? 'Цена уточняется' : `${value.toLocaleString('ru-RU')} ₽`
 
 export const useCartStore = create<CartState>((set) => ({
   lines: [],

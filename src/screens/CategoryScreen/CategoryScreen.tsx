@@ -6,15 +6,41 @@ import {
   type DialogItem,
 } from '../../features/catalog/model/dialogContent'
 import { ProductDialog } from '../../features/catalog/ui/ProductDialog/ProductDialog'
-import { homeCategories } from '../../features/catalog/model/homeCatalog'
+import { homeCategories, homeCombos } from '../../features/catalog/model/homeCatalog'
 import { ProductCard } from '../../features/catalog/ui/ProductCard/ProductCard'
 import { SauceGrid } from '../HomeScreen/HomeClosingSections'
 import styles from './CategoryScreen.module.css'
+import { CatalogStatus, useCatalog } from '../../features/catalog/api/CatalogProvider'
 
 export function CategoryScreen() {
   const [selectedItem, setSelectedItem] = useState<DialogItem | null>(null)
   const { categoryId } = useParams()
-  const category = homeCategories.find(({ id }) => id === categoryId)
+  const catalog = useCatalog()
+  const category = catalog?.data
+    ? catalog.data.categories.find(({ id }) => id === categoryId)
+    : categoryId === 'combo'
+      ? {
+          id: 'combo',
+          title: 'Комбо',
+          subtitle: 'Готовые наборы для любого случая',
+          products: homeCombos.map((combo) => ({
+            ...combo,
+            imageAlt: combo.name,
+            badges: [] as const,
+            action: 'add' as const,
+            measure: 'г' as const,
+            amount: null,
+            calories: null,
+            priceRub: null,
+          })),
+        }
+      : homeCategories.find(({ id }) => id === categoryId)
+  if (catalog && (!catalog.data || catalog.error))
+    return (
+      <main className={styles.root}>
+        <CatalogStatus />
+      </main>
+    )
 
   if (categoryId === 'sauces') {
     return (
@@ -26,6 +52,7 @@ export function CategoryScreen() {
             <span>Соусы</span>
           </nav>
           <h1 className={styles.heading}>Соусы</h1>
+          <p>Цены примерные для демонстрации.</p>
           <p className={styles.subtitle}>Добавьте вкуса любимому блюду</p>
           <SauceGrid onSauceAction={(name) => setSelectedItem(dialogItemFromSauce(name))} />
         </main>
@@ -60,6 +87,7 @@ export function CategoryScreen() {
           <span>{category.title}</span>
         </nav>
         <h1 className={styles.heading}>{category.title}</h1>
+        <p>Цены примерные для демонстрации.</p>
         <p className={styles.subtitle}>{category.subtitle}</p>
         <div className={styles.grid}>
           {category.products.map((item) => (

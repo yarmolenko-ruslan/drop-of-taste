@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { HomeScreen } from '../screens/HomeScreen/HomeScreen'
 import { CategoryScreen } from '../screens/CategoryScreen/CategoryScreen'
 import { AboutScreen } from '../screens/AboutScreen/AboutScreen'
 import { PromotionsScreen } from '../screens/PromotionsScreen/PromotionsScreen'
 import { LegalScreen } from '../screens/LegalScreen/LegalScreen'
-import { AccountScreen, type AccountUser } from '../screens/AccountScreen/AccountScreen'
+import { AccountScreen } from '../screens/AccountScreen/AccountScreen'
 import { SiteHeader } from '../features/site-header/ui/SiteHeader'
 import { SiteFooter } from '../features/site-footer/ui/SiteFooter'
 import { addOneToCart, useCartStore } from '../features/cart'
@@ -16,6 +16,8 @@ import {
   type FulfillmentSelection,
 } from '../features/fulfillment/ui/FulfillmentDialog/FulfillmentDialog'
 import { newArrivals } from '../features/catalog/model/newArrivals'
+import { ApiError, authApi, type AuthUser } from '../features/auth/api/authApi'
+import { CatalogProvider } from '../features/catalog/api/CatalogProvider'
 
 function ScrollToTopOnRouteChange() {
   const { pathname, hash } = useLocation()
@@ -36,11 +38,36 @@ function AppContent() {
   const isCartOpen = useCartStore((state) => state.isOpen)
   const closeCart = useCartStore((state) => state.close)
   const openCart = useCartStore((state) => state.open)
-  const [fulfillment, setFulfillment] = useState<FulfillmentSelection>()
+  const [fulfillment, setFulfillment] = useState<FulfillmentSelection>({
+    mode: 'pickup',
+    label: 'г. Красноярск, улица Петра Подзолкова, 3и',
+  })
   const [isFulfillmentOpen, setFulfillmentOpen] = useState(false)
   const [returnToCart, setReturnToCart] = useState(false)
   const [isAuthOpen, setAuthOpen] = useState(false)
-  const [user, setUser] = useState<AccountUser>()
+  const [authReturnToCart, setAuthReturnToCart] = useState(false)
+  const [user, setUser] = useState<AuthUser>()
+  const [sessionLoading, setSessionLoading] = useState(true)
+  const [sessionNotice, setSessionNotice] = useState('')
+
+  useEffect(() => {
+    let active = true
+    authApi
+      .me()
+      .then(({ user }) => {
+        if (active) setUser(user)
+      })
+      .catch((failure) => {
+        if (active && !(failure instanceof ApiError && failure.code === 'UNAUTHENTICATED'))
+          setSessionNotice('Не удалось проверить вход: нет связи с сервером.')
+      })
+      .finally(() => {
+        if (active) setSessionLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   function chooseFulfillment(fromCart: boolean) {
     if (fromCart) closeCart()
@@ -54,17 +81,25 @@ function AppContent() {
     setReturnToCart(false)
   }
 
-  function logout() {
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout()
+    } catch {
+      setSessionNotice('Не удалось выйти: нет связи с сервером. Повторите попытку.')
+      return
+    }
+    setSessionNotice('')
     setUser(undefined)
     navigate('/')
-  }
+  }, [navigate])
 
   return (
     <>
       <ScrollToTopOnRouteChange />
+      {sessionNotice && <p role="alert">{sessionNotice}</p>}
       <SiteHeader
         phoneNumber="+7 123 456-78-90"
-        addressLabel={fulfillment?.mode === 'pickup' ? 'Самовывоз' : fulfillment?.label}
+        addressLabel={fulfillment?.mode === 'pickup' ? 'Кафе на карте' : fulfillment?.label}
         accountLabel={user ? user.name.split(' ')[0] || 'Кабинет' : undefined}
         onAddressClick={() => chooseFulfillment(false)}
         onAccountClick={() => (user ? navigate('/account/orders') : setAuthOpen(true))}
@@ -91,8 +126,16 @@ function AppContent() {
         <Route
           path="account/:section?"
           element={
-            user ? (
-              <AccountScreen user={user} onLogout={logout} onUpdateUser={setUser} />
+            sessionLoading ? (
+              <main role="status">Проверяем вход…</main>
+            ) : user ? (
+              <AccountScreen
+                user={user}
+                onLogout={logout}
+                onUpdateUser={(updated) =>
+                  setUser((current) => (current ? { ...current, ...updated } : current))
+                }
+              />
             ) : (
               <Navigate to="/" replace />
             )
@@ -103,6 +146,13 @@ function AppContent() {
       {isCartOpen && (
         <CartDrawer
           fulfillmentLabel={fulfillment?.label}
+          fulfillment={fulfillment}
+          user={user}
+          onRequireAuth={() => {
+            closeCart()
+            setAuthReturnToCart(true)
+            setAuthOpen(true)
+          }}
           onChooseFulfillment={() => chooseFulfillment(true)}
           recommendations={newArrivals}
           onAddRecommendation={addOneToCart}
@@ -110,6 +160,7 @@ function AppContent() {
       )}
       {isFulfillmentOpen && (
         <FulfillmentDialog
+          allowPickup={!returnToCart}
           current={fulfillment}
           onClose={closeFulfillment}
           onSave={(selection) => {
@@ -120,11 +171,18 @@ function AppContent() {
       )}
       {isAuthOpen && (
         <AuthDialog
-          onClose={() => setAuthOpen(false)}
-          onAuthenticate={(phone) => {
-            setUser({ name: '', phone })
+          onClose={() => {
             setAuthOpen(false)
-            navigate('/account/orders')
+            setAuthReturnToCart(false)
+          }}
+          onAuthenticate={(account) => {
+            setSessionNotice('')
+            setUser(account)
+            setAuthOpen(false)
+            if (authReturnToCart) {
+              setAuthReturnToCart(false)
+              openCart()
+            } else navigate('/account/orders')
           }}
         />
       )}
@@ -135,7 +193,9 @@ function AppContent() {
 export function App() {
   return (
     <BrowserRouter>
-      <AppContent />
+      <CatalogProvider>
+        <AppContent />
+      </CatalogProvider>
     </BrowserRouter>
   )
 }

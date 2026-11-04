@@ -61,6 +61,36 @@ test('требует квартиру, подъезд и этаж, пока не
   })
 })
 
+test('показывает ошибки обязательных полей при пустой форме доставки', () => {
+  const onSave = vi.fn()
+  render(<FulfillmentDialog allowPickup={false} onClose={() => {}} onSave={onSave} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить выбор' }))
+  expect(onSave).not.toHaveBeenCalled()
+  expect(screen.getByText('Укажите улицу и номер дома')).toBeInTheDocument()
+  expect(screen.getByText('Укажите подъезд')).toBeInTheDocument()
+  expect(screen.getByText('Укажите этаж')).toBeInTheDocument()
+  expect(screen.getByText('Укажите квартиру')).toBeInTheDocument()
+})
+
+test('не сохраняет адрес с буквами в подъезде и сбрасывает ошибку после исправления', () => {
+  const onSave = vi.fn()
+  render(<FulfillmentDialog allowPickup={false} onClose={() => {}} onSave={onSave} />)
+  fireEvent.change(screen.getByRole('textbox', { name: 'Улица и дом' }), {
+    target: { value: 'ул. Мира, 10' },
+  })
+  fireEvent.change(screen.getByRole('textbox', { name: 'Подъезд' }), { target: { value: '2а' } })
+  fireEvent.change(screen.getByRole('textbox', { name: 'Этаж' }), { target: { value: '3' } })
+  fireEvent.change(screen.getByRole('textbox', { name: 'Квартира' }), { target: { value: '25' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить выбор' }))
+  expect(onSave).not.toHaveBeenCalled()
+  expect(screen.getByRole('alert')).toHaveTextContent('Подъезд — только цифры, до 3 знаков')
+
+  fireEvent.change(screen.getByRole('textbox', { name: 'Подъезд' }), { target: { value: '2' } })
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить выбор' }))
+  expect(onSave).toHaveBeenCalledTimes(1)
+})
+
 test('подставляет текущий адрес при редактировании', () => {
   const onSave = vi.fn()
   const details = {
@@ -108,7 +138,7 @@ test('показывает единственный ресторан с карт
   expect(
     screen.getByTitle(`Кафе «Капела вкуса» на Яндекс Карте: ${cafeAddress}`),
   ).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Кафе на карте' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Маршрут до кафе' }))
   expect(onSave).not.toHaveBeenCalled()
   expect(open).toHaveBeenCalledWith(
     'https://yandex.ru/maps/?rtext=~56.049189,92.884165',

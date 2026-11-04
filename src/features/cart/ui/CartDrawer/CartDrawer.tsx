@@ -2,6 +2,25 @@ import { useState } from 'react'
 import { Dialog } from '../../../../shared/ui/Dialog/Dialog'
 import { cartCount, cartTotal, formatCartPrice, useCartStore } from '../../index'
 import styles from './CartDrawer.module.css'
+import { ApiError, apiRequest, type AuthUser } from '../../../auth/api/authApi'
+import type { FulfillmentSelection } from '../../../fulfillment/ui/FulfillmentDialog/FulfillmentDialog'
+import { useCatalog } from '../../../catalog/api/CatalogProvider'
+
+type Quote = {
+  lines: {
+    productId: string
+    name: string
+    quantity: number
+    unitPriceKopecks: number
+    lineTotalKopecks: number
+  }[]
+  subtotalKopecks: number
+  discountKopecks: number
+  deliveryKopecks: number
+  totalKopecks: number
+  eligible: boolean
+  testMode: boolean
+}
 
 export type CartRecommendation = {
   id: string
@@ -12,6 +31,10 @@ export type CartRecommendation = {
 
 type CartDrawerProps = {
   fulfillmentLabel?: string
+  fulfillment?: FulfillmentSelection
+  user?: AuthUser
+  onRequireAuth?: () => void
+  onOrderCreated?: () => void
   onChooseFulfillment: () => void
   recommendations: readonly CartRecommendation[]
   onAddRecommendation: (item: CartRecommendation) => void
@@ -19,6 +42,10 @@ type CartDrawerProps = {
 
 export function CartDrawer({
   fulfillmentLabel,
+  fulfillment,
+  user,
+  onRequireAuth,
+  onOrderCreated,
   onChooseFulfillment,
   recommendations,
   onAddRecommendation,
@@ -29,8 +56,91 @@ export function CartDrawer({
   const changeQuantity = useCartStore((state) => state.changeQuantity)
   const [promo, setPromo] = useState('')
   const [notice, setNotice] = useState('')
+  const [quote, setQuote] = useState<Quote | null>(null)
+  const [quoteSignature, setQuoteSignature] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [orderKey, setOrderKey] = useState<string | null>(null)
+  const catalog = useCatalog()
   const count = cartCount(lines)
   const total = cartTotal(lines)
+  const signature = JSON.stringify([lines, fulfillment])
+  const currentQuote = quoteSignature === signature ? quote : null
+  const pricedRecommendations = recommendations.map((item) => {
+    const live = catalog?.data?.categories
+      .flatMap((category) => category.products)
+      .find((product) => product._id === item.id)
+    return live
+      ? {
+          ...item,
+          name: live.name,
+          image: live.image ?? item.image,
+          priceRub: live.priceKopecks / 100,
+        }
+      : item
+  })
+
+  function orderInput() {
+    if (!fulfillment) throw new Error('Выберите способ получения')
+    if (lines.some((line) => line.extras.length > 0))
+      throw new Error('Цены добавок уточняются. Уберите добавки для тестового заказа.')
+    return {
+      lines: lines.map((line) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+        extras: line.extras,
+      })),
+      fulfillment:
+        fulfillment.mode === 'delivery'
+          ? { mode: 'delivery', label: fulfillment.label, details: fulfillment.details }
+          : { mode: 'pickup', label: fulfillment.label },
+    }
+  }
+
+  async function prepareQuote() {
+    try {
+      setBusy(true)
+      setNotice('')
+      const result = await apiRequest<Quote>('/checkout/quote', {
+        method: 'POST',
+        body: JSON.stringify(orderInput()),
+      })
+      setQuote(result)
+      setQuoteSignature(signature)
+      setOrderKey(crypto.randomUUID())
+    } catch (failure) {
+      setNotice(failure instanceof Error ? failure.message : 'Не удалось рассчитать заказ')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function createOrder() {
+    if (!currentQuote || !orderKey) return
+    if (!user) {
+      onRequireAuth?.()
+      return
+    }
+    try {
+      setBusy(true)
+      setNotice('')
+      const result = await apiRequest<{ order: { _id: string } }>('/orders', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': orderKey },
+        body: JSON.stringify({ ...orderInput(), expectedTotalKopecks: currentQuote.totalKopecks }),
+      })
+      clear()
+      setQuote(null)
+      setOrderKey(null)
+      setNotice(`Тестовый заказ ${result.order._id.slice(0, 8)} сохранён. В кафе он не передаётся.`)
+      onOrderCreated?.()
+    } catch (failure) {
+      if (failure instanceof ApiError && failure.code === 'PRICE_CHANGED') setQuote(null)
+      if (failure instanceof ApiError && failure.code === 'UNAUTHENTICATED') onRequireAuth?.()
+      setNotice(failure instanceof Error ? failure.message : 'Не удалось сохранить тестовый заказ')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <Dialog titleId="cart-title" onClose={close} placement="right" className={styles.dialog}>
@@ -41,7 +151,14 @@ export function CartDrawer({
             <h2 id="cart-title">Корзина</h2>
           </div>
           {count > 0 && (
-            <button className={styles.clear} type="button" onClick={clear}>
+            <button
+              className={styles.clear}
+              type="button"
+              onClick={() => {
+                clear()
+                setQuote(null)
+              }}
+            >
               Очистить
             </button>
           )}
@@ -162,7 +279,7 @@ export function CartDrawer({
                 >
                   <h3 id="cart-recommendations-title">Добавить к заказу</h3>
                   <div className={styles.recommendationList}>
-                    {recommendations
+                    {pricedRecommendations
                       .filter((item) => !lines.some((line) => line.productId === item.id))
                       .map((item) => (
                         <article className={styles.recommendation} key={item.id}>
@@ -183,6 +300,21 @@ export function CartDrawer({
                 <span>Итого</span>
                 <strong>{formatCartPrice(total)}</strong>
               </div>
+              {currentQuote && (
+                <div className={styles.summary} role="status">
+                  <div>
+                    Тестовый расчёт. Блюда:{' '}
+                    {(currentQuote.subtotalKopecks / 100).toLocaleString('ru-RU')} ₽; скидка:{' '}
+                    {(currentQuote.discountKopecks / 100).toLocaleString('ru-RU')} ₽; доставка:{' '}
+                    {(currentQuote.deliveryKopecks / 100).toLocaleString('ru-RU')} ₽.
+                  </div>
+                  <strong>
+                    Итого: {(currentQuote.totalKopecks / 100).toLocaleString('ru-RU')} ₽
+                  </strong>
+                  <p>Тестовый режим — заказ не передаётся в кафе.</p>
+                  {!currentQuote.eligible && <p>Для доставки нужно минимум 500 ₽ блюд.</p>}
+                </div>
+              )}
               {notice && (
                 <p className={styles.notice} role="status">
                   {notice}
@@ -192,14 +324,21 @@ export function CartDrawer({
             <footer className={styles.footer}>
               <button
                 type="button"
-                onClick={() =>
-                  fulfillmentLabel
-                    ? setNotice('Оформление заказа подключим на следующем этапе.')
-                    : onChooseFulfillment()
-                }
+                disabled={busy || (currentQuote !== null && !currentQuote.eligible)}
+                onClick={() => {
+                  if (!fulfillment) onChooseFulfillment()
+                  else if (!currentQuote) void prepareQuote()
+                  else void createOrder()
+                }}
               >
-                {fulfillmentLabel ? 'Оформить заказ' : 'Выбрать способ получения'}{' '}
-                <span>{formatCartPrice(total)}</span>
+                {!fulfillment
+                  ? 'Выбрать способ получения'
+                  : currentQuote
+                    ? 'Подтвердить тестовый заказ'
+                    : 'Рассчитать заказ'}{' '}
+                <span>
+                  {formatCartPrice(currentQuote ? currentQuote.totalKopecks / 100 : total)}
+                </span>
               </button>
             </footer>
           </>

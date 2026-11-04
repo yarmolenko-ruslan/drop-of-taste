@@ -124,6 +124,21 @@
   color: var(--color-brand-red);
 }
 
+.linkButton {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-brand-red);
+  font: inherit;
+  cursor: pointer;
+}
+
+.linkButton:disabled {
+  color: #806b62;
+  cursor: default;
+}
+
 .content :is(input, button):focus-visible {
   outline: 3px solid var(--color-gold);
   outline-offset: 3px;

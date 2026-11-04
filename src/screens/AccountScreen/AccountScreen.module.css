@@ -352,16 +352,33 @@
   gap: 20px;
 }
 
+.fieldGroup {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.fullRow {
+  grid-column: 1 / -1;
+}
+
+.error {
+  margin: 0;
+  color: var(--color-brand-red);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.field input[aria-invalid='true'] {
+  border-color: var(--color-brand-red);
+}
+
 .field {
   display: grid;
   gap: 8px;
   color: #4d2528;
   font-size: 13px;
   font-weight: 700;
-}
-
-.field:nth-child(3) {
-  grid-column: 1 / -1;
 }
 
 .field input,
@@ -403,7 +420,6 @@
 .birthDate {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-column: 1 / -1;
   gap: 10px;
   min-width: 0;
   margin: 0;
@@ -580,11 +596,6 @@
 
   .profileForm {
     grid-template-columns: 1fr;
-  }
-
-  .field:nth-child(3),
-  .birthDate {
-    grid-column: auto;
   }
 }
 

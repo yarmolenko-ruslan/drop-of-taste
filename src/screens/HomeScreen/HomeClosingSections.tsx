@@ -2,14 +2,15 @@ import { Link } from 'react-router'
 import { addOneToCart } from '../../features/cart'
 import { dialogItemFromSauce } from '../../features/catalog/model/dialogContent'
 import styles from './HomeClosingSections.module.css'
+import { useCatalogItem } from '../../features/catalog/api/CatalogProvider'
 
 const sauces = ['Сметана', 'Чесночный', 'Горчица', 'Хрен со свёклой', 'Аджика']
 
 const benefits = [
   { icon: 'clock', title: 'От 60 минут', detail: 'Привезём горячим' },
-  { icon: 'truck', title: 'Бесплатно от 0000 ₽', detail: 'Условия по зонам' },
-  { icon: 'card', title: 'Онлайн, картой, наличными', detail: 'Как вам удобно' },
-  { icon: 'pin', title: 'Самовывоз −10%', detail: '3 кафе в городе' },
+  { icon: 'truck', title: 'Бесплатно от 1 500 ₽', detail: 'Тестовые условия' },
+  { icon: 'card', title: 'Тестовый заказ', detail: 'Оплата пока не принимается' },
+  { icon: 'pin', title: 'Самовывоз −10%', detail: 'Одно кафе в городе' },
 ] as const
 
 function BenefitIcon({ name }: { name: (typeof benefits)[number]['icon'] }) {
@@ -56,39 +57,54 @@ function BenefitIcon({ name }: { name: (typeof benefits)[number]['icon'] }) {
   )
 }
 
+function SauceCard({
+  name,
+  onSauceAction,
+}: {
+  name: string
+  onSauceAction?: (name: string) => void
+}) {
+  const live = useCatalogItem(`sauce-${name}`)
+  const priceRub = live ? live.priceKopecks / 100 : null
+  return (
+    <article className={styles.sauceCard}>
+      <span className={styles.saucePicture} aria-hidden="true">
+        <span />
+      </span>
+      <div className={styles.sauceText}>
+        <h3>{name}</h3>
+        <p>
+          Вес и калорийность уточняются ·{' '}
+          <strong>{priceRub === null ? 'Цена уточняется' : `${priceRub} ₽`}</strong>
+        </p>
+      </div>
+      <span className={styles.sauceActionWrap}>
+        <button
+          type="button"
+          aria-label={`Добавить соус «${name}» в корзину`}
+          className={styles.sauceAdd}
+          onClick={() => addOneToCart({ ...dialogItemFromSauce(name), priceRub })}
+        >
+          +
+        </button>
+      </span>
+      {onSauceAction && (
+        <button
+          className={styles.sauceHitArea}
+          type="button"
+          aria-label={`Подробнее о соусе «${name}»`}
+          onClick={() => onSauceAction(name)}
+        />
+      )}
+    </article>
+  )
+}
+
 export function SauceGrid({ onSauceAction }: { onSauceAction?: (name: string) => void }) {
   return (
     <div className={styles.sauceGrid}>
       {sauces.map((name) => (
-        <article className={styles.sauceCard} key={name}>
-          <span className={styles.saucePicture} aria-hidden="true">
-            <span />
-          </span>
-          <div className={styles.sauceText}>
-            <h3>{name}</h3>
-            <p>
-              000 г · 000 ккал · <strong>000 ₽</strong>
-            </p>
-          </div>
-          <span className={styles.sauceActionWrap}>
-            <button
-              type="button"
-              aria-label={`Добавить соус «${name}» в корзину`}
-              className={styles.sauceAdd}
-              onClick={() => addOneToCart(dialogItemFromSauce(name))}
-            >
-              +
-            </button>
-          </span>
-          {onSauceAction && (
-            <button
-              className={styles.sauceHitArea}
-              type="button"
-              aria-label={`Подробнее о соусе «${name}»`}
-              onClick={() => onSauceAction(name)}
-            />
-          )}
-        </article>
+        <SauceCard name={name} onSauceAction={onSauceAction} key={name} />
       ))}
     </div>
   )
@@ -142,6 +158,7 @@ export function HomeClosingSections({
             Возвращаем 5% бонусами. Оплачивайте ими до 30% следующих заказов, а в день рождения —
             подарок от шефа.
           </p>
+          <p>В тестовом режиме бонусы и подарки пока не начисляются.</p>
           <div className={styles.bonusActions}>
             <button type="button" className={styles.goldButton} onClick={onLogin}>
               Войти по номеру

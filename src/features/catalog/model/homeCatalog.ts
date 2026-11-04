@@ -1,4 +1,4 @@
-import type { CatalogProduct, ProductBadge } from './product'
+import type { CatalogProduct, ProductBadge } from './product.ts'
 
 type ProductInput = {
   id: string

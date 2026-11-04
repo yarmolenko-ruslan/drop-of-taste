@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Dialog } from '../../../../shared/ui/Dialog/Dialog'
-import { formatAddress, type AddressDetails } from './address'
+import { issuesByField } from '../../../../../shared/validation/issues'
+import { addressDetailsSchema, formatAddress, type AddressDetails } from './address'
 import styles from './FulfillmentDialog.module.css'
 
 export type { AddressDetails }
@@ -47,10 +48,20 @@ export function FulfillmentDialog({
   const [flat, setFlat] = useState(initial?.flat ?? '')
   const [comment, setComment] = useState(initial?.comment ?? '')
   const [isHouse, setIsHouse] = useState(initial?.isHouse ?? false)
+  const [errors, setErrors] = useState<Record<string, string>>({})
   const debouncedStreet = useDebouncedValue(street)
   const deliveryMapUrl = debouncedStreet.trim()
     ? `https://yandex.ru/map-widget/v1/?text=${encodeURIComponent(`Красноярск, ${debouncedStreet.trim()}`)}&z=16`
     : cityMapUrl
+
+  function clearError(field: string) {
+    setErrors((currentErrors) => {
+      if (!(field in currentErrors)) return currentErrors
+      const next = { ...currentErrors }
+      delete next[field]
+      return next
+    })
+  }
 
   return (
     <Dialog titleId="fulfillment-title" onClose={onClose} className={styles.dialog}>
@@ -72,78 +83,148 @@ export function FulfillmentDialog({
               id="fulfillment-form"
               onSubmit={(event) => {
                 event.preventDefault()
-                const details: AddressDetails = {
-                  street: street.trim(),
+                const parsed = addressDetailsSchema.safeParse({
+                  street,
                   entrance,
                   floor,
                   flat,
                   comment,
                   isHouse,
+                })
+                if (!parsed.success) {
+                  setErrors(issuesByField(parsed.error.issues))
+                  return
                 }
-                if (details.street) onSave({ mode, label: formatAddress(details), details })
+                setErrors({})
+                onSave({ mode, label: formatAddress(parsed.data), details: parsed.data })
               }}
             >
-              <label className={styles.full}>
-                Улица и дом
-                <input
-                  autoComplete="street-address"
-                  value={street}
-                  onChange={(event) => setStreet(event.target.value)}
-                  placeholder="Например, ул. Мира, 10"
-                  required
-                />
-              </label>
+              <div className={styles.field}>
+                <label className={styles.full}>
+                  Улица и дом
+                  <input
+                    autoComplete="street-address"
+                    value={street}
+                    aria-invalid={Boolean(errors.street)}
+                    aria-describedby={errors.street ? 'fulfillment-street-error' : undefined}
+                    onChange={(event) => {
+                      setStreet(event.target.value)
+                      clearError('street')
+                    }}
+                    placeholder="Например, ул. Мира, 10"
+                  />
+                </label>
+                {errors.street && (
+                  <p className={styles.error} id="fulfillment-street-error" role="alert">
+                    {errors.street}
+                  </p>
+                )}
+              </div>
               <label className={styles.house}>
                 <input
                   type="checkbox"
                   checked={isHouse}
-                  onChange={(event) => setIsHouse(event.target.checked)}
+                  onChange={(event) => {
+                    setIsHouse(event.target.checked)
+                    setErrors((currentErrors) => {
+                      const next = { ...currentErrors }
+                      delete next.entrance
+                      delete next.floor
+                      delete next.flat
+                      return next
+                    })
+                  }}
                 />
                 Частный дом
               </label>
               <div className={styles.fields}>
-                <label className={isHouse ? styles.optional : undefined}>
-                  Подъезд
-                  <input
-                    inputMode="numeric"
-                    placeholder="—"
-                    value={entrance}
-                    onChange={(event) => setEntrance(event.target.value)}
-                    required={!isHouse}
-                    disabled={isHouse}
-                  />
-                </label>
-                <label className={isHouse ? styles.optional : undefined}>
-                  Этаж
-                  <input
-                    inputMode="numeric"
-                    placeholder="—"
-                    value={floor}
-                    onChange={(event) => setFloor(event.target.value)}
-                    required={!isHouse}
-                    disabled={isHouse}
-                  />
-                </label>
-                <label className={isHouse ? styles.optional : undefined}>
-                  Квартира
-                  <input
-                    placeholder="—"
-                    value={flat}
-                    onChange={(event) => setFlat(event.target.value)}
-                    required={!isHouse}
-                    disabled={isHouse}
-                  />
-                </label>
+                <div className={styles.field}>
+                  <label className={isHouse ? styles.optional : undefined}>
+                    Подъезд
+                    <input
+                      inputMode="numeric"
+                      placeholder="—"
+                      value={entrance}
+                      aria-invalid={Boolean(errors.entrance)}
+                      aria-describedby={errors.entrance ? 'fulfillment-entrance-error' : undefined}
+                      onChange={(event) => {
+                        setEntrance(event.target.value)
+                        clearError('entrance')
+                      }}
+                      disabled={isHouse}
+                    />
+                  </label>
+                  {errors.entrance && (
+                    <p className={styles.error} id="fulfillment-entrance-error" role="alert">
+                      {errors.entrance}
+                    </p>
+                  )}
+                </div>
+                <div className={styles.field}>
+                  <label className={isHouse ? styles.optional : undefined}>
+                    Этаж
+                    <input
+                      inputMode="numeric"
+                      placeholder="—"
+                      value={floor}
+                      aria-invalid={Boolean(errors.floor)}
+                      aria-describedby={errors.floor ? 'fulfillment-floor-error' : undefined}
+                      onChange={(event) => {
+                        setFloor(event.target.value)
+                        clearError('floor')
+                      }}
+                      disabled={isHouse}
+                    />
+                  </label>
+                  {errors.floor && (
+                    <p className={styles.error} id="fulfillment-floor-error" role="alert">
+                      {errors.floor}
+                    </p>
+                  )}
+                </div>
+                <div className={styles.field}>
+                  <label className={isHouse ? styles.optional : undefined}>
+                    Квартира
+                    <input
+                      placeholder="—"
+                      value={flat}
+                      aria-invalid={Boolean(errors.flat)}
+                      aria-describedby={errors.flat ? 'fulfillment-flat-error' : undefined}
+                      onChange={(event) => {
+                        setFlat(event.target.value)
+                        clearError('flat')
+                      }}
+                      disabled={isHouse}
+                    />
+                  </label>
+                  {errors.flat && (
+                    <p className={styles.error} id="fulfillment-flat-error" role="alert">
+                      {errors.flat}
+                    </p>
+                  )}
+                </div>
               </div>
-              <label className={styles.full}>
-                Комментарий к адресу
-                <textarea
-                  placeholder="Домофон, ориентир или пожелания курьеру"
-                  rows={3}
-                  value={comment}
-                  onChange={(event) => setComment(event.target.value)}
-                />
-              </label>
+              <div className={styles.field}>
+                <label className={styles.full}>
+                  Комментарий к адресу
+                  <textarea
+                    placeholder="Домофон, ориентир или пожелания курьеру"
+                    rows={3}
+                    value={comment}
+                    aria-invalid={Boolean(errors.comment)}
+                    aria-describedby={errors.comment ? 'fulfillment-comment-error' : undefined}
+                    onChange={(event) => {
+                      setComment(event.target.value)
+                      clearError('comment')
+                    }}
+                  />
+                </label>
+                {errors.comment && (
+                  <p className={styles.error} id="fulfillment-comment-error" role="alert">
+                    {errors.comment}
+                  </p>
+                )}
+              </div>
             </form>
           ) : (
             <div className={styles.pickup}>
@@ -161,7 +242,7 @@ export function FulfillmentDialog({
               mode === 'pickup' ? () => window.open(routeUrl, '_blank', 'noopener') : undefined
             }
           >
-            {mode === 'delivery' ? 'Сохранить выбор' : 'Кафе на карте'}
+            {mode === 'delivery' ? 'Сохранить выбор' : 'Маршрут до кафе'}
           </button>
         </div>
         {mode === 'pickup' ? (

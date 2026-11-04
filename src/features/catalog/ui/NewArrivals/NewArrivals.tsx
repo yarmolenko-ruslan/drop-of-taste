@@ -5,12 +5,21 @@ import { newArrivals } from '../../model/newArrivals'
 import type { CatalogProduct } from '../../model/product'
 import { ProductCard } from '../ProductCard/ProductCard'
 import styles from './NewArrivals.module.css'
+import { useCatalog } from '../../api/CatalogProvider'
 
 export function NewArrivals({
   onProductAction,
 }: {
   onProductAction?: (product: CatalogProduct) => void
 }) {
+  const catalog = useCatalog()?.data
+  const products = catalog
+    ? catalog.newArrivalIds.flatMap((id) =>
+        catalog.categories
+          .flatMap((category) => category.products)
+          .filter((product) => product._id === id),
+      )
+    : newArrivals
   return (
     <section className={styles.section} id="new" aria-labelledby="new-arrivals-title">
       <div className={styles.headingRow}>
@@ -46,7 +55,7 @@ export function NewArrivals({
         }}
         a11y={{ prevSlideMessage: 'Предыдущие новинки', nextSlideMessage: 'Следующие новинки' }}
       >
-        {newArrivals.map((product) => (
+        {products.map((product) => (
           <SwiperSlide className={styles.productSlide} key={product.id}>
             <ProductCard product={product} onAction={onProductAction} />
           </SwiperSlide>

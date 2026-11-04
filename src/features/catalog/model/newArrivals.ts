@@ -1,4 +1,4 @@
-import type { CatalogProduct } from './product'
+import type { CatalogProduct } from './product.ts'
 
 export const newArrivals: readonly CatalogProduct[] = [
   {

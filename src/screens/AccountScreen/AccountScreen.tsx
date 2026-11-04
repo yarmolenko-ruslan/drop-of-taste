@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router'
 import {
   FulfillmentDialog,
   type FulfillmentSelection,
 } from '../../features/fulfillment/ui/FulfillmentDialog/FulfillmentDialog'
+import { birthDateSchema, profileSchema } from '../../../shared/validation/profile'
+import { issuesByField } from '../../../shared/validation/issues'
 import styles from './AccountScreen.module.css'
+import { ApiError, apiRequest } from '../../features/auth/api/authApi'
 
 export type AccountUser = {
   name: string
@@ -17,7 +20,11 @@ type AccountScreenProps = {
   onUpdateUser: (user: AccountUser) => void
 }
 
-type Address = FulfillmentSelection & { id: number }
+type Address = FulfillmentSelection & { id: string }
+type Order = {
+  _id: string
+  quote: { totalKopecks: number; lines: { name: string; quantity: number }[] }
+}
 
 const sections = [
   { id: 'orders', label: 'Заказы' },
@@ -45,24 +52,123 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
   const { section = 'orders' } = useParams()
   const [name, setName] = useState(user.name)
   const [email, setEmail] = useState('')
+  const [savedEmail, setSavedEmail] = useState('')
   const [day, setDay] = useState('')
   const [month, setMonth] = useState('')
   const [year, setYear] = useState('')
-  const [notifications, setNotifications] = useState({ push: true, email: false, sms: true })
+  const [notifications, setNotifications] = useState({ push: false, email: false, sms: false })
   const [notice, setNotice] = useState('')
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [orders, setOrders] = useState<Order[]>([])
+  const [loading, setLoading] = useState(true)
   const [addresses, setAddresses] = useState<Address[]>([])
-  const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null)
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null)
   const [addressDialog, setAddressDialog] = useState<
     { mode: 'add' } | { mode: 'edit'; address: Address } | null
   >(null)
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
-  function deleteAddress(id: number) {
-    setAddresses((current) => current.filter((address) => address.id !== id))
-    setSelectedAddressId((current) => (current === id ? null : current))
+  function clearError(field: string) {
+    setErrors((current) => {
+      if (!(field in current)) return current
+      const next = { ...current }
+      delete next[field]
+      return next
+    })
+  }
+
+  useEffect(() => {
+    let active = true
+    Promise.all([
+      apiRequest<{
+        profile: {
+          name: string
+          email: string
+          birthday: string
+          notifications: { push: boolean; email: boolean; sms: boolean }
+        }
+      }>('/profile'),
+      apiRequest<{ addresses: Address[] }>('/addresses'),
+      apiRequest<{ orders: Order[] }>('/orders'),
+    ])
+      .then(([profileResult, addressResult, orderResult]) => {
+        if (!active) return
+        setName(profileResult.profile.name)
+        setEmail(profileResult.profile.email)
+        setSavedEmail(profileResult.profile.email)
+        const [y = '', m = '', d = ''] = profileResult.profile.birthday.split('-')
+        setYear(y)
+        setMonth(m ? String(Number(m)) : '')
+        setDay(d ? String(Number(d)) : '')
+        setNotifications(profileResult.profile.notifications)
+        setAddresses(addressResult.addresses)
+        setOrders(orderResult.orders)
+      })
+      .catch((failure) => {
+        if (!active) return
+        if (failure instanceof ApiError && failure.code === 'UNAUTHENTICATED') {
+          onLogout()
+          return
+        }
+        setNotice(failure instanceof Error ? failure.message : 'Не удалось загрузить данные')
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [onLogout])
+
+  async function deleteAddress(id: string) {
+    try {
+      await apiRequest<void>(`/addresses/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      setAddresses((current) => current.filter((address) => address.id !== id))
+      setSelectedAddressId((current) => (current === id ? null : current))
+    } catch (failure) {
+      setNotice(failure instanceof Error ? failure.message : 'Не удалось удалить адрес')
+    }
+  }
+
+  async function saveProfile(nextNotifications = notifications) {
+    const profile = profileSchema.safeParse({ name, email })
+    const birthDate = birthDateSchema.safeParse({ day, month, year })
+    if (!profile.success || !birthDate.success) {
+      setErrors(
+        issuesByField([
+          ...(profile.success ? [] : profile.error.issues),
+          ...(birthDate.success ? [] : birthDate.error.issues),
+        ]),
+      )
+      return
+    }
+    const birthday =
+      day && month && year ? `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}` : ''
+    try {
+      await apiRequest('/profile', {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: profile.data.name,
+          email: profile.data.email,
+          birthday,
+          notifications: nextNotifications,
+        }),
+      })
+      onUpdateUser({ ...user, name: profile.data.name })
+      setSavedEmail(profile.data.email)
+      setNotice('Личные данные сохранены')
+      setErrors({})
+    } catch (failure) {
+      setNotice(failure instanceof Error ? failure.message : 'Не удалось сохранить профиль')
+    }
   }
 
   if (!sections.some(({ id }) => id === section)) return <Navigate to="/account/orders" replace />
+  if (loading)
+    return (
+      <main className={styles.root} role="status">
+        Загружаем личный кабинет…
+      </main>
+    )
 
   return (
     <main className={styles.root}>
@@ -107,6 +213,24 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
             <section className={styles.card} aria-labelledby="orders-title">
               <span className={styles.eyebrow}>ВАШИ ЗАКАЗЫ</span>
               <h1 id="orders-title">Активные заказы</h1>
+              <p>Тестовый режим — заказы не передаются в кафе.</p>
+              {loading ? (
+                <p role="status">Загружаем заказы…</p>
+              ) : orders.length === 0 ? (
+                <p>Тестовых заказов пока нет.</p>
+              ) : (
+                orders.map((order) => (
+                  <article key={order._id}>
+                    <strong>Тестовый заказ {order._id.slice(0, 8)}</strong>
+                    <p>
+                      {order.quote.lines
+                        .map((line) => `${line.name} × ${line.quantity}`)
+                        .join(', ')}
+                    </p>
+                    <p>{(order.quote.totalKopecks / 100).toLocaleString('ru-RU')} ₽</p>
+                  </article>
+                ))
+              )}
             </section>
           )}
 
@@ -159,7 +283,7 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
                       type="button"
                       aria-label={`Удалить адрес: ${address.label}`}
                       title="Удалить адрес"
-                      onClick={() => deleteAddress(address.id)}
+                      onClick={() => void deleteAddress(address.id)}
                     >
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
                         <path d="M5 7h14M10 7V5h4v2m-6 0 1 12h6l1-12" />
@@ -189,7 +313,10 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
               <ul className={styles.loyaltyList}>
                 <li>Накапливайте баллы с каждого заказа.</li>
                 <li>Чем больше сумма заказов, тем выше процент кешбэка.</li>
-                <li>Списывайте до 10% от суммы следующего заказа.</li>
+                <li>
+                  По правилам сайта можно списать до 30% следующего заказа. В тестовом режиме
+                  списание не работает.
+                </li>
               </ul>
             </section>
           )}
@@ -203,69 +330,120 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
                   className={styles.profileForm}
                   onSubmit={(event) => {
                     event.preventDefault()
-                    onUpdateUser({ ...user, name: name.trim() })
-                    setNotice('Личные данные сохранены')
-                    setConfirmDelete(false)
+                    void saveProfile()
                   }}
                 >
-                  <label className={styles.field}>
-                    Имя
-                    <input
-                      value={name}
-                      onChange={(event) => setName(event.target.value)}
-                      required
-                    />
-                  </label>
-                  <label className={styles.field}>
-                    Телефон
-                    <input value={user.phone} readOnly aria-readonly="true" />
-                  </label>
-                  <label className={styles.field}>
-                    Эл. почта
-                    <input
-                      type="email"
-                      autoComplete="email"
-                      value={email}
-                      onChange={(event) => setEmail(event.target.value)}
-                      placeholder="name@example.ru"
-                    />
-                  </label>
-                  <fieldset className={styles.birthDate}>
-                    <legend>Дата рождения</legend>
-                    <label>
-                      <span className={styles.visuallyHidden}>День</span>
-                      <select value={day} onChange={(event) => setDay(event.target.value)}>
-                        <option value="">День</option>
-                        {Array.from({ length: 31 }, (_, index) => (
-                          <option key={index + 1} value={index + 1}>
-                            {index + 1}
-                          </option>
-                        ))}
-                      </select>
+                  <div className={styles.fieldGroup}>
+                    <label className={styles.field}>
+                      Имя
+                      <input
+                        value={name}
+                        aria-invalid={Boolean(errors.name)}
+                        aria-describedby={errors.name ? 'profile-name-error' : undefined}
+                        onChange={(event) => {
+                          setName(event.target.value)
+                          clearError('name')
+                        }}
+                      />
                     </label>
-                    <label>
-                      <span className={styles.visuallyHidden}>Месяц</span>
-                      <select value={month} onChange={(event) => setMonth(event.target.value)}>
-                        <option value="">Месяц</option>
-                        {months.map((item, index) => (
-                          <option key={item} value={index + 1}>
-                            {item}
-                          </option>
-                        ))}
-                      </select>
+                    {errors.name && (
+                      <p className={styles.error} id="profile-name-error" role="alert">
+                        {errors.name}
+                      </p>
+                    )}
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <label className={styles.field}>
+                      Телефон
+                      <input value={user.phone} readOnly aria-readonly="true" />
                     </label>
-                    <label>
-                      <span className={styles.visuallyHidden}>Год</span>
-                      <select value={year} onChange={(event) => setYear(event.target.value)}>
-                        <option value="">Год</option>
-                        {Array.from({ length: 91 }, (_, index) => 2010 - index).map((item) => (
-                          <option key={item} value={item}>
-                            {item}
-                          </option>
-                        ))}
-                      </select>
+                  </div>
+                  <div className={`${styles.fieldGroup} ${styles.fullRow}`}>
+                    <label className={styles.field}>
+                      Эл. почта
+                      <input
+                        type="email"
+                        autoComplete="email"
+                        value={email}
+                        aria-invalid={Boolean(errors.email)}
+                        aria-describedby={errors.email ? 'profile-email-error' : undefined}
+                        onChange={(event) => {
+                          setEmail(event.target.value)
+                          clearError('email')
+                        }}
+                        placeholder="name@example.ru"
+                      />
                     </label>
-                  </fieldset>
+                    {errors.email && (
+                      <p className={styles.error} id="profile-email-error" role="alert">
+                        {errors.email}
+                      </p>
+                    )}
+                  </div>
+                  <div className={`${styles.fieldGroup} ${styles.fullRow}`}>
+                    <fieldset
+                      className={styles.birthDate}
+                      aria-describedby={errors.day ? 'profile-birthdate-error' : undefined}
+                    >
+                      <legend>Дата рождения</legend>
+                      <label>
+                        <span className={styles.visuallyHidden}>День</span>
+                        <select
+                          value={day}
+                          onChange={(event) => {
+                            setDay(event.target.value)
+                            clearError('day')
+                          }}
+                        >
+                          <option value="">День</option>
+                          {Array.from({ length: 31 }, (_, index) => (
+                            <option key={index + 1} value={index + 1}>
+                              {index + 1}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span className={styles.visuallyHidden}>Месяц</span>
+                        <select
+                          value={month}
+                          onChange={(event) => {
+                            setMonth(event.target.value)
+                            clearError('day')
+                          }}
+                        >
+                          <option value="">Месяц</option>
+                          {months.map((item, index) => (
+                            <option key={item} value={index + 1}>
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span className={styles.visuallyHidden}>Год</span>
+                        <select
+                          value={year}
+                          onChange={(event) => {
+                            setYear(event.target.value)
+                            clearError('day')
+                          }}
+                        >
+                          <option value="">Год</option>
+                          {Array.from({ length: 91 }, (_, index) => 2010 - index).map((item) => (
+                            <option key={item} value={item}>
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </fieldset>
+                    {errors.day && (
+                      <p className={styles.error} id="profile-birthdate-error" role="alert">
+                        {errors.day}
+                      </p>
+                    )}
+                  </div>
                   <button className={styles.save} type="submit">
                     Сохранить
                   </button>
@@ -274,25 +452,6 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
                   <p className={styles.notice} role="status">
                     {notice}
                   </p>
-                )}
-                {confirmDelete ? (
-                  <div className={styles.deleteConfirmation}>
-                    <span>Удалить демонстрационный профиль?</span>
-                    <button type="button" onClick={onLogout}>
-                      Да, удалить
-                    </button>
-                    <button type="button" onClick={() => setConfirmDelete(false)}>
-                      Отмена
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    className={styles.delete}
-                    type="button"
-                    onClick={() => setConfirmDelete(true)}
-                  >
-                    Удалить профиль
-                  </button>
                 )}
               </section>
 
@@ -307,17 +466,26 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
                       ['sms', 'SMS-уведомления'],
                     ] as const
                   ).map(([key, label]) => (
-                    <label key={key} className={!email && key === 'email' ? styles.muted : ''}>
+                    <label key={key} className={!savedEmail && key === 'email' ? styles.muted : ''}>
                       <input
                         type="checkbox"
                         checked={notifications[key]}
-                        disabled={key === 'email' && !email}
-                        onChange={(event) =>
-                          setNotifications((current) => ({
-                            ...current,
-                            [key]: event.target.checked,
-                          }))
-                        }
+                        disabled={key === 'email' && !savedEmail}
+                        onChange={(event) => {
+                          const next = { ...notifications, [key]: event.target.checked }
+                          setNotifications(next)
+                          void apiRequest('/profile/notifications', {
+                            method: 'PUT',
+                            body: JSON.stringify(next),
+                          }).catch((failure) => {
+                            setNotifications(notifications)
+                            setNotice(
+                              failure instanceof Error
+                                ? failure.message
+                                : 'Не удалось сохранить настройки',
+                            )
+                          })
+                        }}
                       />
                       {label}
                     </label>
@@ -334,15 +502,30 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
           current={addressDialog.mode === 'edit' ? addressDialog.address : undefined}
           onClose={() => setAddressDialog(null)}
           onSave={(selection) => {
-            if (addressDialog.mode === 'edit') {
-              const id = addressDialog.address.id
-              setAddresses((current) => current.map((item) => (item.id === id ? { ...selection, id } : item)))
-            } else {
-              const id = Date.now()
-              setAddresses((current) => [...current, { ...selection, id }])
-              setSelectedAddressId(id)
-            }
-            setAddressDialog(null)
+            const editing = addressDialog.mode === 'edit' ? addressDialog.address : null
+            void apiRequest<{ address: Address }>(
+              editing ? `/addresses/${encodeURIComponent(editing.id)}` : '/addresses',
+              {
+                method: editing ? 'PUT' : 'POST',
+                body: JSON.stringify({ label: selection.label, details: selection.details }),
+              },
+            )
+              .then(({ address }) => {
+                if (editing)
+                  setAddresses((current) =>
+                    current.map((item) => (item.id === editing.id ? address : item)),
+                  )
+                else {
+                  setAddresses((current) => [...current, address])
+                  setSelectedAddressId(address.id)
+                }
+                setAddressDialog(null)
+              })
+              .catch((failure) =>
+                setNotice(
+                  failure instanceof Error ? failure.message : 'Не удалось сохранить адрес',
+                ),
+              )
           }}
         />
       )}

@@ -131,6 +131,10 @@ export function PromotionsScreen({ onLogin }: { onLogin?: () => void }) {
           ))}
         </div>
       </div>
+      <p>
+        В локальном тестовом режиме действуют только показанные в расчёте условия самовывоза и
+        доставки. Остальные акции опубликованы как шаблон и пока не применяются к заказу.
+      </p>
       <div className={styles.grid}>
         {visible.map((promotion) => (
           <article className={styles.card} key={promotion.id}>

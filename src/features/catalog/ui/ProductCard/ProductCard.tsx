@@ -1,6 +1,7 @@
 import type { CatalogProduct, ProductBadge } from '../../model/product'
 import { CatalogActionButton } from '../CatalogActionButton/CatalogActionButton'
 import styles from './ProductCard.module.css'
+import { useCatalogItem } from '../../api/CatalogProvider'
 
 const badgeLabels: Record<ProductBadge, string> = {
   new: 'НОВИНКА',
@@ -16,12 +17,16 @@ type ProductCardProps = {
 }
 
 export function ProductCard({ product, onAction }: ProductCardProps) {
+  const live = useCatalogItem(product.id)
+  const shown = live
+    ? { ...product, ...live, id: live._id, priceRub: live.priceKopecks / 100 }
+    : product
   return (
     <article className={styles.card}>
       <div className={styles.photoWrap}>
-        <img className={styles.photo} src={product.image} alt={product.imageAlt} loading="lazy" />
+        <img className={styles.photo} src={shown.image} alt={shown.imageAlt} loading="lazy" />
         <div className={styles.badges}>
-          {product.badges.map((badge) => (
+          {shown.badges.map((badge) => (
             <span className={`${styles.badge} ${styles[badge]}`} key={badge}>
               {badgeLabels[badge]}
             </span>
@@ -29,17 +34,20 @@ export function ProductCard({ product, onAction }: ProductCardProps) {
         </div>
       </div>
       <div className={styles.body}>
-        <h3 className={styles.name}>{product.name}</h3>
+        <h3 className={styles.name}>{shown.name}</h3>
         <p className={styles.meta}>
-          {product.amount ?? '000'} {product.measure} · {product.calories ?? '000'} ккал
+          {shown.amount ? `${shown.amount} ${shown.measure}` : 'Вес уточняется'} ·{' '}
+          {shown.calories ? `${shown.calories} ккал` : 'Калорийность уточняется'}
         </p>
-        <p className={styles.details}>{product.details}</p>
+        <p className={styles.details}>{shown.details}</p>
         <div className={styles.footer}>
           <strong className={styles.price}>
-            {product.priceRub === null ? '000' : product.priceRub.toLocaleString('ru-RU')} ₽
+            {shown.priceRub === null
+              ? 'Цена уточняется'
+              : `${shown.priceRub.toLocaleString('ru-RU')} ₽`}
           </strong>
           <span className={styles.actionWrap}>
-            <CatalogActionButton item={product} />
+            <CatalogActionButton item={shown} />
           </span>
         </div>
       </div>
@@ -47,8 +55,8 @@ export function ProductCard({ product, onAction }: ProductCardProps) {
         <button
           className={styles.cardHitArea}
           type="button"
-          aria-label={`Подробнее о блюде «${product.name}»`}
-          onClick={() => onAction(product)}
+          aria-label={`Подробнее о блюде «${shown.name}»`}
+          onClick={() => onAction(shown)}
         />
       )}
     </article>

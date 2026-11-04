@@ -231,6 +231,20 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
       (await app.inject({ method: 'GET', url: '/api/addresses', headers: { cookie } })).json()
         .addresses,
     ).toHaveLength(1)
+    const addressId = address.json().address.id as string
+    const select = await app.inject({
+      method: 'PUT',
+      url: '/api/profile/delivery-selection',
+      headers: { origin, cookie },
+      payload: { addressId },
+    })
+    expect(select.statusCode).toBe(200)
+    const selectedProfile = await app.inject({
+      method: 'GET',
+      url: '/api/profile',
+      headers: { cookie },
+    })
+    expect(selectedProfile.json().profile.selectedAddressId).toBe(addressId)
     const otherPhone = '+79991234568'
     expect(
       (
@@ -272,6 +286,55 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
       (await app.inject({ method: 'GET', url: '/api/addresses', headers: { cookie } })).json()
         .addresses,
     ).toHaveLength(1)
+    expect(
+      (
+        await app.inject({
+          method: 'PUT',
+          url: '/api/profile/delivery-selection',
+          headers: { origin, cookie: otherCookie },
+          payload: { addressId },
+        })
+      ).statusCode,
+    ).toBe(404)
+    const cleared = await app.inject({
+      method: 'PUT',
+      url: '/api/profile/delivery-selection',
+      headers: { origin, cookie },
+      payload: { addressId: null },
+    })
+    expect(cleared.statusCode).toBe(200)
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/profile', headers: { cookie } })).json().profile
+        .selectedAddressId,
+    ).toBeNull()
+
+    const orderId = first.json().order._id as string
+    const completed = await app.inject({
+      method: 'POST',
+      url: `/api/orders/${orderId}/complete`,
+      headers: { origin, cookie },
+    })
+    expect(completed.statusCode).toBe(200)
+    expect(completed.json().order.status).toBe('completed')
+    expect(completed.json().order.completedAt).toBeTruthy()
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/orders/${orderId}/complete`,
+          headers: { origin, cookie },
+        })
+      ).statusCode,
+    ).toBe(404)
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/orders/${orderId}/complete`,
+          headers: { origin, cookie: otherCookie },
+        })
+      ).statusCode,
+    ).toBe(404)
   } finally {
     await app.close()
     await mongo.close()

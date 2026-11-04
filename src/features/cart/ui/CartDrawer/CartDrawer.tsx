@@ -22,6 +22,8 @@ type Quote = {
   testMode: boolean
 }
 
+const cafeAddress = 'г. Красноярск, улица Петра Подзолкова, 3и'
+
 export type CartRecommendation = {
   id: string
   name: string
@@ -30,23 +32,27 @@ export type CartRecommendation = {
 }
 
 type CartDrawerProps = {
-  fulfillmentLabel?: string
-  fulfillment?: FulfillmentSelection
+  fulfillment: FulfillmentSelection
+  /** Адрес доставки, выбранный в личном кабинете; подставляется при переключении на «Доставка». */
+  savedDelivery: FulfillmentSelection | null
   user?: AuthUser
   onRequireAuth?: () => void
   onOrderCreated?: () => void
-  onChooseFulfillment: () => void
+  onFulfillmentChange: (selection: FulfillmentSelection) => void
+  /** Переход в кабинет на вкладку адресов; вызывается из «Изменить» и при первом выборе доставки без адреса. */
+  onGoToAddresses: () => void
   recommendations: readonly CartRecommendation[]
   onAddRecommendation: (item: CartRecommendation) => void
 }
 
 export function CartDrawer({
-  fulfillmentLabel,
   fulfillment,
+  savedDelivery,
   user,
   onRequireAuth,
   onOrderCreated,
-  onChooseFulfillment,
+  onFulfillmentChange,
+  onGoToAddresses,
   recommendations,
   onAddRecommendation,
 }: CartDrawerProps) {
@@ -80,7 +86,6 @@ export function CartDrawer({
   })
 
   function orderInput() {
-    if (!fulfillment) throw new Error('Выберите способ получения')
     if (lines.some((line) => line.extras.length > 0))
       throw new Error('Цены добавок уточняются. Уберите добавки для тестового заказа.')
     return {
@@ -94,6 +99,13 @@ export function CartDrawer({
           ? { mode: 'delivery', label: fulfillment.label, details: fulfillment.details }
           : { mode: 'pickup', label: fulfillment.label },
     }
+  }
+
+  function chooseDelivery() {
+    if (fulfillment.mode === 'delivery') return
+    if (savedDelivery) onFulfillmentChange(savedDelivery)
+    else if (!user) onRequireAuth?.()
+    else onGoToAddresses()
   }
 
   async function prepareQuote() {
@@ -243,13 +255,40 @@ export function CartDrawer({
                 </div>
               </section>
 
-              <button className={styles.fulfillment} type="button" onClick={onChooseFulfillment}>
-                <span>
-                  <strong>{fulfillmentLabel ? 'Способ получения' : 'Куда доставить заказ?'}</strong>
-                  <small>{fulfillmentLabel ?? 'Выберите доставку или самовывоз'}</small>
-                </span>
-                <span aria-hidden="true">→</span>
-              </button>
+              <section className={styles.fulfillment} aria-label="Способ получения">
+                <div className={styles.fulfillmentTabs} role="group" aria-label="Способ получения">
+                  <button
+                    type="button"
+                    aria-pressed={fulfillment.mode === 'pickup'}
+                    onClick={() => onFulfillmentChange({ mode: 'pickup', label: cafeAddress })}
+                  >
+                    Самовывоз
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={fulfillment.mode === 'delivery'}
+                    onClick={chooseDelivery}
+                  >
+                    Доставка
+                  </button>
+                </div>
+                <div className={styles.fulfillmentDetail}>
+                  {fulfillment.mode === 'pickup' ? (
+                    <span>{fulfillment.label}</span>
+                  ) : (
+                    <>
+                      <span>{fulfillment.label}</span>
+                      <button
+                        type="button"
+                        className={styles.changeAddress}
+                        onClick={onGoToAddresses}
+                      >
+                        Изменить
+                      </button>
+                    </>
+                  )}
+                </div>
+              </section>
 
               <form
                 className={styles.promo}
@@ -326,16 +365,11 @@ export function CartDrawer({
                 type="button"
                 disabled={busy || (currentQuote !== null && !currentQuote.eligible)}
                 onClick={() => {
-                  if (!fulfillment) onChooseFulfillment()
-                  else if (!currentQuote) void prepareQuote()
+                  if (!currentQuote) void prepareQuote()
                   else void createOrder()
                 }}
               >
-                {!fulfillment
-                  ? 'Выбрать способ получения'
-                  : currentQuote
-                    ? 'Подтвердить тестовый заказ'
-                    : 'Рассчитать заказ'}{' '}
+                {currentQuote ? 'Подтвердить тестовый заказ' : 'Рассчитать заказ'}{' '}
                 <span>
                   {formatCartPrice(currentQuote ? currentQuote.totalKopecks / 100 : total)}
                 </span>

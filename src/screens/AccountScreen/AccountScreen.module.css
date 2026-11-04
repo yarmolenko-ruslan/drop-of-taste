@@ -5,6 +5,11 @@
   padding: 32px 0 90px;
 }
 
+.loading {
+  display: grid;
+  place-items: center;
+}
+
 .breadcrumbs {
   display: flex;
   gap: 12px;
@@ -142,10 +147,15 @@
 }
 
 .content,
-.addresses,
 .profileSections {
   display: grid;
   gap: 24px;
+  min-width: 0;
+}
+
+.addresses {
+  display: grid;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -186,6 +196,272 @@
   margin-left: 12px;
   color: var(--color-brand-red);
   white-space: nowrap;
+}
+
+.emptyOrders {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 30px 0 18px;
+  color: var(--color-burgundy);
+  text-align: center;
+}
+
+.emptyOrders p {
+  margin: 0;
+}
+
+.emptyIcon {
+  width: 84px;
+  height: 84px;
+}
+
+.emptyHint {
+  color: #806b62;
+  font-size: 14px;
+}
+
+.orderCard {
+  margin-top: 18px;
+  padding: 24px 26px;
+  border: 1px solid #ead9c3;
+  border-radius: 18px;
+  background: #fffdfa;
+  box-shadow: 0 10px 30px rgb(63 8 14 / 5%);
+}
+
+.orderHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.orderHeader strong {
+  font-size: 18px;
+}
+
+.orderBadge {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #f6e7c8;
+  color: #8b673e;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.orderSteps {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 24px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.orderStep {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  text-align: center;
+}
+
+.orderStep:not(:first-child)::before {
+  content: '';
+  position: absolute;
+  top: 13px;
+  right: 50%;
+  width: 100%;
+  height: 2px;
+  background: #ecdfc9;
+}
+
+.orderDot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #f0e4d1;
+  color: #a08a76;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.orderStepActive .orderDot {
+  background: var(--color-brand-red);
+  color: #fff;
+}
+
+.orderStepLabel {
+  color: #604745;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.orderStepActive .orderStepLabel {
+  color: var(--color-brand-red);
+}
+
+.orderStepSub {
+  color: #9b8a80;
+  font-size: 11px;
+}
+
+.orderTiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.orderTile {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: 14px;
+  border-radius: 12px;
+  background: #f8efdf;
+}
+
+.orderTile > span {
+  color: #8b673e;
+  font-size: 11px;
+}
+
+.orderTile strong {
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.orderLines {
+  display: grid;
+  gap: 8px;
+  margin: 20px 0 0;
+  padding: 16px 0 0;
+  border-top: 1px solid #f0e4d2;
+  list-style: none;
+}
+
+.orderLines li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.orderTotal {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 0;
+}
+
+.orderTotal strong {
+  font-size: 20px;
+}
+
+.orderActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #f0e4d2;
+}
+
+.repeatButton {
+  min-height: 42px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-brand-red);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.completeButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #8b673e;
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.history {
+  margin-top: 34px;
+}
+
+.historyGroup {
+  margin-top: 6px;
+}
+
+.historyGroupTitle {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #ead9c3;
+  color: #8b673e;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.historyRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 4px;
+  border: 0;
+  border-bottom: 1px solid #f2e8d8;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.historyRow:hover .historyDate {
+  color: var(--color-brand-red);
+}
+
+.historyRowMain {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.historyDate {
+  font-weight: 700;
+}
+
+.historySummary {
+  color: #806b62;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.historyTotal {
+  flex: none;
+  font-weight: 700;
 }
 
 .loyaltyList {
@@ -232,21 +508,29 @@
   align-items: center;
   gap: 12px;
   padding-block: 24px;
+  cursor: pointer;
   transition: border-color 0.3s ease;
 }
 
 .addressMain {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   gap: 16px;
+  padding-inline: 34px;
+  /* Резервируем место под кнопки редактирования/удаления (2 × 38px + 8px) с визуальным зазором */
+  padding-right: 134px;
   min-width: 0;
-  flex: 1;
   cursor: pointer;
 }
 
 .addressActions {
+  position: relative;
+  z-index: 1;
   display: flex;
   gap: 8px;
+  margin-left: auto;
   flex: none;
 }
 
@@ -595,6 +879,10 @@
   }
 
   .profileForm {
+    grid-template-columns: 1fr;
+  }
+
+  .orderTiles {
     grid-template-columns: 1fr;
   }
 }

@@ -25,12 +25,19 @@ const profileSchema = z
 const addressSchema = z
   .object({ label: z.string().trim().min(5).max(300), details: addressDetailsSchema })
   .strict()
+const selectionSchema = z.object({ addressId: z.string().min(1).max(100).nullable() }).strict()
 type Profile = z.infer<typeof profileSchema>
 type AddressDoc = {
   _id: string
   accountId: string
   label: string
   details: z.infer<typeof addressDetailsSchema>
+}
+type UserDoc = Profile & {
+  _id: string
+  id: string
+  phone: string
+  selectedAddressId?: string | null
 }
 const defaults: Profile = {
   name: '',
@@ -53,7 +60,7 @@ export function registerProfileRoutes(
   auth: AuthService,
   origins: readonly string[] = ['http://localhost:5173', 'http://127.0.0.1:5173'],
 ) {
-  const users = db.collection<Profile & { _id: string; id: string; phone: string }>('users')
+  const users = db.collection<UserDoc>('users')
   const addresses = db.collection<AddressDoc>('addresses')
   app.addHook('onRequest', async (request, reply) => {
     if (!request.url.startsWith('/api/profile') && !request.url.startsWith('/api/addresses')) return
@@ -76,6 +83,7 @@ export function registerProfileRoutes(
         birthday: doc?.birthday ?? '',
         notifications: doc?.notifications ?? defaults.notifications,
         phone: account.phone,
+        selectedAddressId: doc?.selectedAddressId ?? null,
       },
     }
   })
@@ -103,6 +111,19 @@ export function registerProfileRoutes(
         .send(err('EMAIL_REQUIRED', 'Сначала сохраните адрес электронной почты'))
     await users.updateOne({ id: account.id }, { $set: { notifications: parsed.data } })
     return { notifications: parsed.data }
+  })
+  app.put('/api/profile/delivery-selection', async (request, reply) => {
+    const account = await auth.getAccount(token(request.headers.cookie))
+    if (!account) return reply.code(401).send(err('UNAUTHENTICATED', 'Необходимо войти'))
+    const parsed = selectionSchema.safeParse(request.body)
+    if (!parsed.success) return reply.code(400).send(err('INVALID_SELECTION', 'Проверьте данные'))
+    const { addressId } = parsed.data
+    if (addressId !== null) {
+      const found = await addresses.findOne({ _id: addressId, accountId: account.id })
+      if (!found) return reply.code(404).send(err('NOT_FOUND', 'Адрес не найден'))
+    }
+    await users.updateOne({ id: account.id }, { $set: { selectedAddressId: addressId } })
+    return { selectedAddressId: addressId }
   })
   app.get('/api/addresses', async (request, reply) => {
     const account = await auth.getAccount(token(request.headers.cookie))

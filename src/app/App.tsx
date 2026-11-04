@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { HomeScreen } from '../screens/HomeScreen/HomeScreen'
 import { CategoryScreen } from '../screens/CategoryScreen/CategoryScreen'
@@ -16,8 +16,11 @@ import {
   type FulfillmentSelection,
 } from '../features/fulfillment/ui/FulfillmentDialog/FulfillmentDialog'
 import { newArrivals } from '../features/catalog/model/newArrivals'
-import { ApiError, authApi, type AuthUser } from '../features/auth/api/authApi'
+import { ApiError, apiRequest, authApi, type AuthUser } from '../features/auth/api/authApi'
 import { CatalogProvider } from '../features/catalog/api/CatalogProvider'
+import { Spinner } from '../shared/ui/Spinner/Spinner'
+import { ScrollTopButton } from '../shared/ui/ScrollTopButton/ScrollTopButton'
+import styles from './App.module.css'
 
 function ScrollToTopOnRouteChange() {
   const { pathname, hash } = useLocation()
@@ -35,20 +38,72 @@ function ScrollToTopOnRouteChange() {
 
 function AppContent() {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const isCartOpen = useCartStore((state) => state.isOpen)
   const closeCart = useCartStore((state) => state.close)
   const openCart = useCartStore((state) => state.open)
+  const cafeAddress = 'г. Красноярск, улица Петра Подзолкова, 3и'
   const [fulfillment, setFulfillment] = useState<FulfillmentSelection>({
     mode: 'pickup',
-    label: 'г. Красноярск, улица Петра Подзолкова, 3и',
+    label: cafeAddress,
   })
   const [isFulfillmentOpen, setFulfillmentOpen] = useState(false)
-  const [returnToCart, setReturnToCart] = useState(false)
+  /** Сценарий «выбор адреса из корзины»: после сохранения выбора возвращаем пользователя в корзину. */
+  const [pickAddressForCart, setPickAddressForCart] = useState(false)
   const [isAuthOpen, setAuthOpen] = useState(false)
   const [authReturnToCart, setAuthReturnToCart] = useState(false)
   const [user, setUser] = useState<AuthUser>()
   const [sessionLoading, setSessionLoading] = useState(true)
   const [sessionNotice, setSessionNotice] = useState('')
+  const [savedDelivery, setSavedDelivery] = useState<{
+    forUser: string
+    selection: FulfillmentSelection | null
+  } | null>(null)
+  const fulfillmentRef = useRef(fulfillment)
+  useEffect(() => {
+    fulfillmentRef.current = fulfillment
+  }, [fulfillment])
+
+  // Если пользователь ушёл из кабинета, не выбрав адрес, сценарий возврата в корзину снимается
+  const [prevPathname, setPrevPathname] = useState(pathname)
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname)
+    if (pickAddressForCart && !pathname.startsWith('/account')) setPickAddressForCart(false)
+  }
+
+  useEffect(() => {
+    if (!user || !isCartOpen) return
+    let active = true
+    Promise.all([
+      apiRequest<{ profile: { selectedAddressId: string | null } }>('/profile'),
+      apiRequest<{
+        addresses: { id: string; label: string; details: FulfillmentSelection['details'] }[]
+      }>('/addresses'),
+    ])
+      .then(([profile, addressResult]) => {
+        if (!active) return
+        const selected = addressResult.addresses.find(
+          (address) => address.id === profile.profile.selectedAddressId,
+        )
+        const selection = selected?.details
+          ? { mode: 'delivery' as const, label: selected.label, details: selected.details }
+          : null
+        setSavedDelivery({
+          forUser: user.id,
+          selection,
+        })
+        // Если в корзине выбрана доставка, подтягиваем свежий выбранный адрес из кабинета;
+        // если адрес исчез (удалён), доставка больше не валидна — сбрасываем на самовывоз
+        if (fulfillmentRef.current.mode === 'delivery') {
+          if (selection) setFulfillment(selection)
+          else setFulfillment({ mode: 'pickup', label: cafeAddress })
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [user, isCartOpen])
 
   useEffect(() => {
     let active = true
@@ -69,16 +124,16 @@ function AppContent() {
     }
   }, [])
 
-  function chooseFulfillment(fromCart: boolean) {
-    if (fromCart) closeCart()
-    setReturnToCart(fromCart)
-    setFulfillmentOpen(true)
+  function goToAddressesFromCart() {
+    setPickAddressForCart(true)
+    closeCart()
+    navigate('/account/addresses')
   }
 
-  function closeFulfillment() {
-    setFulfillmentOpen(false)
-    if (returnToCart) openCart()
-    setReturnToCart(false)
+  function returnToCartAfterPick() {
+    setPickAddressForCart(false)
+    navigate(-1)
+    openCart()
   }
 
   const logout = useCallback(async () => {
@@ -99,9 +154,9 @@ function AppContent() {
       {sessionNotice && <p role="alert">{sessionNotice}</p>}
       <SiteHeader
         phoneNumber="+7 123 456-78-90"
-        addressLabel={fulfillment?.mode === 'pickup' ? 'Кафе на карте' : fulfillment?.label}
+        addressLabel="Кафе на карте"
         accountLabel={user ? user.name.split(' ')[0] || 'Кабинет' : undefined}
-        onAddressClick={() => chooseFulfillment(false)}
+        onAddressClick={() => setFulfillmentOpen(true)}
         onAccountClick={() => (user ? navigate('/account/orders') : setAuthOpen(true))}
       />
       <Routes>
@@ -127,7 +182,9 @@ function AppContent() {
           path="account/:section?"
           element={
             sessionLoading ? (
-              <main role="status">Проверяем вход…</main>
+              <main className={styles.sessionLoading}>
+                <Spinner label="Проверяем вход…" />
+              </main>
             ) : user ? (
               <AccountScreen
                 user={user}
@@ -135,6 +192,7 @@ function AppContent() {
                 onUpdateUser={(updated) =>
                   setUser((current) => (current ? { ...current, ...updated } : current))
                 }
+                onAddressPicked={pickAddressForCart ? returnToCartAfterPick : undefined}
               />
             ) : (
               <Navigate to="/" replace />
@@ -143,29 +201,31 @@ function AppContent() {
         />
       </Routes>
       <SiteFooter />
+      <ScrollTopButton />
       {isCartOpen && (
         <CartDrawer
-          fulfillmentLabel={fulfillment?.label}
           fulfillment={fulfillment}
+          savedDelivery={
+            user && savedDelivery?.forUser === user.id ? savedDelivery.selection : null
+          }
           user={user}
           onRequireAuth={() => {
             closeCart()
             setAuthReturnToCart(true)
             setAuthOpen(true)
           }}
-          onChooseFulfillment={() => chooseFulfillment(true)}
+          onFulfillmentChange={setFulfillment}
+          onGoToAddresses={goToAddressesFromCart}
           recommendations={newArrivals}
           onAddRecommendation={addOneToCart}
         />
       )}
       {isFulfillmentOpen && (
         <FulfillmentDialog
-          allowPickup={!returnToCart}
-          current={fulfillment}
-          onClose={closeFulfillment}
+          onClose={() => setFulfillmentOpen(false)}
           onSave={(selection) => {
             setFulfillment(selection)
-            closeFulfillment()
+            setFulfillmentOpen(false)
           }}
         />
       )}

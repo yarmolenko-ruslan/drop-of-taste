@@ -35,7 +35,8 @@ type OrderDoc = {
   idempotencyKey: string
   input: Checkout
   quote: Awaited<ReturnType<typeof calculateQuote>>
-  status: 'test'
+  status: 'test' | 'completed'
+  completedAt?: Date
   createdAt: Date
 }
 
@@ -176,5 +177,19 @@ export function registerShopRoutes(
       .limit(50)
       .toArray()
     return { orders }
+  })
+  app.post('/api/orders/:id/complete', async (request, reply) => {
+    const user = await auth.getAccount(cookie(request.headers.cookie))
+    if (!user) return reply.code(401).send(failure('UNAUTHENTICATED', 'Необходимо войти'))
+    const id = (request.params as { id: string }).id
+    const result = await db
+      .collection<OrderDoc>('orders')
+      .findOneAndUpdate(
+        { _id: id, accountId: user.id, status: 'test' },
+        { $set: { status: 'completed', completedAt: new Date() } },
+        { returnDocument: 'after' },
+      )
+    if (!result) return reply.code(404).send(failure('NOT_FOUND', 'Заказ не найден'))
+    return { order: result }
   })
 }

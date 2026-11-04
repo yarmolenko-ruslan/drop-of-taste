@@ -295,6 +295,91 @@
 .category:not(.current):hover {
   background: #f8ead7;
 }
+
+/* Компактный прилипающий хедер — появляется после прокрутки за пределы полного */
+.compactBar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 10;
+  background: #fffefa;
+  border-bottom: 1px solid #eadbc8;
+  box-shadow:
+    0 10px 28px rgb(25 5 8 / 16%),
+    0 2px 8px rgb(25 5 8 / 10%);
+  transform: translateY(-100%);
+  visibility: hidden;
+  transition:
+    transform 0.25s ease,
+    visibility 0s linear 0.25s;
+}
+.compactVisible {
+  transform: translateY(0);
+  visibility: visible;
+  transition: transform 0.25s ease;
+}
+.compactContent {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 64px;
+  padding-block: 8px;
+}
+.compactBrand {
+  display: block;
+  flex: none;
+}
+.compactBrand img {
+  display: block;
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+.compactNav {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.compactNav::-webkit-scrollbar {
+  display: none;
+}
+.compactCategories {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  padding-block: 4px;
+}
+/* Пилюли компактного хедера — те же, что в полосе категорий, но меньше */
+.compactCategories .category {
+  min-height: 34px;
+  padding: 0 13px;
+  font-size: 12px;
+}
+.compactActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  margin-left: auto;
+}
+/* Кнопка кабинета рассчитана на бордовую подложку — на белой перекрашена */
+.compactActions .login {
+  border-color: var(--color-brand-red);
+  color: var(--color-brand-red);
+}
+.compactActions .login:hover {
+  background: #f8ead7;
+  border-color: var(--color-brand-red);
+  color: var(--color-brand-red);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compactBar,
+  .compactVisible {
+    transition: none;
+  }
+}
 .header :is(a, button, input):focus-visible {
   outline: 3px solid var(--color-gold-light);
   outline-offset: 3px;

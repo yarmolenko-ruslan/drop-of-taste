@@ -20,7 +20,6 @@ export function HomeScreen({ onLogin }: { onLogin?: () => void }) {
     <>
       <main className={styles.root}>
         <h1 className={styles.title}>Капела вкуса</h1>
-        <p>Демонстрационное меню: цены примерные, заказы пока не передаются в кафе.</p>
         <HeroSlider />
         <CatalogStatus />
         {catalog?.data && !catalog.error && (

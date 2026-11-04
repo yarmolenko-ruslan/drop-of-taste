@@ -8,6 +8,9 @@ import { birthDateSchema, profileSchema } from '../../../shared/validation/profi
 import { issuesByField } from '../../../shared/validation/issues'
 import styles from './AccountScreen.module.css'
 import { ApiError, apiRequest } from '../../features/auth/api/authApi'
+import { Spinner } from '../../shared/ui/Spinner/Spinner'
+import { useCartStore } from '../../features/cart'
+import { useCatalog } from '../../features/catalog/api/CatalogProvider'
 
 export type AccountUser = {
   name: string
@@ -18,12 +21,29 @@ type AccountScreenProps = {
   user: AccountUser
   onLogout: () => void
   onUpdateUser: (user: AccountUser) => void
+  /** Вызывается после успешного сохранения выбранного адреса (сценарий «выбор адреса из корзины»). */
+  onAddressPicked?: () => void
 }
 
 type Address = FulfillmentSelection & { id: string }
 type Order = {
   _id: string
-  quote: { totalKopecks: number; lines: { name: string; quantity: number }[] }
+  createdAt: string
+  status?: 'test' | 'completed'
+  completedAt?: string | null
+  input: { fulfillment: { mode: 'pickup' | 'delivery'; label: string } }
+  quote: {
+    lines: {
+      productId: string
+      name: string
+      quantity: number
+      unitPriceKopecks: number
+      lineTotalKopecks: number
+    }[]
+    discountKopecks: number
+    deliveryKopecks: number
+    totalKopecks: number
+  }
 }
 
 const sections = [
@@ -46,9 +66,154 @@ const months = [
   'Октябрь',
   'Ноябрь',
   'Декабрь',
-]
+] as const
 
-export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenProps) {
+/** Названия месяцев в родительном падеже для дат: «4 ноября». */
+const monthsGenitive = [
+  'января',
+  'февраля',
+  'марта',
+  'апреля',
+  'мая',
+  'июня',
+  'июля',
+  'августа',
+  'сентября',
+  'октября',
+  'ноября',
+  'декабря',
+] as const
+
+const pluralOrders = (count: number) =>
+  count % 10 === 1 && count % 100 !== 11
+    ? 'заказ'
+    : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14)
+      ? 'заказа'
+      : 'заказов'
+
+const timeOf = (iso: string) =>
+  new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+
+function orderSummary(order: Order) {
+  const names = order.quote.lines.slice(0, 2).map((line) => `${line.name} × ${line.quantity}`)
+  const rest = order.quote.lines.length - names.length
+  return rest > 0 ? `${names.join(', ')} · ещё ${rest}` : names.join(', ')
+}
+
+function OrderDetailsCard({
+  order,
+  onRepeat,
+  onComplete,
+}: {
+  order: Order
+  onRepeat: (order: Order) => void
+  onComplete?: (id: string) => void
+}) {
+  const completed = order.status === 'completed'
+  const pickup = order.input.fulfillment.mode === 'pickup'
+  const steps = completed
+    ? [
+        ['Создан', timeOf(order.createdAt)],
+        ['Передан в кафе', '—'],
+        ['Готовится', '—'],
+        ['Выдан', timeOf(order.completedAt ?? order.createdAt)],
+      ]
+    : [
+        ['Создан', timeOf(order.createdAt)],
+        ['Передан в кафе', '—'],
+        ['Готовится', '—'],
+        ['Выдан', '—'],
+      ]
+  return (
+    <article className={styles.orderCard}>
+      <header className={styles.orderHeader}>
+        <strong>Тестовый заказ №{order._id.slice(0, 6).toUpperCase()}</strong>
+        <span className={styles.orderBadge}>
+          {completed ? 'Выполнен (тест)' : 'Не передан в кафе'}
+        </span>
+      </header>
+      <ol className={styles.orderSteps}>
+        {steps.map(([stepLabel, stepSub], index) => (
+          <li
+            key={stepLabel}
+            className={`${styles.orderStep} ${completed || index === 0 ? styles.orderStepActive : ''}`}
+          >
+            <span className={styles.orderDot} aria-hidden="true">
+              {completed || index === 0 ? '✓' : index + 1}
+            </span>
+            <span className={styles.orderStepLabel}>{stepLabel}</span>
+            <span className={styles.orderStepSub}>{stepSub}</span>
+          </li>
+        ))}
+      </ol>
+      <div className={styles.orderTiles}>
+        <div className={styles.orderTile}>
+          <span>Получение</span>
+          <strong>
+            {pickup
+              ? `Самовывоз · ${order.input.fulfillment.label}`
+              : order.input.fulfillment.label}
+          </strong>
+        </div>
+        <div className={styles.orderTile}>
+          <span>Оплата</span>
+          <strong>Не требуется — тестовый режим</strong>
+        </div>
+        <div className={styles.orderTile}>
+          <span>Бонусы</span>
+          <strong>Не начисляются в тестовом режиме</strong>
+        </div>
+      </div>
+      <ul className={styles.orderLines}>
+        {order.quote.lines.map((line) => (
+          <li key={`${order._id}-${line.name}`}>
+            <span>
+              {line.name} × {line.quantity}
+            </span>
+            <span>{(line.lineTotalKopecks / 100).toLocaleString('ru-RU')} ₽</span>
+          </li>
+        ))}
+        {order.quote.discountKopecks > 0 && (
+          <li>
+            <span>Скидка самовывоза</span>
+            <span>−{(order.quote.discountKopecks / 100).toLocaleString('ru-RU')} ₽</span>
+          </li>
+        )}
+        {order.quote.deliveryKopecks > 0 && (
+          <li>
+            <span>Доставка</span>
+            <span>{(order.quote.deliveryKopecks / 100).toLocaleString('ru-RU')} ₽</span>
+          </li>
+        )}
+      </ul>
+      <p className={styles.orderTotal}>
+        <span>Итого</span>
+        <strong>{(order.quote.totalKopecks / 100).toLocaleString('ru-RU')} ₽</strong>
+      </p>
+      <div className={styles.orderActions}>
+        <button type="button" className={styles.repeatButton} onClick={() => onRepeat(order)}>
+          Повторить заказ
+        </button>
+        {onComplete && (
+          <button
+            type="button"
+            className={styles.completeButton}
+            onClick={() => onComplete(order._id)}
+          >
+            Отметить выполненным (тест)
+          </button>
+        )}
+      </div>
+    </article>
+  )
+}
+
+export function AccountScreen({
+  user,
+  onLogout,
+  onUpdateUser,
+  onAddressPicked,
+}: AccountScreenProps) {
   const { section = 'orders' } = useParams()
   const [name, setName] = useState(user.name)
   const [email, setEmail] = useState('')
@@ -66,6 +231,31 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
     { mode: 'add' } | { mode: 'edit'; address: Address } | null
   >(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [expandedOrders, setExpandedOrders] = useState<ReadonlySet<string>>(new Set())
+  const catalog = useCatalog()
+
+  const activeOrders = orders.filter((order) => order.status !== 'completed')
+  const historyOrders = orders.filter((order) => order.status === 'completed')
+  const historyGroups = (() => {
+    const groups = new Map<string, { year: number; month: number; orders: Order[] }>()
+    for (const order of historyOrders) {
+      const date = new Date(order.completedAt ?? order.createdAt)
+      const key = `${date.getFullYear()}-${date.getMonth()}`
+      const group = groups.get(key) ?? {
+        year: date.getFullYear(),
+        month: date.getMonth(),
+        orders: [],
+      }
+      group.orders.push(order)
+      groups.set(key, group)
+    }
+    return [...groups.values()].map((group) => ({
+      key: `${group.year}-${group.month}`,
+      label: `${months[group.month]!} ${group.year}`,
+      countLabel: `${group.orders.length} ${pluralOrders(group.orders.length)}`,
+      orders: group.orders,
+    }))
+  })()
 
   function clearError(field: string) {
     setErrors((current) => {
@@ -85,6 +275,7 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
           email: string
           birthday: string
           notifications: { push: boolean; email: boolean; sms: boolean }
+          selectedAddressId: string | null
         }
       }>('/profile'),
       apiRequest<{ addresses: Address[] }>('/addresses'),
@@ -100,7 +291,12 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
         setMonth(m ? String(Number(m)) : '')
         setDay(d ? String(Number(d)) : '')
         setNotifications(profileResult.profile.notifications)
-        setAddresses(addressResult.addresses)
+        const loadedAddresses = addressResult.addresses
+        setAddresses(loadedAddresses)
+        const savedSelection = profileResult.profile.selectedAddressId ?? null
+        setSelectedAddressId(
+          loadedAddresses.some((address) => address.id === savedSelection) ? savedSelection : null,
+        )
         setOrders(orderResult.orders)
       })
       .catch((failure) => {
@@ -123,10 +319,69 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
     try {
       await apiRequest<void>(`/addresses/${encodeURIComponent(id)}`, { method: 'DELETE' })
       setAddresses((current) => current.filter((address) => address.id !== id))
-      setSelectedAddressId((current) => (current === id ? null : current))
+      if (selectedAddressId === id) {
+        setSelectedAddressId(null)
+        void apiRequest('/profile/delivery-selection', {
+          method: 'PUT',
+          body: JSON.stringify({ addressId: null }),
+        }).catch(() => undefined)
+      }
     } catch (failure) {
       setNotice(failure instanceof Error ? failure.message : 'Не удалось удалить адрес')
     }
+  }
+
+  async function completeOrder(id: string) {
+    try {
+      const result = await apiRequest<{ order: Order }>(
+        `/orders/${encodeURIComponent(id)}/complete`,
+        { method: 'POST' },
+      )
+      setOrders((current) => current.map((order) => (order._id === id ? result.order : order)))
+    } catch (failure) {
+      setNotice(failure instanceof Error ? failure.message : 'Не удалось обновить заказ')
+    }
+  }
+
+  function repeatOrder(order: Order) {
+    const products = catalog?.data?.categories.flatMap((category) => category.products) ?? []
+    for (const line of order.quote.lines) {
+      const live = products.find((product) => product._id === line.productId)
+      useCartStore.getState().add(
+        {
+          id: line.productId,
+          name: line.name,
+          image: live?.image,
+          priceRub: live ? live.priceKopecks / 100 : line.unitPriceKopecks / 100,
+        },
+        { variant: '', removedIngredients: [], extras: {}, quantity: line.quantity },
+      )
+    }
+    useCartStore.getState().open()
+    setNotice('Состав заказа добавлен в корзину')
+  }
+
+  function toggleOrderExpanded(id: string) {
+    setExpandedOrders((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function saveSelection(addressId: string) {
+    const previous = selectedAddressId
+    setSelectedAddressId(addressId)
+    void apiRequest('/profile/delivery-selection', {
+      method: 'PUT',
+      body: JSON.stringify({ addressId }),
+    })
+      .then(() => onAddressPicked?.())
+      .catch((failure) => {
+        setSelectedAddressId(previous)
+        setNotice(failure instanceof Error ? failure.message : 'Не удалось сохранить выбор адреса')
+      })
   }
 
   async function saveProfile(nextNotifications = notifications) {
@@ -165,8 +420,8 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
   if (!sections.some(({ id }) => id === section)) return <Navigate to="/account/orders" replace />
   if (loading)
     return (
-      <main className={styles.root} role="status">
-        Загружаем личный кабинет…
+      <main className={`${styles.root} ${styles.loading}`}>
+        <Spinner label="Загружаем личный кабинет…" />
       </main>
     )
 
@@ -214,22 +469,80 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
               <span className={styles.eyebrow}>ВАШИ ЗАКАЗЫ</span>
               <h1 id="orders-title">Активные заказы</h1>
               <p>Тестовый режим — заказы не передаются в кафе.</p>
-              {loading ? (
-                <p role="status">Загружаем заказы…</p>
-              ) : orders.length === 0 ? (
-                <p>Тестовых заказов пока нет.</p>
+              {orders.length === 0 ? (
+                <div className={styles.emptyOrders}>
+                  <svg
+                    className={styles.emptyIcon}
+                    viewBox="0 0 64 64"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M10 47h44" strokeLinecap="round" />
+                    <path d="M17 47a15 15 0 0 1 30 0" strokeLinecap="round" />
+                    <path d="M32 32v-5" strokeLinecap="round" />
+                    <circle cx="32" cy="24" r="2.5" />
+                    <path d="M24 15c0-2 2-2.5 2-4.5M32 15c0-2 2-2.5 2-4.5" strokeLinecap="round" />
+                    <path
+                      d="m49 14 1.4 2.8 2.8 1.4-2.8 1.4L49 22.4l-1.4-2.8-2.8-1.4 2.8-1.4Z"
+                      fill="var(--color-gold)"
+                      stroke="none"
+                    />
+                  </svg>
+                  <p>Тестовых заказов пока нет.</p>
+                  <p className={styles.emptyHint}>
+                    Оформите тестовый заказ в корзине — он появится здесь.
+                  </p>
+                </div>
               ) : (
-                orders.map((order) => (
-                  <article key={order._id}>
-                    <strong>Тестовый заказ {order._id.slice(0, 8)}</strong>
-                    <p>
-                      {order.quote.lines
-                        .map((line) => `${line.name} × ${line.quantity}`)
-                        .join(', ')}
-                    </p>
-                    <p>{(order.quote.totalKopecks / 100).toLocaleString('ru-RU')} ₽</p>
-                  </article>
+                activeOrders.map((order) => (
+                  <OrderDetailsCard
+                    key={order._id}
+                    order={order}
+                    onRepeat={repeatOrder}
+                    onComplete={(id) => void completeOrder(id)}
+                  />
                 ))
+              )}
+              {historyGroups.length > 0 && (
+                <div className={styles.history}>
+                  <h2>История заказов</h2>
+                  {historyGroups.map((group) => (
+                    <div className={styles.historyGroup} key={group.key}>
+                      <p className={styles.historyGroupTitle}>
+                        <span>{group.label}</span>
+                        <span>{group.countLabel}</span>
+                      </p>
+                      {group.orders.map((order) => {
+                        const done = new Date(order.completedAt ?? order.createdAt)
+                        const expanded = expandedOrders.has(order._id)
+                        return (
+                          <div key={order._id}>
+                            <button
+                              type="button"
+                              className={styles.historyRow}
+                              aria-expanded={expanded}
+                              onClick={() => toggleOrderExpanded(order._id)}
+                            >
+                              <span className={styles.historyRowMain}>
+                                <span className={styles.historyDate}>
+                                  {done.getDate()} {monthsGenitive[done.getMonth()]}
+                                </span>
+                                <span className={styles.historySummary}>{orderSummary(order)}</span>
+                              </span>
+                              <span className={styles.historyTotal}>
+                                {(order.quote.totalKopecks / 100).toLocaleString('ru-RU')} ₽
+                              </span>
+                            </button>
+                            {expanded && <OrderDetailsCard order={order} onRepeat={repeatOrder} />}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ))}
+                </div>
               )}
             </section>
           )}
@@ -251,7 +564,7 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
                       name="delivery-address"
                       value={address.id}
                       checked={selectedAddressId === address.id}
-                      onChange={() => setSelectedAddressId(address.id)}
+                      onChange={() => saveSelection(address.id)}
                     />
                     <span className={styles.radioMark} aria-hidden="true" />
                     <span className={styles.addressIcon} aria-hidden="true">
@@ -517,7 +830,7 @@ export function AccountScreen({ user, onLogout, onUpdateUser }: AccountScreenPro
                   )
                 else {
                   setAddresses((current) => [...current, address])
-                  setSelectedAddressId(address.id)
+                  saveSelection(address.id)
                 }
                 setAddressDialog(null)
               })

@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { apiRequest } from '../../auth/api/authApi'
+import { Spinner } from '../../../shared/ui/Spinner/Spinner'
 import type { CatalogProduct } from '../model/product'
 import type { DialogItem } from '../model/dialogContent'
 
@@ -70,7 +71,7 @@ export function useCatalogItem(id: string): ApiCatalogItem | undefined {
 export function CatalogStatus() {
   const catalog = useCatalog()
   if (!catalog) return null
-  if (catalog.loading) return <p role="status">Загружаем меню…</p>
+  if (catalog.loading) return <Spinner label="Загружаем меню…" />
   if (catalog.error)
     return (
       <div role="alert">

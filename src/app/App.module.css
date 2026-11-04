@@ -1,0 +1,5 @@
+.sessionLoading {
+  display: grid;
+  min-height: 50vh;
+  place-items: center;
+}

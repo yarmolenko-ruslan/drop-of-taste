@@ -1,22 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useLocation } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
 import { cartCount, useCartStore } from '../../cart'
+import { MobileMenu } from './MobileMenu'
+import { categories } from './navigation'
 import styles from './SiteHeader.module.css'
-
-const categories = [
-  ['Акции', 'promotions'],
-  ['Новинки', 'new'],
-  ['Комбо', 'combo'],
-  ['Завтраки', 'breakfast'],
-  ['Салаты', 'salads'],
-  ['Супы', 'soups'],
-  ['Горячее', 'hot'],
-  ['На сковороде', 'pan'],
-  ['Выпечка', 'bakery'],
-  ['Десерты', 'desserts'],
-  ['Напитки', 'drinks'],
-  ['Соусы', 'sauces'],
-] as const
 
 type SiteHeaderProps = {
   phoneNumber?: string
@@ -34,13 +21,24 @@ export function SiteHeader({
   onAccountClick,
 }: SiteHeaderProps) {
   const dialNumber = phoneNumber?.replace(/[^+\d]/g, '')
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
+  const navigate = useNavigate()
   const isHome = pathname === '/'
   const showCategories = pathname !== '/about'
   const count = useCartStore((state) => cartCount(state.lines))
   const openCart = useCartStore((state) => state.open)
   const headerRef = useRef<HTMLElement>(null)
   const [compactVisible, setCompactVisible] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 768px)')
+    const closeOnWideScreen = () => {
+      if (!media.matches) setMenuOpen(false)
+    }
+    media.addEventListener('change', closeOnWideScreen)
+    return () => media.removeEventListener('change', closeOnWideScreen)
+  }, [])
 
   useEffect(() => {
     let ticking = false
@@ -71,6 +69,18 @@ export function SiteHeader({
       <header className={styles.header} ref={headerRef}>
         <div className={styles.mainBar}>
           <div className={`${styles.container} ${styles.mainContent}`}>
+            <button
+              className={styles.burger}
+              type="button"
+              aria-label="Открыть меню"
+              aria-haspopup="dialog"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen(true)}
+            >
+              <span />
+              <span />
+              <span />
+            </button>
             <Link className={styles.brand} to="/" aria-label="Капела вкуса — главная">
               <img src="/brand-emblem.png" alt="" width="64" height="64" />
               <span className={styles.brandText}>
@@ -100,13 +110,32 @@ export function SiteHeader({
               </span>
             </button>
 
-            <div className={styles.search} role="search">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <circle cx="10.8" cy="10.8" r="6.4" />
-                <path d="m16 16 5 5" />
-              </svg>
-              <input type="search" aria-label="Искать блюда" placeholder="Искать блюда" />
-            </div>
+            <form
+              className={styles.search}
+              role="search"
+              onSubmit={(event) => {
+                event.preventDefault()
+                const query = new FormData(event.currentTarget).get('q')?.toString().trim()
+                if (query) navigate(`/search?${new URLSearchParams({ q: query })}`)
+              }}
+            >
+              <button className={styles.searchSubmit} type="submit" aria-label="Найти блюда">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="10.8" cy="10.8" r="6.4" />
+                  <path d="m16 16 5 5" />
+                </svg>
+              </button>
+              <input
+                key={pathname === '/search' ? search : pathname}
+                type="search"
+                name="q"
+                aria-label="Искать блюда"
+                placeholder="Искать блюда"
+                defaultValue={
+                  pathname === '/search' ? (new URLSearchParams(search).get('q') ?? '') : ''
+                }
+              />
+            </form>
 
             <div className={styles.phoneBlock}>
               {dialNumber ? (
@@ -139,7 +168,13 @@ export function SiteHeader({
               <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M4 8h16l-1.5 12h-13L4 8ZM9 8V6a3 3 0 0 1 6 0v2" />
               </svg>
-              <span className={styles.cartCount}>{count}</span>
+              <span className={styles.cartCount}>
+                <span
+                  className={`${styles.cartCountValue} ${count === 1 ? styles.cartCountOne : ''}`}
+                >
+                  {count}
+                </span>
+              </span>
             </button>
           </div>
         </div>
@@ -209,11 +244,24 @@ export function SiteHeader({
               <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M4 8h16l-1.5 12h-13L4 8ZM9 8V6a3 3 0 0 1 6 0v2" />
               </svg>
-              <span className={styles.cartCount}>{count}</span>
+              <span className={styles.cartCount}>
+                <span
+                  className={`${styles.cartCountValue} ${count === 1 ? styles.cartCountOne : ''}`}
+                >
+                  {count}
+                </span>
+              </span>
             </button>
           </div>
         </div>
       </div>
+      {menuOpen && (
+        <MobileMenu
+          phoneNumber={phoneNumber}
+          onAddressClick={onAddressClick}
+          onClose={() => setMenuOpen(false)}
+        />
+      )}
     </>
   )
 }

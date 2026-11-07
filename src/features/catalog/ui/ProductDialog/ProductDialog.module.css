@@ -309,7 +309,7 @@
 @media (max-width: 720px) {
   .layout {
     grid-template-columns: 1fr;
-    height: calc(100vh - 24px);
+    height: calc(100dvh - 24px);
     min-height: 0;
     overflow-y: auto;
   }
@@ -336,5 +336,42 @@
 
   .addButton {
     font-size: 12px;
+  }
+}
+
+@media (max-width: 400px) {
+  .footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .quantity {
+    align-self: center;
+  }
+
+  .addButton {
+    width: 100%;
+    min-height: 44px;
+    padding-inline: 18px;
+    font-size: 13px;
+  }
+}
+
+@media (min-width: 721px) and (max-height: 640px) {
+  .layout {
+    height: calc(100dvh - 48px);
+    min-height: 0;
+  }
+}
+
+@media (max-width: 720px) and (max-height: 500px) {
+  .visual {
+    height: min(38dvh, 170px);
+    min-height: 120px;
+  }
+
+  .details {
+    padding-block: 18px;
   }
 }

@@ -70,6 +70,7 @@ export function AboutScreen() {
           title={`Кафе «Место вкуса» на Яндекс Карте: ${cafeAddress}`}
           loading="lazy"
           allowFullScreen
+          referrerPolicy="no-referrer"
         />
       </section>
     </main>

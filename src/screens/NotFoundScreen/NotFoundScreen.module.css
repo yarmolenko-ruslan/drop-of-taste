@@ -1,0 +1,12 @@
+/* Пилюли действий общие с ErrorPage, чтобы не дублировать CSS-модули. */
+.action {
+  composes: action from '../../shared/ui/ErrorPage/ErrorPage.module.css';
+}
+
+.primary {
+  composes: primary from '../../shared/ui/ErrorPage/ErrorPage.module.css';
+}
+
+.ghost {
+  composes: ghost from '../../shared/ui/ErrorPage/ErrorPage.module.css';
+}

@@ -1,14 +1,8 @@
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify'
 import { requestCodeBodySchema, verifyCodeBodySchema } from '../shared/validation/auth.ts'
 import { SESSION_TTL_SECONDS, type AuthService } from './auth/service.ts'
-
-function readCookie(header: string | undefined, name: string): string | undefined {
-  return header
-    ?.split(';')
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${name}=`))
-    ?.slice(name.length + 1)
-}
+import { readSessionToken, sessionCookieName } from './auth/session-cookie.ts'
+import { createOriginChecker } from './origins.ts'
 
 function sessionCookie(name: string, token: string, secure: boolean, maxAge: number): string {
   return `${name}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? '; Secure' : ''}`
@@ -24,11 +18,18 @@ export function createApp(
 ): FastifyInstance {
   const app = Fastify({
     logger: false,
-    bodyLimit: 4_096,
+    bodyLimit: 65_536, // максимальная корзина (100 позиций) с запасом помещается в 64 КБ
     trustProxy: false,
     ajv: { customOptions: { removeAdditional: false, coerceTypes: false } },
   })
-  const cookieName = options.secureCookies ? '__Host-session' : 'dev_session'
+  const cookieName = sessionCookieName(options.secureCookies)
+  const isOriginAllowed = createOriginChecker(options.origins)
+
+  // Неизвестные маршруты отвечают в общем конверте ошибок, чтобы фронт
+  // показывал понятный текст, а не запасное «Не удалось выполнить запрос».
+  app.setNotFoundHandler((_request, reply) =>
+    reply.code(404).send(error('NOT_FOUND', 'Маршрут не найден')),
+  )
 
   app.setErrorHandler((failure, _request, reply) => {
     const knownFailure = failure as FastifyError
@@ -45,7 +46,7 @@ export function createApp(
     if (!request.url.startsWith('/api/auth/')) return
     reply.header('Cache-Control', 'no-store')
     if (request.method !== 'POST') return
-    if (!request.headers.origin || !options.origins.includes(request.headers.origin)) {
+    if (!isOriginAllowed(request.headers.origin)) {
       return reply.code(403).send(error('INVALID_ORIGIN', 'Запрос отклонён'))
     }
   })
@@ -85,7 +86,11 @@ export function createApp(
       return reply.code(400).send(error('INVALID_PHONE', 'Введите российский мобильный номер'))
     }
     if (result.status === 'limited') {
-      return reply.code(429).send(error('CODE_ATTEMPTS_EXCEEDED', 'Запросите новый код'))
+      // Retry-After нужен фронту, чтобы показать таймер повторного запроса кода.
+      return reply
+        .header('Retry-After', '60')
+        .code(429)
+        .send(error('CODE_ATTEMPTS_EXCEEDED', 'Запросите новый код'))
     }
     if (result.status !== 'verified') {
       return reply.code(400).send(error('INVALID_CODE', 'Неверный или просроченный код'))
@@ -98,12 +103,15 @@ export function createApp(
   })
 
   app.get('/api/auth/me', async (request, reply) => {
-    const user = await auth.getAccount(readCookie(request.headers.cookie, cookieName))
-    return user ? { user } : reply.code(401).send(error('UNAUTHENTICATED', 'Необходимо войти'))
+    const user = await auth.getAccount(
+      readSessionToken(request.headers.cookie, options.secureCookies),
+    )
+    if (!user) return reply.code(401).send(error('UNAUTHENTICATED', 'Необходимо войти'))
+    return { user }
   })
 
   app.post('/api/auth/logout', async (request, reply) => {
-    await auth.logout(readCookie(request.headers.cookie, cookieName))
+    await auth.logout(readSessionToken(request.headers.cookie, options.secureCookies))
     reply.header('Set-Cookie', sessionCookie(cookieName, '', options.secureCookies, 0))
     return reply.code(204).send()
   })

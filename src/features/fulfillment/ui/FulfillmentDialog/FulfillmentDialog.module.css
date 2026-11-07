@@ -1,6 +1,10 @@
 .dialog {
   width: min(calc(100vw - 48px), 1080px);
 }
+/* Форма адреса доставки: без карты достаточно узкого окна. */
+.addressDialog {
+  width: min(calc(100vw - 48px), 620px);
+}
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 47%) minmax(0, 53%);
@@ -11,6 +15,12 @@
   flex-direction: column;
   padding: 46px 38px 34px;
   background: #fffdfa;
+}
+/* Одноколоночная форма адреса: раньше прокрутку давал .layout (min-height + overflow),
+   теперь её носит сама колонка, иначе на низких экранах кнопка уходит за пределы окна. */
+.addressContent {
+  max-height: min(calc(100dvh - 48px), 820px);
+  overflow-y: auto;
 }
 .eyebrow {
   color: #2e6a36;
@@ -32,31 +42,6 @@
   font:
     14px/1.4 Arial,
     sans-serif;
-}
-.switch {
-  display: flex;
-  gap: 5px;
-  padding: 5px;
-  margin-bottom: 25px;
-  border-radius: 999px;
-  background: #f3e5d0;
-}
-.switch button {
-  flex: 1;
-  min-height: 45px;
-  padding: 8px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--color-text);
-  font:
-    700 14px Arial,
-    sans-serif;
-  cursor: pointer;
-}
-.switch .active {
-  background: var(--color-brand-red);
-  color: #fff;
 }
 .form {
   display: grid;
@@ -89,7 +74,7 @@
   border-color: var(--color-accent);
 }
 .form textarea {
-  resize: vertical;
+  resize: none;
 }
 .fields {
   display: grid;
@@ -175,9 +160,10 @@
     sans-serif;
   cursor: pointer;
 }
-.mapSpace {
-  min-height: 100%;
-  background: #f1e3cf;
+/* В диалоге адреса (без колонки карты) колонка не растянута: фиксированный отступ вместо auto,
+   чтобы кнопка не прилипала к полю комментария. У CafeMapDialog auto сохраняется. */
+.addressDialog .save {
+  margin-top: 24px;
 }
 .map {
   display: block;
@@ -188,6 +174,9 @@
 }
 @media (max-width: 720px) {
   .dialog {
+    width: calc(100vw - 24px);
+  }
+  .addressDialog {
     width: calc(100vw - 24px);
   }
   .layout {
@@ -202,12 +191,8 @@
   .content h2 {
     font-size: 33px;
   }
-  .mapSpace,
   .map {
     min-height: 300px;
     order: -1;
-  }
-  .save {
-    margin-top: 24px;
   }
 }

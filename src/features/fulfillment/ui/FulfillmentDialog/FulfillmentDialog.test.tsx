@@ -13,7 +13,7 @@ beforeAll(() => {
 
 test('сохраняет доставку по введённому адресу в личном кабинете', () => {
   const onSave = vi.fn()
-  render(<FulfillmentDialog allowPickup={false} onClose={() => {}} onSave={onSave} />)
+  render(<FulfillmentDialog onClose={() => {}} onSave={onSave} />)
   fireEvent.change(screen.getByRole('textbox', { name: 'Улица и дом' }), {
     target: { value: 'ул. Мира, 10' },
   })
@@ -37,7 +37,7 @@ test('сохраняет доставку по введённому адресу
 
 test('требует квартиру, подъезд и этаж, пока не отмечен частный дом', () => {
   const onSave = vi.fn()
-  render(<FulfillmentDialog allowPickup={false} onClose={() => {}} onSave={onSave} />)
+  render(<FulfillmentDialog onClose={() => {}} onSave={onSave} />)
   fireEvent.change(screen.getByRole('textbox', { name: 'Улица и дом' }), {
     target: { value: 'ул. Мира, 10' },
   })
@@ -63,7 +63,7 @@ test('требует квартиру, подъезд и этаж, пока не
 
 test('показывает ошибки обязательных полей при пустой форме доставки', () => {
   const onSave = vi.fn()
-  render(<FulfillmentDialog allowPickup={false} onClose={() => {}} onSave={onSave} />)
+  render(<FulfillmentDialog onClose={() => {}} onSave={onSave} />)
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить выбор' }))
   expect(onSave).not.toHaveBeenCalled()
   expect(screen.getByText('Укажите улицу и номер дома')).toBeInTheDocument()
@@ -74,7 +74,7 @@ test('показывает ошибки обязательных полей пр
 
 test('не сохраняет адрес с буквами в подъезде и сбрасывает ошибку после исправления', () => {
   const onSave = vi.fn()
-  render(<FulfillmentDialog allowPickup={false} onClose={() => {}} onSave={onSave} />)
+  render(<FulfillmentDialog onClose={() => {}} onSave={onSave} />)
   fireEvent.change(screen.getByRole('textbox', { name: 'Улица и дом' }), {
     target: { value: 'ул. Мира, 10' },
   })
@@ -103,7 +103,6 @@ test('подставляет текущий адрес при редактиро
   }
   render(
     <FulfillmentDialog
-      allowPickup={false}
       current={{ mode: 'delivery', label: 'ул. Апрельская, 18', details }}
       onClose={() => {}}
       onSave={onSave}
@@ -124,26 +123,4 @@ test('подставляет текущий адрес при редактиро
     label: 'ул. Апрельская, 18, подъезд 1, 8 этаж, квартира 44',
     details,
   })
-})
-
-test('показывает единственный ресторан с картой и открывает маршрут без сохранения', () => {
-  const onSave = vi.fn()
-  const open = vi.spyOn(window, 'open').mockImplementation(() => null)
-  const cafeAddress = 'г. Красноярск, улица Петра Подзолкова, 3и'
-  render(<FulfillmentDialog onClose={() => {}} onSave={onSave} />)
-
-  expect(screen.queryByRole('button', { name: 'Доставка' })).not.toBeInTheDocument()
-  expect(screen.queryByRole('radio')).not.toBeInTheDocument()
-  expect(screen.getByText(cafeAddress)).toBeInTheDocument()
-  expect(
-    screen.getByTitle(`Кафе «Капела вкуса» на Яндекс Карте: ${cafeAddress}`),
-  ).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Маршрут до кафе' }))
-  expect(onSave).not.toHaveBeenCalled()
-  expect(open).toHaveBeenCalledWith(
-    'https://yandex.ru/maps/?rtext=~56.049189,92.884165',
-    '_blank',
-    'noopener',
-  )
-  open.mockRestore()
 })

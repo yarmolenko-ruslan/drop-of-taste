@@ -1,9 +1,11 @@
 import { createHash, createHmac, randomBytes, randomInt, randomUUID } from 'node:crypto'
 import { normalizeRussianMobilePhone } from '../../shared/validation/phone.ts'
-import type { AuthStore, CodeSender } from './types.ts'
+import { CONSENT_VERSION } from '../../shared/validation/auth.ts'
+import { SESSION_TTL_SECONDS, type AuthStore, type CodeSender } from './types.ts'
+
+export { SESSION_TTL_SECONDS } from './types.ts'
 
 const CODE_TTL_MS = 5 * 60_000
-export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
 
 export type AuthServiceOptions = {
   store: AuthStore
@@ -63,7 +65,7 @@ export function createAuthService({
       const result = await store.verifyCode(phone, codeDigest(phone, code), now())
       if (result !== 'verified') return { status: result } as const
 
-      const account = await store.getOrCreateAccount(phone)
+      const account = await store.getOrCreateAccount(phone, CONSENT_VERSION, now())
       const token = randomBytes(32).toString('base64url')
       await store.createSession(tokenDigest(token), account.id, now() + SESSION_TTL_SECONDS * 1000)
       return { status: 'verified', account, token } as const

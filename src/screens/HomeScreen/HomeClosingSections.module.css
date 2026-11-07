@@ -392,9 +392,23 @@
     font-size: 35px;
   }
   .bonusSteps {
-    gap: 5px;
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
   .bonusSteps li {
-    padding: 10px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 16px;
+    min-height: 64px;
+    padding: 12px 16px;
+  }
+  .bonusSteps strong {
+    flex: none;
+    font-size: 29px;
+  }
+  .bonusSteps span {
+    margin-top: 0;
+    font-size: 13px;
   }
 }

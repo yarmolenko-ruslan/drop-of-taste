@@ -1,10 +1,13 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { AccountScreen } from './AccountScreen'
+import { useCartStore } from '../../features/cart'
 
-const { calls, state } = vi.hoisted(() => ({
-  calls: [] as { path: string; method: string; body: unknown }[],
+const { calls, state, catalogState } = vi.hoisted(() => ({
+  calls: [] as { path: string; method: string; body: unknown; accountId: string | null }[],
+  catalogState: { value: null as unknown },
   state: {
     profile: {
       name: 'Руслан Ярмоленко',
@@ -15,13 +18,23 @@ const { calls, state } = vi.hoisted(() => ({
     },
     addresses: [] as { id: string; mode: 'delivery'; label: string; details: unknown }[],
     orders: [] as unknown[],
+    ordersNextCursor: null as string | null,
+    moreOrdersResponse: null as Promise<{ orders: unknown[]; nextCursor: string | null }> | null,
+    failOrders: false,
+    notificationSaves: [] as Array<() => void>,
   },
 }))
+vi.mock('../../features/catalog/api/CatalogProvider', () => ({
+  useCatalog: () => catalogState.value,
+}))
 vi.mock('../../features/auth/api/authApi', () => ({
+  ApiError: class extends Error {
+    code = 'UNAUTHENTICATED'
+  },
   apiRequest: async (path: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
     const body = init?.body ? JSON.parse(String(init.body)) : undefined
-    calls.push({ path, method, body })
+    calls.push({ path, method, body, accountId: new Headers(init?.headers).get('X-Account-Id') })
     if (path === '/profile' && method === 'PUT') {
       state.profile = { ...state.profile, ...body }
       return { profile: state.profile }
@@ -30,8 +43,21 @@ vi.mock('../../features/auth/api/authApi', () => ({
       state.profile = { ...state.profile, selectedAddressId: body.addressId }
       return { selectedAddressId: body.addressId }
     }
+    if (path === '/profile/notifications' && method === 'PUT') {
+      return new Promise((resolve) => {
+        state.notificationSaves.push(() => {
+          state.profile.notifications = body as typeof state.profile.notifications
+          resolve({ notifications: body })
+        })
+      })
+    }
     if (path === '/profile') return { profile: state.profile }
-    if (path === '/orders') return { orders: state.orders }
+    if (path.startsWith('/orders?cursor='))
+      return state.moreOrdersResponse ?? { orders: [], nextCursor: null }
+    if (path === '/orders') {
+      if (state.failOrders) throw new Error('Заказы недоступны')
+      return { orders: [...state.orders], nextCursor: state.ordersNextCursor }
+    }
     if (path.startsWith('/orders/') && method === 'POST') {
       const id = path.split('/')[2]!
       const existing = state.orders as { _id: string }[]
@@ -63,7 +89,7 @@ vi.mock('../../features/auth/api/authApi', () => ({
   },
 }))
 
-const userData = { name: 'Руслан Ярмоленко', phone: '+79991234567' }
+const userData = { id: 'u1', name: 'Руслан Ярмоленко', phone: '+79991234567' }
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = function () {
     this.setAttribute('open', '')
@@ -73,6 +99,8 @@ beforeAll(() => {
   }
 })
 beforeEach(() => {
+  catalogState.value = null
+  useCartStore.setState({ lines: [], isOpen: false })
   calls.length = 0
   state.profile = {
     name: userData.name,
@@ -83,8 +111,17 @@ beforeEach(() => {
   }
   state.addresses = []
   state.orders = []
+  state.ordersNextCursor = null
+  state.moreOrdersResponse = null
+  state.failOrders = false
+  state.notificationSaves = []
 })
-function renderAccount(section: string, onUpdateUser = vi.fn(), onAddressPicked?: () => void) {
+function renderAccount(
+  section: string,
+  onUpdateUser = vi.fn(),
+  onAddressPicked?: () => void,
+  onLogout = vi.fn(),
+) {
   const view = render(
     <MemoryRouter initialEntries={[`/account/${section}`]}>
       <Routes>
@@ -93,7 +130,7 @@ function renderAccount(section: string, onUpdateUser = vi.fn(), onAddressPicked?
           element={
             <AccountScreen
               user={userData}
-              onLogout={() => {}}
+              onLogout={onLogout}
               onUpdateUser={onUpdateUser}
               onAddressPicked={onAddressPicked}
             />
@@ -102,8 +139,105 @@ function renderAccount(section: string, onUpdateUser = vi.fn(), onAddressPicked?
       </Routes>
     </MemoryRouter>,
   )
-  return Object.assign(view, { onUpdateUser })
+  return Object.assign(view, { onUpdateUser, onLogout })
 }
+
+test('выход требует подтверждения и может быть отменён', async () => {
+  const user = userEvent.setup()
+  const view = renderAccount('addresses')
+  await screen.findByRole('button', { name: 'Выйти' })
+  await user.click(screen.getByRole('button', { name: 'Выйти' }))
+  expect(screen.getByRole('heading', { name: 'Выйти из аккаунта?' })).toBeInTheDocument()
+  expect(view.onLogout).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: 'Остаться' }))
+  expect(view.onLogout).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: 'Выйти' }))
+  await user.click(screen.getByRole('button', { name: 'Да, выйти' }))
+  expect(view.onLogout).toHaveBeenCalledOnce()
+})
+
+test('ошибка загрузки заказов не выглядит как пустая история', async () => {
+  state.failOrders = true
+  renderAccount('orders')
+  expect(
+    await screen.findByRole('button', { name: 'Повторить загрузку заказов' }),
+  ).toBeInTheDocument()
+  expect(screen.queryByText('Тестовых заказов пока нет.')).not.toBeInTheDocument()
+  state.failOrders = false
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Повторить загрузку заказов' }))
+  expect(await screen.findByText('Тестовых заказов пока нет.')).toBeInTheDocument()
+})
+
+test('старый ответ продолжения не портит обновлённую историю заказов', async () => {
+  const makeOrder = (id: string) => ({
+    _id: `${id}-0000-0000-0000-000000000000`,
+    createdAt: '2026-11-04T12:02:00.000Z',
+    status: 'test',
+    input: { fulfillment: { mode: 'pickup', label: 'г. Красноярск, улица Петра Подзолкова, 3и' } },
+    quote: { lines: [], discountKopecks: 0, deliveryKopecks: 0, totalKopecks: 0 },
+  })
+  state.orders = [makeOrder('aaaaaa')]
+  state.ordersNextCursor = 'old-cursor'
+  let finishMore!: (result: { orders: unknown[]; nextCursor: string | null }) => void
+  state.moreOrdersResponse = new Promise((resolve) => {
+    finishMore = resolve
+  })
+  function Harness() {
+    const [revision, setRevision] = useState(0)
+    return (
+      <>
+        <button type="button" onClick={() => setRevision((value) => value + 1)}>
+          Обновить список
+        </button>
+        <AccountScreen
+          user={userData}
+          ordersRevision={revision}
+          onLogout={() => {}}
+          onUpdateUser={() => {}}
+        />
+      </>
+    )
+  }
+  render(
+    <MemoryRouter initialEntries={['/account/orders']}>
+      <Routes>
+        <Route path="/account/:section?" element={<Harness />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  const user = userEvent.setup()
+  expect(await screen.findByText('Тестовый заказ №AAAAAA')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Загрузить ещё заказы' }))
+  state.orders = [makeOrder('bbbbbb'), ...state.orders]
+  state.ordersNextCursor = 'new-cursor'
+  await user.click(screen.getByRole('button', { name: 'Обновить список' }))
+  expect(await screen.findByText('Тестовый заказ №BBBBBB')).toBeInTheDocument()
+  await act(async () => finishMore({ orders: [makeOrder('cccccc')], nextCursor: null }))
+  expect(screen.queryByText('Тестовый заказ №CCCCCC')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Загрузить ещё заказы' })).toBeInTheDocument()
+})
+
+test('карточка адреса разделяет город, улицу и дом', async () => {
+  state.addresses = [
+    {
+      id: 'a1',
+      mode: 'delivery',
+      label: 'красноярск, мира 17, подъезд 1, 1 этаж, квартира 1',
+      details: {
+        street: 'красноярск, мира 17',
+        entrance: '1',
+        floor: '1',
+        flat: '1',
+        comment: '',
+        isHouse: false,
+      },
+    },
+  ]
+  renderAccount('addresses')
+  expect(
+    await screen.findByText('г. Красноярск, ул. Мира, д. 17, под. 1, эт. 1, кв. 1'),
+  ).toBeInTheDocument()
+})
 
 test('профиль загружается и сохраняется через API', async () => {
   const user = userEvent.setup()
@@ -124,7 +258,32 @@ test('профиль загружается и сохраняется через
         (call.body as { email: string }).email === 'test@example.ru',
     ),
   ).toBe(true)
+  expect(
+    calls
+      .filter(
+        (call) =>
+          call.path.startsWith('/profile') ||
+          call.path.startsWith('/addresses') ||
+          call.path.startsWith('/orders'),
+      )
+      .every((call) => call.accountId === userData.id),
+  ).toBe(true)
   expect(screen.queryByRole('button', { name: 'Удалить профиль' })).not.toBeInTheDocument()
+})
+
+test('настройки уведомлений сохраняются последовательно', async () => {
+  renderAccount('profile')
+  const user = userEvent.setup()
+  const push = await screen.findByRole('checkbox', { name: 'Push-уведомления' })
+  const sms = screen.getByRole('checkbox', { name: 'SMS-уведомления' })
+  await user.click(push)
+  expect(sms).toBeDisabled()
+  expect(state.notificationSaves).toHaveLength(1)
+  await act(async () => state.notificationSaves.shift()?.())
+  expect(sms).toBeEnabled()
+  await user.click(sms)
+  await act(async () => state.notificationSaves.shift()?.())
+  expect(state.profile.notifications).toEqual({ push: true, email: false, sms: true })
 })
 
 test('вкладка заказов показывает иконку пустого состояния', async () => {
@@ -162,7 +321,8 @@ test('карточка заказа показывает статус-ленту
   expect(await screen.findByText('Тестовый заказ №ABCDEF')).toBeInTheDocument()
   expect(screen.getByText('Не передан в кафе')).toBeInTheDocument()
   expect(screen.getByText('Создан')).toBeInTheDocument()
-  expect(screen.getByText('Передан в кафе')).toBeInTheDocument()
+  expect(screen.getByText('Завершён тест')).toBeInTheDocument()
+  expect(screen.queryByText('Передан в кафе')).not.toBeInTheDocument()
   expect(
     screen.getByText('Самовывоз · г. Красноярск, улица Петра Подзолкова, 3и'),
   ).toBeInTheDocument()
@@ -206,6 +366,45 @@ test('заказ можно отметить выполненным — он п�
   await user.click(screen.getByRole('button', { name: /4 ноября/ }))
   expect(screen.getByRole('button', { name: 'Повторить заказ' })).toBeInTheDocument()
   expect(screen.getByText('Выполнен (тест)')).toBeInTheDocument()
+  expect(screen.queryByText('Выдан')).not.toBeInTheDocument()
+})
+
+test('повтор недоступного блюда не добавляет устаревшую цену в корзину', async () => {
+  catalogState.value = {
+    data: { categories: [{ products: [] }], newArrivalIds: [] },
+    itemsById: new Map(),
+    loading: false,
+    error: '',
+    retry: () => {},
+  }
+  const user = userEvent.setup()
+  state.orders = [
+    {
+      _id: 'abcdef12-3456-7890-abcd-ef1234567890',
+      createdAt: '2026-11-04T10:00:00.000Z',
+      input: {
+        fulfillment: { mode: 'pickup', label: 'г. Красноярск, улица Петра Подзолкова, 3и' },
+      },
+      quote: {
+        lines: [
+          {
+            productId: 'removed',
+            name: 'Старое блюдо',
+            quantity: 1,
+            unitPriceKopecks: 10000,
+            lineTotalKopecks: 10000,
+          },
+        ],
+        discountKopecks: 1000,
+        deliveryKopecks: 0,
+        totalKopecks: 9000,
+      },
+    },
+  ]
+  renderAccount('orders')
+  await user.click(await screen.findByRole('button', { name: 'Повторить заказ' }))
+  expect(screen.getByText(/Старое блюдо.*недоступен/)).toBeInTheDocument()
+  expect(useCartStore.getState().lines).toHaveLength(0)
 })
 
 test('выбранный адрес сохраняется на сервере и восстанавливается после перезагрузки', async () => {
@@ -226,7 +425,7 @@ test('выбранный адрес сохраняется на сервере �
     },
   ]
   const first = renderAccount('addresses')
-  await user.click(await screen.findByRole('radio', { name: /ул\. Мира, 10/ }))
+  await user.click(await screen.findByRole('radio', { name: /ул\. Мира, д\. 10/ }))
   expect(
     calls.some(
       (call) =>
@@ -237,7 +436,7 @@ test('выбранный адрес сохраняется на сервере �
   ).toBe(true)
   first.unmount()
   renderAccount('addresses')
-  expect(await screen.findByRole('radio', { name: /ул\. Мира, 10/ })).toBeChecked()
+  expect(await screen.findByRole('radio', { name: /ул\. Мира, д\. 10/ })).toBeChecked()
 })
 
 test('выбор адреса из сценария корзины вызывает возврат после успешного сохранения', async () => {
@@ -259,7 +458,7 @@ test('выбор адреса из сценария корзины вызыва�
   ]
   const onAddressPicked = vi.fn()
   renderAccount('addresses', vi.fn(), onAddressPicked)
-  await user.click(await screen.findByRole('radio', { name: /ул\. Мира, 10/ }))
+  await user.click(await screen.findByRole('radio', { name: /ул\. Мира, д\. 10/ }))
   await waitFor(() => expect(onAddressPicked).toHaveBeenCalledTimes(1))
 })
 
@@ -280,9 +479,34 @@ test('адрес добавляется и удаляется через API', a
   await user.type(screen.getByRole('textbox', { name: 'Этаж' }), '3')
   await user.type(screen.getByRole('textbox', { name: 'Квартира' }), '25')
   await user.click(screen.getByRole('button', { name: 'Сохранить выбор' }))
-  await screen.findByText('ул. Мира, 10, подъезд 2, 3 этаж, квартира 25')
+  await screen.findByText('ул. Мира, д. 10, под. 2, эт. 3, кв. 25')
   expect(calls.some((call) => call.path === '/addresses' && call.method === 'POST')).toBe(true)
   await user.click(screen.getByRole('button', { name: /Удалить адрес/ }))
+  const dialog = await screen.findByRole('dialog', { name: 'Удалить адрес?' })
+  expect(
+    within(dialog).getByText(
+      '«ул. Мира, д. 10, под. 2, эт. 3, кв. 25» будет удалён без возможности восстановления.',
+    ),
+  ).toBeInTheDocument()
+  await user.click(within(dialog).getByRole('button', { name: 'Отмена' }))
+  expect(screen.queryByRole('dialog', { name: 'Удалить адрес?' })).not.toBeInTheDocument()
+  expect(calls.some((call) => call.path === '/addresses/a1' && call.method === 'DELETE')).toBe(
+    false,
+  )
+  await user.click(screen.getByRole('button', { name: /Удалить адрес/ }))
+  await user.click(
+    within(await screen.findByRole('dialog', { name: 'Удалить адрес?' })).getByRole('button', {
+      name: 'Удалить',
+    }),
+  )
   await waitFor(() => expect(screen.queryByRole('radio')).not.toBeInTheDocument())
   expect(calls.some((call) => call.path === '/addresses/a1' && call.method === 'DELETE')).toBe(true)
+  expect(
+    calls.some(
+      (call) =>
+        call.path === '/profile/delivery-selection' &&
+        call.method === 'PUT' &&
+        (call.body as { addressId: string | null }).addressId === null,
+    ),
+  ).toBe(false)
 })

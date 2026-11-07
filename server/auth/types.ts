@@ -1,3 +1,5 @@
+export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
+
 export type Account = {
   id: string
   phone: string
@@ -22,7 +24,11 @@ export type AuthStore = {
   confirmCode(phone: string, reservationId: string, now: number): Promise<boolean>
   cancelCode(phone: string, reservationId: string): Promise<void>
   verifyCode(phone: string, digest: string, now: number): Promise<VerifyCodeResult>
-  getOrCreateAccount(phone: string): Promise<Account>
+  getOrCreateAccount(
+    phone: string,
+    consentVersion: string,
+    consentAcceptedAt: number,
+  ): Promise<Account>
   createSession(digest: string, accountId: string, expiresAt: number): Promise<void>
   findSession(digest: string, now: number): Promise<Account | null>
   deleteSession(digest: string): Promise<void>

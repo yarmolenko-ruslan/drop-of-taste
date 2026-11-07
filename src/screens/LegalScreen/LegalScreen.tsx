@@ -1,4 +1,5 @@
 import { Link } from 'react-router'
+import { CONSENT_VERSION } from '../../../shared/validation/auth'
 import styles from './LegalScreen.module.css'
 
 type LegalScreenProps = {
@@ -99,6 +100,7 @@ export function LegalScreen({ variant }: LegalScreenProps) {
       <article className={styles.document}>
         <span className={styles.eyebrow}>ИНФОРМАЦИЯ ДЛЯ ПОЛЬЗОВАТЕЛЕЙ</span>
         <h1>{page.title}</h1>
+        {variant === 'consent' && <p>Редакция от {CONSENT_VERSION}</p>}
         <p className={styles.intro}>{page.intro}</p>
         {page.sections.map(([title, text]) => (
           <section key={title}>

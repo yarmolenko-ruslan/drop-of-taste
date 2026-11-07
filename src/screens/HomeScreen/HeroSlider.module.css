@@ -177,5 +177,6 @@
   }
   .title {
     font-size: clamp(29px, 7vw, 40px);
+    hyphens: none;
   }
 }

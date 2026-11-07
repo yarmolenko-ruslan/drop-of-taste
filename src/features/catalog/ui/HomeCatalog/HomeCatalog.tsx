@@ -37,7 +37,13 @@ function ComboCard({
           </strong>
           <span className={styles.comboActionWrap}>
             <CatalogActionButton
-              item={{ id: combo.id, name: combo.name, image: combo.image, priceRub }}
+              item={{
+                id: combo.id,
+                name: combo.name,
+                image: combo.image,
+                priceRub,
+                available: live?.available,
+              }}
             />
           </span>
         </div>

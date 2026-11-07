@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { normalizeRussianMobilePhone } from '../../../../../shared/validation/phone'
 import { otpCodeSchema } from '../../../../../shared/validation/auth'
@@ -8,12 +8,18 @@ import styles from './AuthDialog.module.css'
 
 type AuthDialogProps = { onClose: () => void; onAuthenticate: (user: AuthUser) => void }
 
-function formatPhone(value: string) {
+function formatPhone(value: string, previous: string) {
   let digits = value.replace(/\D/g, '')
+  const previousDigits = previous.replace(/\D/g, '')
+  // Стирать разделитель (скобку, пробел, дефис) должно продолжать стирание номера:
+  // удаление символа оформления убирает последнюю цифру, иначе скобка возвращалась бы обратно.
+  if (digits && digits.length === previousDigits.length && value.length < previous.length) {
+    digits = digits.slice(0, -1)
+  }
   if (digits.startsWith('8')) digits = `7${digits.slice(1)}`
   if (digits && !digits.startsWith('7')) digits = `7${digits}`
   digits = digits.slice(0, 11)
-  if (!digits) return ''
+  if (!digits) return '+7'
   const rest = digits.slice(1)
   let result = '+7'
   if (rest) result += ` (${rest.slice(0, 3)}`
@@ -25,7 +31,7 @@ function formatPhone(value: string) {
 }
 
 export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
-  const [phone, setPhone] = useState('+7 ')
+  const [phone, setPhone] = useState('+7')
   const [code, setCode] = useState('')
   const [step, setStep] = useState<'phone' | 'code'>('phone')
   const [consent, setConsent] = useState(false)
@@ -33,6 +39,10 @@ export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
   const [retryAt, setRetryAt] = useState(0)
   const [remaining, setRemaining] = useState(0)
   const [error, setError] = useState('')
+  const [retryNotice, setRetryNotice] = useState(false)
+  const pendingRequest = useRef<AbortController | null>(null)
+
+  useEffect(() => () => pendingRequest.current?.abort(), [])
 
   useEffect(() => {
     if (!retryAt) return
@@ -50,18 +60,27 @@ export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
     }
     setBusy(true)
     setError('')
+    setRetryNotice(false)
+    pendingRequest.current?.abort()
+    const controller = new AbortController()
+    pendingRequest.current = controller
     try {
-      const result = await authApi.requestCode(normalized)
+      const result = await authApi.requestCode(normalized, controller.signal)
+      if (controller.signal.aborted) return
       setPhone(normalized)
       setRetryAt(Date.now() + result.retryAfterSeconds * 1000)
       setStep('code')
     } catch (failure) {
+      if (controller.signal.aborted) return
       if (failure instanceof ApiError && failure.retryAfterSeconds) {
         setRetryAt(Date.now() + failure.retryAfterSeconds * 1000)
+        setRetryNotice(true)
+      } else {
+        setError(failure instanceof Error ? failure.message : 'Не удалось запросить код')
       }
-      setError(failure instanceof Error ? failure.message : 'Не удалось запросить код')
     } finally {
-      setBusy(false)
+      if (pendingRequest.current === controller) pendingRequest.current = null
+      if (!controller.signal.aborted) setBusy(false)
     }
   }
 
@@ -72,13 +91,22 @@ export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
     }
     setBusy(true)
     setError('')
+    pendingRequest.current?.abort()
+    const controller = new AbortController()
+    pendingRequest.current = controller
     try {
-      const result = await authApi.verifyCode(phone, code)
+      const result = await authApi.verifyCode(phone, code, consent, controller.signal)
+      if (controller.signal.aborted) return
       onAuthenticate(result.user)
     } catch (failure) {
+      if (controller.signal.aborted) return
+      // Исчерпаны попытки кода (429 + Retry-After): показываем таймер повторной отправки.
+      if (failure instanceof ApiError && failure.retryAfterSeconds)
+        setRetryAt(Date.now() + failure.retryAfterSeconds * 1000)
       setError(failure instanceof Error ? failure.message : 'Не удалось проверить код')
     } finally {
-      setBusy(false)
+      if (pendingRequest.current === controller) pendingRequest.current = null
+      if (!controller.signal.aborted) setBusy(false)
     }
   }
 
@@ -90,7 +118,7 @@ export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
         <p className={styles.intro}>
           {step === 'phone'
             ? 'Войдите, чтобы видеть заказы и адреса доставки.'
-            : `Код для ${phone}. Локальный тестовый код: 123456. SMS не отправляется.`}
+            : `Код для ${phone}. Посмотрите код в терминале локального API. SMS не отправляется.`}
         </p>
         <form
           className={styles.form}
@@ -109,8 +137,24 @@ export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
                   autoComplete="tel"
                   value={phone}
                   aria-invalid={Boolean(error)}
+                  onFocus={(event) => {
+                    if (phone === '+7') {
+                      setPhone('+7 (')
+                      const input = event.currentTarget
+                      requestAnimationFrame(() => {
+                        if (document.activeElement === input)
+                          input.setSelectionRange(input.value.length, input.value.length)
+                      })
+                    }
+                  }}
+                  onClick={(event) => {
+                    if (phone === '+7 (') {
+                      const input = event.currentTarget
+                      input.setSelectionRange(input.value.length, input.value.length)
+                    }
+                  }}
                   onChange={(event) => {
-                    setPhone(formatPhone(event.target.value))
+                    setPhone(formatPhone(event.target.value, phone))
                     setError('')
                   }}
                   placeholder="+7 (999) 123-45-67"
@@ -130,11 +174,16 @@ export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
                   </Link>
                 </span>
               </label>
+              {retryNotice && remaining > 0 && (
+                <p className={styles.error} role="alert">
+                  Повторный запрос кода возможен через {remaining} с
+                </p>
+              )}
             </>
           ) : (
             <>
               <label className={styles.field}>
-                <span>Код из SMS</span>
+                <span>Одноразовый код</span>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -147,17 +196,6 @@ export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
                   }}
                 />
               </label>
-              <button
-                type="button"
-                className={styles.linkButton}
-                onClick={() => {
-                  setStep('phone')
-                  setCode('')
-                  setError('')
-                }}
-              >
-                Изменить номер
-              </button>
               <button
                 type="button"
                 className={styles.linkButton}

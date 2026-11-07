@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Dialog } from '../../../../shared/ui/Dialog/Dialog'
 import { cartCount, cartTotal, formatCartPrice, useCartStore } from '../../index'
 import styles from './CartDrawer.module.css'
 import { ApiError, apiRequest, type AuthUser } from '../../../auth/api/authApi'
 import type { FulfillmentSelection } from '../../../fulfillment/ui/FulfillmentDialog/FulfillmentDialog'
 import { useCatalog } from '../../../catalog/api/CatalogProvider'
+import { formatCompactAddress } from '../../../../shared/lib/formatCompactAddress'
 
 type Quote = {
   lines: {
@@ -66,23 +67,33 @@ export function CartDrawer({
   const [quoteSignature, setQuoteSignature] = useState('')
   const [busy, setBusy] = useState(false)
   const [orderKey, setOrderKey] = useState<string | null>(null)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
   const catalog = useCatalog()
   const count = cartCount(lines)
   const total = cartTotal(lines)
   const signature = JSON.stringify([lines, fulfillment])
   const currentQuote = quoteSignature === signature ? quote : null
-  const pricedRecommendations = recommendations.map((item) => {
+  const displayedSubtotal = currentQuote ? currentQuote.subtotalKopecks / 100 : total
+  const pricedRecommendations = recommendations.flatMap((item) => {
     const live = catalog?.data?.categories
       .flatMap((category) => category.products)
       .find((product) => product._id === item.id)
-    return live
-      ? {
-          ...item,
-          name: live.name,
-          image: live.image ?? item.image,
-          priceRub: live.priceKopecks / 100,
-        }
-      : item
+    return live?.available
+      ? [
+          {
+            ...item,
+            name: live.name,
+            image: live.image ?? item.image,
+            priceRub: live.priceKopecks / 100,
+          },
+        ]
+      : []
   })
 
   function orderInput() {
@@ -116,13 +127,15 @@ export function CartDrawer({
         method: 'POST',
         body: JSON.stringify(orderInput()),
       })
+      if (!mounted.current) return
       setQuote(result)
       setQuoteSignature(signature)
       setOrderKey(crypto.randomUUID())
     } catch (failure) {
-      setNotice(failure instanceof Error ? failure.message : 'Не удалось рассчитать заказ')
+      if (mounted.current)
+        setNotice(failure instanceof Error ? failure.message : 'Не удалось рассчитать заказ')
     } finally {
-      setBusy(false)
+      if (mounted.current) setBusy(false)
     }
   }
 
@@ -135,27 +148,43 @@ export function CartDrawer({
     try {
       setBusy(true)
       setNotice('')
+      const submittedLines = useCartStore.getState().lines
       const result = await apiRequest<{ order: { _id: string } }>('/orders', {
         method: 'POST',
-        headers: { 'Idempotency-Key': orderKey },
+        headers: { 'Idempotency-Key': orderKey, 'X-Account-Id': user.id },
         body: JSON.stringify({ ...orderInput(), expectedTotalKopecks: currentQuote.totalKopecks }),
       })
-      clear()
+      if (!mounted.current) return
+      const cartChanged = useCartStore.getState().lines !== submittedLines
+      if (!cartChanged) clear()
       setQuote(null)
       setOrderKey(null)
-      setNotice(`Тестовый заказ ${result.order._id.slice(0, 8)} сохранён. В кафе он не передаётся.`)
+      setNotice(
+        `Тестовый заказ ${result.order._id.slice(0, 8)} сохранён. В кафе он не передаётся.` +
+          (cartChanged ? ' Корзина менялась во время сохранения — проверьте её состав.' : ''),
+      )
       onOrderCreated?.()
     } catch (failure) {
-      if (failure instanceof ApiError && failure.code === 'PRICE_CHANGED') setQuote(null)
+      if (!mounted.current) return
+      if (
+        failure instanceof ApiError &&
+        (failure.code === 'PRICE_CHANGED' || failure.code === 'ADDRESS_CHANGED')
+      )
+        setQuote(null)
       if (failure instanceof ApiError && failure.code === 'UNAUTHENTICATED') onRequireAuth?.()
       setNotice(failure instanceof Error ? failure.message : 'Не удалось сохранить тестовый заказ')
     } finally {
-      setBusy(false)
+      if (mounted.current) setBusy(false)
     }
   }
 
   return (
-    <Dialog titleId="cart-title" onClose={close} placement="right" className={styles.dialog}>
+    <Dialog
+      titleId="cart-title"
+      onClose={busy ? () => undefined : close}
+      placement="right"
+      className={styles.dialog}
+    >
       <div className={styles.drawer}>
         <header className={styles.header}>
           <div>
@@ -166,6 +195,7 @@ export function CartDrawer({
             <button
               className={styles.clear}
               type="button"
+              disabled={busy}
               onClick={() => {
                 clear()
                 setQuote(null)
@@ -186,6 +216,11 @@ export function CartDrawer({
             </div>
             <h3>Пока тут пусто</h3>
             <p>Выберите что-нибудь вкусное из нашего меню — блюда появятся здесь.</p>
+            {notice && (
+              <p className={styles.notice} role="status">
+                {notice}
+              </p>
+            )}
             <button type="button" onClick={close}>
               Вернуться в меню
             </button>
@@ -201,10 +236,11 @@ export function CartDrawer({
                     : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14)
                       ? 'товара'
                       : 'товаров'}{' '}
-                  на {formatCartPrice(total)}
+                  на {currentQuote ? '' : 'примерно '}
+                  {formatCartPrice(displayedSubtotal)}
                 </h3>
                 <div className={styles.lines}>
-                  {lines.map((line) => (
+                  {lines.map((line, index) => (
                     <article className={styles.line} key={line.key}>
                       <div className={styles.lineImage}>
                         {line.image ? (
@@ -229,7 +265,13 @@ export function CartDrawer({
                         )}
                         <strong>
                           {formatCartPrice(
-                            line.unitPriceRub === null ? null : line.unitPriceRub * line.quantity,
+                            currentQuote
+                              ? currentQuote.lines[index]
+                                ? currentQuote.lines[index].lineTotalKopecks / 100
+                                : null
+                              : line.unitPriceRub === null
+                                ? null
+                                : line.unitPriceRub * line.quantity,
                           )}
                         </strong>
                       </div>
@@ -237,6 +279,7 @@ export function CartDrawer({
                         <button
                           type="button"
                           aria-label={`Уменьшить количество «${line.name}»`}
+                          disabled={busy}
                           onClick={() => changeQuantity(line.key, -1)}
                         >
                           −
@@ -245,6 +288,7 @@ export function CartDrawer({
                         <button
                           type="button"
                           aria-label={`Увеличить количество «${line.name}»`}
+                          disabled={line.quantity >= 99 || busy}
                           onClick={() => changeQuantity(line.key, 1)}
                         >
                           +
@@ -260,6 +304,7 @@ export function CartDrawer({
                   <button
                     type="button"
                     aria-pressed={fulfillment.mode === 'pickup'}
+                    disabled={busy}
                     onClick={() => onFulfillmentChange({ mode: 'pickup', label: cafeAddress })}
                   >
                     Самовывоз
@@ -267,6 +312,7 @@ export function CartDrawer({
                   <button
                     type="button"
                     aria-pressed={fulfillment.mode === 'delivery'}
+                    disabled={busy}
                     onClick={chooseDelivery}
                   >
                     Доставка
@@ -277,10 +323,15 @@ export function CartDrawer({
                     <span>{fulfillment.label}</span>
                   ) : (
                     <>
-                      <span>{fulfillment.label}</span>
+                      <span title={fulfillment.label}>
+                        {fulfillment.details
+                          ? formatCompactAddress(fulfillment.details)
+                          : fulfillment.label}
+                      </span>
                       <button
                         type="button"
                         className={styles.changeAddress}
+                        disabled={busy}
                         onClick={onGoToAddresses}
                       >
                         Изменить
@@ -326,7 +377,11 @@ export function CartDrawer({
                           <div>
                             <strong>{item.name}</strong>
                             <span>{formatCartPrice(item.priceRub)}</span>
-                            <button type="button" onClick={() => onAddRecommendation(item)}>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => onAddRecommendation(item)}
+                            >
                               В корзину
                             </button>
                           </div>
@@ -336,8 +391,8 @@ export function CartDrawer({
                 </section>
               )}
               <div className={styles.summary}>
-                <span>Итого</span>
-                <strong>{formatCartPrice(total)}</strong>
+                <span>{currentQuote ? 'Стоимость блюд' : 'Стоимость блюд (примерно)'}</span>
+                <strong>{formatCartPrice(displayedSubtotal)}</strong>
               </div>
               {currentQuote && (
                 <div className={styles.summary} role="status">

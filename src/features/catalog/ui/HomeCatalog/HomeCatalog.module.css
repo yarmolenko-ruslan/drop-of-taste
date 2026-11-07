@@ -195,6 +195,14 @@
   .productGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .comboCard {
+    grid-template-columns: 1fr;
+  }
+
+  .comboImageWrap {
+    height: 160px;
+  }
 }
 
 @media (max-width: 520px) {
@@ -205,6 +213,10 @@
   .comboGrid,
   .productGrid {
     grid-template-columns: 1fr;
+  }
+
+  .comboImageWrap {
+    height: 180px;
   }
 
   .categoryHeadingRow {

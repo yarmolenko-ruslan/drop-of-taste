@@ -2,7 +2,7 @@ import { addOneToCart, useCartStore } from '../../../cart'
 import styles from './CatalogActionButton.module.css'
 
 type CatalogActionButtonProps = {
-  item: { id: string; name: string; image?: string; priceRub: number | null }
+  item: { id: string; name: string; image?: string; priceRub: number | null; available?: boolean }
 }
 
 export function CatalogActionButton({ item }: CatalogActionButtonProps) {
@@ -31,6 +31,7 @@ export function CatalogActionButton({ item }: CatalogActionButtonProps) {
         <button
           type="button"
           aria-label={`Добавить «${item.name}» в корзину`}
+          disabled={line.quantity >= 99 || item.available === false}
           onClick={() => changeQuantity(line.key, 1)}
         >
           +
@@ -40,8 +41,13 @@ export function CatalogActionButton({ item }: CatalogActionButtonProps) {
   }
 
   return (
-    <button className={styles.action} type="button" onClick={() => addOneToCart(item)}>
-      В корзину
+    <button
+      className={styles.action}
+      type="button"
+      disabled={item.available === false}
+      onClick={() => addOneToCart(item)}
+    >
+      {item.available === false ? 'Нет в наличии' : 'В корзину'}
     </button>
   )
 }

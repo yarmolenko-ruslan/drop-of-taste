@@ -60,13 +60,13 @@ export const useCartStore = create<CartState>((set) => ({
         .sort((a, b) => a.name.localeCompare(b.name))
       const removedIngredients = [...options.removedIngredients].sort()
       const key = JSON.stringify([item.id, options.variant, removedIngredients, extras])
-      const quantity = Math.max(1, options.quantity)
+      const quantity = Math.min(99, Math.max(1, Math.trunc(options.quantity)))
       const existing = state.lines.find((line) => line.key === key)
 
       if (existing) {
         return {
           lines: state.lines.map((line) =>
-            line.key === key ? { ...line, quantity: line.quantity + quantity } : line,
+            line.key === key ? { ...line, quantity: Math.min(99, line.quantity + quantity) } : line,
           ),
         }
       }
@@ -92,7 +92,7 @@ export const useCartStore = create<CartState>((set) => ({
     set((state) => ({
       lines: state.lines
         .map((line) =>
-          line.key === key ? { ...line, quantity: line.quantity + difference } : line,
+          line.key === key ? { ...line, quantity: Math.min(99, line.quantity + difference) } : line,
         )
         .filter((line) => line.quantity > 0),
     })),

@@ -1,4 +1,5 @@
 import { createApp } from '../app.ts'
+import { PHONE_DAILY_LIMIT } from './limits.ts'
 import { createMemoryAuthStore } from './memory-store.ts'
 import { createAuthService } from './service.ts'
 
@@ -46,7 +47,7 @@ test('issues a code, creates a session and revokes it on logout', async () => {
       method: 'POST',
       url: '/api/auth/verify-code',
       headers: { origin },
-      payload: { phone: '+79991234567', code: '123456' },
+      payload: { phone: '+79991234567', code: '123456', consent: true },
     })
     expect(verify.statusCode).toBe(200)
     expect(verify.json().user.phone).toBe('+79991234567')
@@ -58,7 +59,7 @@ test('issues a code, creates a session and revokes it on logout', async () => {
       method: 'POST',
       url: '/api/auth/verify-code',
       headers: { origin },
-      payload: { phone, code: '123456' },
+      payload: { phone, code: '123456', consent: true },
     })
     expect(reused.statusCode).toBe(400)
 
@@ -109,7 +110,7 @@ test('accepts a code only once under concurrent verification', async () => {
         method: 'POST',
         url: '/api/auth/verify-code',
         headers: { origin },
-        payload: { phone, code: '123456' },
+        payload: { phone, code: '123456', consent: true },
       })
     const responses = await Promise.all([verify(), verify()])
     expect(responses.map((response) => response.statusCode).sort()).toEqual([200, 400])
@@ -133,7 +134,7 @@ test('limits resends and code guesses, and expires old codes', async () => {
         method: 'POST',
         url: '/api/auth/verify-code',
         headers: { origin },
-        payload: { phone, code },
+        payload: { phone, code, consent: true },
       })
 
     expect((await send()).statusCode).toBe(202)
@@ -150,6 +151,36 @@ test('limits resends and code guesses, and expires old codes', async () => {
     expect((await send()).statusCode).toBe(202)
     advance(5 * 60_000)
     expect((await verify('123456')).statusCode).toBe(400)
+  } finally {
+    await app.close()
+  }
+})
+
+test('caps a single phone by daily budget without blocking other phones', async () => {
+  const { app, advance } = setup()
+  try {
+    const send = (number: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/auth/request-code',
+        headers: { origin },
+        payload: { phone: number },
+      })
+    const first = '+79991000001'
+    const second = '+79991000002'
+
+    // Часовой лимит 5/час обходим продвижением времени; дневной 10/сутки — нет.
+    for (let attempt = 0; attempt < PHONE_DAILY_LIMIT; attempt += 1) {
+      if (attempt > 0) advance(60 * 60_000)
+      expect((await send(first)).statusCode).toBe(202)
+    }
+    advance(60 * 60_000)
+    const limited = await send(first)
+    expect(limited.statusCode).toBe(429)
+    expect(Number(limited.headers['retry-after'])).toBeGreaterThan(60 * 60)
+
+    // Другой номер (даже с того же IP) не страдает от чужого дневного лимита.
+    expect((await send(second)).statusCode).toBe(202)
   } finally {
     await app.close()
   }
@@ -262,14 +293,14 @@ test('rejects a numeric code without consuming the valid challenge', async () =>
       method: 'POST',
       url: '/api/auth/verify-code',
       headers: { origin },
-      payload: { phone, code: 123456 },
+      payload: { phone, code: 123456, consent: true },
     })
     expect(numeric.statusCode).toBe(400)
     const valid = await app.inject({
       method: 'POST',
       url: '/api/auth/verify-code',
       headers: { origin },
-      payload: { phone, code: '123456' },
+      payload: { phone, code: '123456', consent: true },
     })
     expect(valid.statusCode).toBe(200)
   } finally {
@@ -292,7 +323,7 @@ test('expires sessions and enforces the hourly send limit', async () => {
       method: 'POST',
       url: '/api/auth/verify-code',
       headers: { origin },
-      payload: { phone, code: '123456' },
+      payload: { phone, code: '123456', consent: true },
     })
     const cookie = verify.headers['set-cookie'] as string
     for (let sendIndex = 1; sendIndex < 5; sendIndex += 1) {
@@ -352,7 +383,7 @@ test('keeps a new challenge when an older delivery fails late', async () => {
           method: 'POST',
           url: '/api/auth/verify-code',
           headers: { origin },
-          payload: { phone, code: '123456' },
+          payload: { phone, code: '123456', consent: true },
         })
       ).statusCode,
     ).toBe(200)
@@ -380,10 +411,46 @@ test('does not leave a usable code if delivery fails', async () => {
           method: 'POST',
           url: '/api/auth/verify-code',
           headers: { origin },
-          payload: { phone, code: '123456' },
+          payload: { phone, code: '123456', consent: true },
         })
       ).statusCode,
     ).toBe(400)
+  } finally {
+    await app.close()
+  }
+})
+
+test('does not burn rate limits when delivery fails', async () => {
+  let failing = true
+  const now = 1_000_000
+  const auth = createAuthService({
+    store: createMemoryAuthStore(),
+    sender: {
+      async send() {
+        if (failing) throw new Error('provider unavailable')
+      },
+    },
+    secret: 'test-secret',
+    now: () => now,
+    developmentCode: '123456',
+  })
+  const app = createApp(auth, { origins: [origin], secureCookies: false })
+  try {
+    const request = () =>
+      app.inject({
+        method: 'POST',
+        url: '/api/auth/request-code',
+        headers: { origin },
+        payload: { phone },
+      })
+    // Пять подряд идущих сбоев: каждый откатывает свои лимиты, поэтому
+    // блокировки по cooldown/часовому лимиту не накапливаются.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect((await request()).statusCode).toBe(503)
+    }
+    failing = false
+    expect((await request()).statusCode).toBe(202)
+    expect((await request()).statusCode).toBe(429)
   } finally {
     await app.close()
   }
@@ -422,7 +489,7 @@ test('keeps the previous valid code if a resend fails', async () => {
           method: 'POST',
           url: '/api/auth/verify-code',
           headers: { origin },
-          payload: { phone, code: '123456' },
+          payload: { phone, code: '123456', consent: true },
         })
       ).statusCode,
     ).toBe(200)
@@ -465,7 +532,7 @@ test('completes a pending resend after the previous code was used', async () => 
         method: 'POST',
         url: '/api/auth/verify-code',
         headers: { origin },
-        payload: { phone, code: '123456' },
+        payload: { phone, code: '123456', consent: true },
       })
     expect((await request()).statusCode).toBe(202)
     now += 60_000

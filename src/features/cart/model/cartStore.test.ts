@@ -32,3 +32,16 @@ test('удаляет последнюю порцию и оставляет не�
   store.changeQuantity(line!.key, -1)
   expect(useCartStore.getState().lines).toHaveLength(0)
 })
+
+test('не превышает серверный предел 99 порций в строке', () => {
+  const store = useCartStore.getState()
+  const options = { variant: '', removedIngredients: [], extras: {}, quantity: 150 }
+  store.add(product, options)
+  expect(useCartStore.getState().lines[0]?.quantity).toBe(99)
+  store.add(product, { ...options, quantity: 1 })
+  const line = useCartStore.getState().lines[0]!
+  store.changeQuantity(line.key, 1)
+  expect(useCartStore.getState().lines[0]?.quantity).toBe(99)
+  store.changeQuantity(line.key, -98)
+  expect(useCartStore.getState().lines[0]?.quantity).toBe(1)
+})

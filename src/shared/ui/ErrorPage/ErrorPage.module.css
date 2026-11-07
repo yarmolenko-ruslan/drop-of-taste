@@ -1,0 +1,115 @@
+.root {
+  display: grid;
+  min-height: 62vh;
+  place-items: center;
+  padding: 48px 24px 72px;
+}
+
+.card {
+  width: min(100%, 560px);
+  padding: 44px 40px 48px;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 6px 17px rgb(73 36 30 / 8%);
+  text-align: center;
+}
+
+.code {
+  margin: 0 0 8px;
+  color: #d9b876;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 84px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+
+.illustration {
+  display: block;
+  width: 220px;
+  max-width: 70%;
+  margin: 0 auto 18px;
+}
+
+.title {
+  margin: 0;
+  color: #572328;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 34px;
+  font-weight: 400;
+  line-height: 1.15;
+}
+
+.message {
+  margin: 14px auto 0;
+  max-width: 420px;
+  color: #705c55;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 24px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    color 0.3s ease;
+}
+
+.primary {
+  border-color: var(--color-gold);
+  background: var(--color-gold);
+  color: #4b2024;
+}
+
+.primary:hover {
+  border-color: #e9cd8f;
+  background: #e9cd8f;
+}
+
+.ghost {
+  border-color: #d8a3a8;
+  background: transparent;
+  color: var(--color-brand-red);
+}
+
+.ghost:hover {
+  background: rgb(167 13 34 / 6%);
+}
+
+@media (max-width: 560px) {
+  .card {
+    padding: 32px 22px 36px;
+  }
+
+  .code {
+    font-size: 64px;
+  }
+
+  .title {
+    font-size: 27px;
+  }
+
+  .action {
+    width: 100%;
+  }
+}

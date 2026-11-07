@@ -1,5 +1,14 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import type { Account, AuthStore, ReserveCodeResult, VerifyCodeResult } from './types.ts'
+import {
+  DAY_MS,
+  GLOBAL_DAILY_LIMIT,
+  HOUR_MS,
+  IP_HOURLY_LIMIT,
+  PHONE_DAILY_LIMIT,
+  PHONE_HOURLY_LIMIT,
+  SEND_COOLDOWN_MS,
+} from './limits.ts'
 
 type Challenge = {
   active?: {
@@ -11,15 +20,11 @@ type Challenge = {
     reservationId: string
     digest: string
     expiresAt: number
+    ip: string
+    reservedAt: number
   }
 }
 
-const SEND_COOLDOWN_MS = 60_000
-const WINDOW_MS = 60 * 60_000
-const DAY_MS = 24 * WINDOW_MS
-const MAX_PER_PHONE_HOUR = 5
-const MAX_PER_IP_HOUR = 20
-const MAX_DAILY_SENDS = 100
 const MAX_CODE_ATTEMPTS = 5
 
 function sameDigest(left: string, right: string): boolean {
@@ -33,6 +38,7 @@ function sameDigest(left: string, right: string): boolean {
 export function createMemoryAuthStore(): AuthStore {
   const challenges = new Map<string, Challenge>()
   const phoneRequests = new Map<string, number[]>()
+  const phoneDayRequests = new Map<string, number[]>()
   const ipRequests = new Map<string, number[]>()
   const allRequests: number[] = []
   const accountsByPhone = new Map<string, Account>()
@@ -40,7 +46,7 @@ export function createMemoryAuthStore(): AuthStore {
   const sessions = new Map<string, { accountId: string; expiresAt: number }>()
 
   function recent(map: Map<string, number[]>, key: string, now: number): number[] {
-    const values = (map.get(key) ?? []).filter((time) => time > now - WINDOW_MS)
+    const values = (map.get(key) ?? []).filter((time) => time > now - HOUR_MS)
     if (values.length) map.set(key, values)
     else map.delete(key)
     return values
@@ -53,11 +59,21 @@ export function createMemoryAuthStore(): AuthStore {
       if (!challenge.active && !challenge.pending) challenges.delete(phone)
     }
     for (const [key] of phoneRequests) recent(phoneRequests, key, now)
+    for (const [key, times] of phoneDayRequests) {
+      const actual = times.filter((time) => time > now - DAY_MS)
+      if (actual.length) phoneDayRequests.set(key, actual)
+      else phoneDayRequests.delete(key)
+    }
     for (const [key] of ipRequests) recent(ipRequests, key, now)
     for (const [digest, session] of sessions) {
       if (session.expiresAt <= now) sessions.delete(digest)
     }
     while (allRequests.length && allRequests[0]! <= now - DAY_MS) allRequests.shift()
+  }
+
+  function withoutOne(values: number[], value: number) {
+    const index = values.indexOf(value)
+    return index === -1 ? values : [...values.slice(0, index), ...values.slice(index + 1)]
   }
 
   return {
@@ -72,14 +88,18 @@ export function createMemoryAuthStore(): AuthStore {
       prune(now)
       const existing = challenges.get(phone)
       const phoneTimes = recent(phoneRequests, phone, now)
+      const phoneDayTimes = (phoneDayRequests.get(phone) ?? []).filter(
+        (time) => time > now - DAY_MS,
+      )
       const ipTimes = recent(ipRequests, ip, now)
 
       const retryMs = Math.max(
         existing?.pending ? existing.pending.expiresAt - now : 0,
         phoneTimes.length ? phoneTimes[phoneTimes.length - 1]! + SEND_COOLDOWN_MS - now : 0,
-        phoneTimes.length >= MAX_PER_PHONE_HOUR ? phoneTimes[0]! + WINDOW_MS - now : 0,
-        ipTimes.length >= MAX_PER_IP_HOUR ? ipTimes[0]! + WINDOW_MS - now : 0,
-        allRequests.length >= MAX_DAILY_SENDS ? allRequests[0]! + DAY_MS - now : 0,
+        phoneTimes.length >= PHONE_HOURLY_LIMIT ? phoneTimes[0]! + HOUR_MS - now : 0,
+        phoneDayTimes.length >= PHONE_DAILY_LIMIT ? phoneDayTimes[0]! + DAY_MS - now : 0,
+        ipTimes.length >= IP_HOURLY_LIMIT ? ipTimes[0]! + HOUR_MS - now : 0,
+        allRequests.length >= GLOBAL_DAILY_LIMIT ? allRequests[0]! + DAY_MS - now : 0,
       )
       if (retryMs > 0) {
         return { status: 'limited', retryAfterSeconds: Math.ceil(retryMs / 1000) }
@@ -87,9 +107,10 @@ export function createMemoryAuthStore(): AuthStore {
 
       challenges.set(phone, {
         active: existing?.active,
-        pending: { reservationId, digest, expiresAt },
+        pending: { reservationId, digest, expiresAt, ip, reservedAt: now },
       })
       phoneRequests.set(phone, [...phoneTimes, now])
+      phoneDayRequests.set(phone, [...phoneDayTimes, now])
       ipRequests.set(ip, [...ipTimes, now])
       allRequests.push(now)
       return { status: 'reserved' }
@@ -108,7 +129,15 @@ export function createMemoryAuthStore(): AuthStore {
     },
     async cancelCode(phone, reservationId) {
       const challenge = challenges.get(phone)
-      if (challenge?.pending?.reservationId !== reservationId) return
+      if (!challenge || challenge.pending?.reservationId !== reservationId) return
+      const pending = challenge.pending
+      // SMS не ушёл — откатываем лимиты резервирования, чтобы сбой доставки
+      // не сжигал бюджеты номера, IP и всего сервиса.
+      phoneRequests.set(phone, withoutOne(phoneRequests.get(phone) ?? [], pending.reservedAt))
+      phoneDayRequests.set(phone, withoutOne(phoneDayRequests.get(phone) ?? [], pending.reservedAt))
+      ipRequests.set(pending.ip, withoutOne(ipRequests.get(pending.ip) ?? [], pending.reservedAt))
+      const globalIndex = allRequests.indexOf(pending.reservedAt)
+      if (globalIndex !== -1) allRequests.splice(globalIndex, 1)
       challenge.pending = undefined
       if (!challenge.active) challenges.delete(phone)
     },

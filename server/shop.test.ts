@@ -42,7 +42,7 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
       secret: 'test-secret',
       developmentCode: '123456',
     }),
-    { origins: [origin], secureCookies: false },
+    { origins: [origin], secureCookies: true },
   )
   try {
     await ensureAuthIndexes(db)
@@ -54,8 +54,8 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
       secret: 'test-secret',
       developmentCode: '123456',
     })
-    registerShopRoutes(app, db, mongo, auth)
-    registerProfileRoutes(app, db, auth)
+    registerShopRoutes(app, db, mongo, auth, [origin], true)
+    registerProfileRoutes(app, db, mongo, auth, [origin], true)
     const phone = '+79991234567'
     const request = await app.inject({
       method: 'POST',
@@ -68,10 +68,11 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
       method: 'POST',
       url: '/api/auth/verify-code',
       headers: { origin },
-      payload: { phone, code: '123456' },
+      payload: { phone, code: '123456', consent: true },
     })
     expect(verified.statusCode).toBe(200)
     const cookie = verified.headers['set-cookie']!.toString().split(';')[0]
+    expect(cookie?.startsWith('__Host-session=')).toBe(true)
 
     const pickupQuote = await app.inject({
       method: 'POST',
@@ -180,6 +181,8 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
     expect(first.statusCode).toBe(201)
     expect(repeated.statusCode).toBe(200)
     expect(repeated.json().order._id).toBe(first.json().order._id)
+    expect(first.json().order).not.toHaveProperty('accountId')
+    expect(first.json().order).not.toHaveProperty('idempotencyKey')
     expect(await db.collection('orders').countDocuments()).toBe(1)
     expect((await app.inject({ method: 'GET', url: '/api/orders' })).statusCode).toBe(401)
     const stale = await app.inject({
@@ -210,6 +213,19 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
       email: 'test@example.ru',
       birthday: '1992-02-29',
     })
+    const emailWithoutAddress = await app.inject({
+      method: 'PUT',
+      url: '/api/profile',
+      headers: { origin, cookie },
+      payload: {
+        name: 'Руслан',
+        email: '',
+        birthday: '',
+        notifications: { push: false, email: true, sms: false },
+      },
+    })
+    expect(emailWithoutAddress.statusCode).toBe(400)
+    expect(emailWithoutAddress.json().error.code).toBe('EMAIL_REQUIRED')
     const address = await app.inject({
       method: 'POST',
       url: '/api/addresses',
@@ -245,6 +261,36 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
       headers: { cookie },
     })
     expect(selectedProfile.json().profile.selectedAddressId).toBe(addressId)
+    const deliveryBody = {
+      lines: lines(2),
+      fulfillment: delivery,
+      expectedTotalKopecks: 97_000,
+    }
+    const deliveryOrder = await app.inject({
+      method: 'POST',
+      url: '/api/orders',
+      headers: { origin, cookie, 'idempotency-key': randomUUID() },
+      payload: deliveryBody,
+    })
+    expect(deliveryOrder.statusCode).toBe(201)
+    const changedAddress = await app.inject({
+      method: 'PUT',
+      url: `/api/addresses/${addressId}`,
+      headers: { origin, cookie },
+      payload: {
+        label: 'ул. Мира, 12, подъезд 2, 3 этаж, квартира 25',
+        details: { ...delivery.details, street: 'ул. Мира, 12' },
+      },
+    })
+    expect(changedAddress.statusCode).toBe(200)
+    const staleDelivery = await app.inject({
+      method: 'POST',
+      url: '/api/orders',
+      headers: { origin, cookie, 'idempotency-key': randomUUID() },
+      payload: deliveryBody,
+    })
+    expect(staleDelivery.statusCode).toBe(409)
+    expect(staleDelivery.json().error.code).toBe('ADDRESS_CHANGED')
     const otherPhone = '+79991234568'
     expect(
       (
@@ -260,9 +306,50 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
       method: 'POST',
       url: '/api/auth/verify-code',
       headers: { origin },
-      payload: { phone: otherPhone, code: '123456' },
+      payload: { phone: otherPhone, code: '123456', consent: true },
     })
     const otherCookie = otherLogin.headers['set-cookie']!.toString().split(';')[0]
+    const staleAccountHeader = {
+      origin,
+      cookie: otherCookie,
+      'x-account-id': verified.json().user.id,
+    }
+    const staleRead = await app.inject({
+      method: 'GET',
+      url: '/api/profile',
+      headers: staleAccountHeader,
+    })
+    expect(staleRead.statusCode).toBe(409)
+    expect(staleRead.json().error.code).toBe('ACCOUNT_CHANGED')
+    const staleWrite = await app.inject({
+      method: 'PUT',
+      url: '/api/profile',
+      headers: staleAccountHeader,
+      payload: {
+        name: 'Чужое имя',
+        email: '',
+        birthday: '',
+        notifications: { push: false, email: false, sms: false },
+      },
+    })
+    expect(staleWrite.statusCode).toBe(409)
+    const staleOrder = await app.inject({
+      method: 'POST',
+      url: '/api/orders',
+      headers: { ...staleAccountHeader, 'idempotency-key': randomUUID() },
+      payload: body,
+    })
+    expect(staleOrder.statusCode).toBe(409)
+    expect(
+      (
+        await app.inject({ method: 'GET', url: '/api/profile', headers: { cookie: otherCookie } })
+      ).json().profile.name,
+    ).not.toBe('Чужое имя')
+    expect(
+      (
+        await app.inject({ method: 'GET', url: '/api/orders', headers: { cookie: otherCookie } })
+      ).json().orders,
+    ).toHaveLength(0)
     expect(
       (
         await app.inject({ method: 'GET', url: '/api/orders', headers: { cookie: otherCookie } })
@@ -307,6 +394,36 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
       (await app.inject({ method: 'GET', url: '/api/profile', headers: { cookie } })).json().profile
         .selectedAddressId,
     ).toBeNull()
+    expect(
+      (
+        await app.inject({
+          method: 'PUT',
+          url: '/api/profile/delivery-selection',
+          headers: { origin, cookie },
+          payload: { addressId },
+        })
+      ).statusCode,
+    ).toBe(200)
+    const deletedAddress = await app.inject({
+      method: 'DELETE',
+      url: `/api/addresses/${addressId}`,
+      headers: { origin, cookie },
+    })
+    expect(deletedAddress.statusCode).toBe(204)
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/profile', headers: { cookie } })).json().profile
+        .selectedAddressId,
+    ).toBeNull()
+    expect(
+      (
+        await app.inject({
+          method: 'PUT',
+          url: '/api/profile/delivery-selection',
+          headers: { origin, cookie },
+          payload: { addressId },
+        })
+      ).statusCode,
+    ).toBe(404)
 
     const orderId = first.json().order._id as string
     const completed = await app.inject({
@@ -335,6 +452,119 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
         })
       ).statusCode,
     ).toBe(404)
+  } finally {
+    await app.close()
+    await mongo.close()
+    await repl.stop()
+  }
+}, 60_000)
+
+test('MongoDB отдаёт историю заказов страницами по курсору', async () => {
+  const repl = await MongoMemoryReplSet.create({
+    binary: { downloadDir: join(tmpdir(), 'drop-of-taste-mongodb') },
+    replSet: { count: 1 },
+  })
+  const mongo = new MongoClient(repl.getUri())
+  await mongo.connect()
+  const db = mongo.db(`test_${randomUUID().replaceAll('-', '')}`)
+  const app = createApp(
+    createAuthService({
+      store: createMongoAuthStore(mongo, db),
+      sender: { async send() {} },
+      secret: 'test-secret',
+      developmentCode: '123456',
+    }),
+    { origins: [origin], secureCookies: true },
+  )
+  try {
+    await ensureAuthIndexes(db)
+    await seedCatalog(db)
+    await ensureShopIndexes(db)
+    const auth = createAuthService({
+      store: createMongoAuthStore(mongo, db),
+      sender: { async send() {} },
+      secret: 'test-secret',
+      developmentCode: '123456',
+    })
+    registerShopRoutes(app, db, mongo, auth, [origin], true)
+    registerProfileRoutes(app, db, mongo, auth, [origin], true)
+
+    const phone = '+79991234567'
+    await app.inject({
+      method: 'POST',
+      url: '/api/auth/request-code',
+      headers: { origin },
+      payload: { phone },
+    })
+    const verified = await app.inject({
+      method: 'POST',
+      url: '/api/auth/verify-code',
+      headers: { origin },
+      payload: { phone, code: '123456', consent: true },
+    })
+    const cookie = verified.headers['set-cookie']!.toString().split(';')[0]!
+    const accountId = verified.json().user.id as string
+
+    // 55 готовых заказов: страницы 50 + 5.
+    const orders = db.collection<{ _id: string } & Record<string, unknown>>('orders')
+    const input = {
+      lines: [{ productId: 'borscht', quantity: 1, extras: [] }],
+      fulfillment: pickup,
+    }
+    const quote = {
+      lines: [],
+      subtotalKopecks: 0,
+      discountKopecks: 0,
+      deliveryKopecks: 0,
+      totalKopecks: 0,
+      eligible: true,
+      testMode: true,
+    }
+    const base = Date.parse('2026-11-01T00:00:00.000Z')
+    for (let index = 0; index < 55; index += 1) {
+      await orders.insertOne({
+        _id: randomUUID(),
+        accountId,
+        idempotencyKey: randomUUID(),
+        input,
+        quote,
+        status: 'test',
+        createdAt: new Date(base + index * 60_000),
+      })
+    }
+
+    const first = await app.inject({ method: 'GET', url: '/api/orders', headers: { cookie } })
+    expect(first.statusCode).toBe(200)
+    expect(first.json().orders).toHaveLength(50)
+    const cursor = first.json().nextCursor as string
+    expect(cursor).toBeTruthy()
+
+    const second = await app.inject({
+      method: 'GET',
+      url: `/api/orders?cursor=${encodeURIComponent(cursor)}`,
+      headers: { cookie },
+    })
+    expect(second.statusCode).toBe(200)
+    expect(second.json().orders).toHaveLength(5)
+    expect(second.json().nextCursor).toBeNull()
+
+    const ids = new Set([
+      ...first.json().orders.map((order: { _id: string }) => order._id),
+      ...second.json().orders.map((order: { _id: string }) => order._id),
+    ])
+    expect(ids.size).toBe(55) // страницы не пересекаются
+
+    // Свежий заказ не попадает во вторую страницу дважды при её повторном запросе:
+    // курсор стабилен, новые записи остаются на первой странице.
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/orders?cursor=not-a-cursor',
+          headers: { cookie },
+        })
+      ).statusCode,
+    ).toBe(400)
   } finally {
     await app.close()
     await mongo.close()

@@ -123,7 +123,8 @@ export function ProductDialog({ item: inputItem, onClose }: ProductDialogProps) 
               <button
                 type="button"
                 aria-label="Увеличить количество"
-                onClick={() => setQuantity((value) => value + 1)}
+                disabled={quantity >= 99}
+                onClick={() => setQuantity((value) => Math.min(99, value + 1))}
               >
                 +
               </button>
@@ -131,12 +132,14 @@ export function ProductDialog({ item: inputItem, onClose }: ProductDialogProps) 
             <button
               className={styles.addButton}
               type="button"
+              disabled={live?.available === false}
               onClick={() => {
                 addToCart(item, { variant: '', removedIngredients: [], extras, quantity })
                 onClose()
               }}
             >
-              Добавить в корзину <strong>{price}</strong>
+              {live?.available === false ? 'Нет в наличии' : 'Добавить в корзину'}{' '}
+              <strong>{price}</strong>
             </button>
           </div>
         </div>

@@ -1,6 +1,12 @@
 import type { Db } from 'mongodb'
 import { categoryMeta, createTemplateCatalog, newArrivalIds, type CatalogDoc } from './template.ts'
 
+const CATALOG_CACHE_TTL_MS = 30_000
+
+type CatalogPayload = Awaited<ReturnType<typeof buildCatalog>>
+
+const cacheByDatabase = new Map<string, { at: number; data: CatalogPayload }>()
+
 export async function seedCatalog(db: Db) {
   const collection = db.collection<CatalogDoc>('catalog')
   const items = createTemplateCatalog()
@@ -9,7 +15,7 @@ export async function seedCatalog(db: Db) {
   }
 }
 
-export async function getCatalog(db: Db) {
+async function buildCatalog(db: Db) {
   const items = await db
     .collection<CatalogDoc>('catalog')
     .find({})
@@ -28,4 +34,19 @@ export async function getCatalog(db: Db) {
     })),
     newArrivalIds,
   }
+}
+
+/** Сбрасывает кэш каталога (например, после ручного изменения позиций в БД). */
+export function invalidateCatalogCache() {
+  cacheByDatabase.clear()
+}
+
+/** Каталог меняется редко — отдаём закэшированный снимок, чтобы не гонять Mongo на каждый заход. */
+export async function getCatalog(db: Db) {
+  const now = Date.now()
+  const cached = cacheByDatabase.get(db.databaseName)
+  if (cached && now - cached.at < CATALOG_CACHE_TTL_MS) return cached.data
+  const data = await buildCatalog(db)
+  cacheByDatabase.set(db.databaseName, { at: now, data })
+  return data
 }

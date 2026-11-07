@@ -1,26 +1,84 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  Component,
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { HomeScreen } from '../screens/HomeScreen/HomeScreen'
-import { CategoryScreen } from '../screens/CategoryScreen/CategoryScreen'
-import { AboutScreen } from '../screens/AboutScreen/AboutScreen'
-import { PromotionsScreen } from '../screens/PromotionsScreen/PromotionsScreen'
-import { LegalScreen } from '../screens/LegalScreen/LegalScreen'
-import { AccountScreen } from '../screens/AccountScreen/AccountScreen'
+// Экраны подгружаются по маршруту: первый визит начинается с лёгкого чанка,
+// тяжёлые экраны (кабинет, юридические страницы) не тормозят старт.
+const CategoryScreen = lazy(() =>
+  import('../screens/CategoryScreen/CategoryScreen').then((m) => ({ default: m.CategoryScreen })),
+)
+const SearchScreen = lazy(() =>
+  import('../screens/SearchScreen/SearchScreen').then((m) => ({ default: m.SearchScreen })),
+)
+const AboutScreen = lazy(() =>
+  import('../screens/AboutScreen/AboutScreen').then((m) => ({ default: m.AboutScreen })),
+)
+const PromotionsScreen = lazy(() =>
+  import('../screens/PromotionsScreen/PromotionsScreen').then((m) => ({
+    default: m.PromotionsScreen,
+  })),
+)
+const LegalScreen = lazy(() =>
+  import('../screens/LegalScreen/LegalScreen').then((m) => ({ default: m.LegalScreen })),
+)
+const AccountScreen = lazy(() =>
+  import('../screens/AccountScreen/AccountScreen').then((m) => ({ default: m.AccountScreen })),
+)
+const NotFoundScreen = lazy(() =>
+  import('../screens/NotFoundScreen/NotFoundScreen').then((m) => ({ default: m.NotFoundScreen })),
+)
 import { SiteHeader } from '../features/site-header/ui/SiteHeader'
 import { SiteFooter } from '../features/site-footer/ui/SiteFooter'
 import { addOneToCart, useCartStore } from '../features/cart'
 import { CartDrawer } from '../features/cart/ui/CartDrawer/CartDrawer'
 import { AuthDialog } from '../features/auth/ui/AuthDialog/AuthDialog'
-import {
-  FulfillmentDialog,
-  type FulfillmentSelection,
-} from '../features/fulfillment/ui/FulfillmentDialog/FulfillmentDialog'
+import type { FulfillmentSelection } from '../features/fulfillment/ui/FulfillmentDialog/FulfillmentDialog'
+import { CafeMapDialog } from '../features/fulfillment/ui/FulfillmentDialog/CafeMapDialog'
 import { newArrivals } from '../features/catalog/model/newArrivals'
 import { ApiError, apiRequest, authApi, type AuthUser } from '../features/auth/api/authApi'
 import { CatalogProvider } from '../features/catalog/api/CatalogProvider'
 import { Spinner } from '../shared/ui/Spinner/Spinner'
 import { ScrollTopButton } from '../shared/ui/ScrollTopButton/ScrollTopButton'
+import { ErrorPage } from '../shared/ui/ErrorPage/ErrorPage'
 import styles from './App.module.css'
+import errorStyles from '../shared/ui/ErrorPage/ErrorPage.module.css'
+
+const pendingLogoutKey = 'drop-of-taste:pending-logout'
+const sessionChangeKey = 'drop-of-taste:session-change'
+
+function hasPendingLogout() {
+  try {
+    return localStorage.getItem(pendingLogoutKey) === '1'
+  } catch {
+    return false
+  }
+}
+
+function storePendingLogout(pending: boolean) {
+  try {
+    if (pending) localStorage.setItem(pendingLogoutKey, '1')
+    else localStorage.removeItem(pendingLogoutKey)
+  } catch {
+    // Private browsing can deny storage; the current tab still hides private data.
+  }
+}
+
+function broadcastSessionChange() {
+  try {
+    localStorage.setItem(sessionChangeKey, crypto.randomUUID())
+  } catch {
+    // Session state in this tab remains correct without cross-tab storage.
+  }
+}
 
 function ScrollToTopOnRouteChange() {
   const { pathname, hash } = useLocation()
@@ -36,25 +94,70 @@ function ScrollToTopOnRouteChange() {
   return null
 }
 
+/**
+ * Ленивые экраны грузятся отдельными чанками: если старый открытый сайт запросит
+ * чанк, которого уже нет после выкладки (хеши имён меняются), импорт отклоняется.
+ * Без границы такой сбой ронял бы всё приложение — показываем предложение обновиться.
+ */
+class RouteErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  componentDidCatch(failure: unknown, info: unknown) {
+    // Без журнала диагностировать фейлы чанков в проде нечем.
+    console.error('Route render failed', failure, info)
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <ErrorPage
+          title="Страница не загрузилась"
+          message="Похоже, приложение обновилось или прервалась связь. Обновите вкладку — и всё заварится заново."
+          actions={
+            <button
+              type="button"
+              className={`${errorStyles.action} ${errorStyles.primary}`}
+              onClick={() => window.location.reload()}
+            >
+              Обновить страницу
+            </button>
+          }
+        />
+      )
+    }
+    return this.props.children
+  }
+}
+
 function AppContent() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const isCartOpen = useCartStore((state) => state.isOpen)
   const closeCart = useCartStore((state) => state.close)
   const openCart = useCartStore((state) => state.open)
+  const clearCart = useCartStore((state) => state.clear)
   const cafeAddress = 'г. Красноярск, улица Петра Подзолкова, 3и'
   const [fulfillment, setFulfillment] = useState<FulfillmentSelection>({
     mode: 'pickup',
     label: cafeAddress,
   })
-  const [isFulfillmentOpen, setFulfillmentOpen] = useState(false)
+  const [isCafeMapOpen, setCafeMapOpen] = useState(false)
   /** Сценарий «выбор адреса из корзины»: после сохранения выбора возвращаем пользователя в корзину. */
   const [pickAddressForCart, setPickAddressForCart] = useState(false)
   const [isAuthOpen, setAuthOpen] = useState(false)
   const [authReturnToCart, setAuthReturnToCart] = useState(false)
   const [user, setUser] = useState<AuthUser>()
-  const [sessionLoading, setSessionLoading] = useState(true)
+  const activeUserId = useRef<string | undefined>(undefined)
+  const [ordersRevision, setOrdersRevision] = useState(0)
+  const [sessionLoading, setSessionLoading] = useState(() => !hasPendingLogout())
   const [sessionNotice, setSessionNotice] = useState('')
+  const [logoutPending, setLogoutPending] = useState(hasPendingLogout)
+  const sessionEpoch = useRef(0)
+  const logoutInFlight = useRef(false)
   const [savedDelivery, setSavedDelivery] = useState<{
     forUser: string
     selection: FulfillmentSelection | null
@@ -74,11 +177,12 @@ function AppContent() {
   useEffect(() => {
     if (!user || !isCartOpen) return
     let active = true
+    const headers = { 'X-Account-Id': user.id }
     Promise.all([
-      apiRequest<{ profile: { selectedAddressId: string | null } }>('/profile'),
+      apiRequest<{ profile: { selectedAddressId: string | null } }>('/profile', { headers }),
       apiRequest<{
         addresses: { id: string; label: string; details: FulfillmentSelection['details'] }[]
-      }>('/addresses'),
+      }>('/addresses', { headers }),
     ])
       .then(([profile, addressResult]) => {
         if (!active) return
@@ -105,15 +209,111 @@ function AppContent() {
     }
   }, [user, isCartOpen])
 
+  const clearPrivateState = useCallback(() => {
+    closeCart()
+    clearCart()
+    setFulfillment({ mode: 'pickup', label: cafeAddress })
+    setSavedDelivery(null)
+    setPickAddressForCart(false)
+    setAuthReturnToCart(false)
+    setAuthOpen(false)
+    setCafeMapOpen(false)
+    setOrdersRevision(0)
+  }, [clearCart, closeCart])
+
+  const revokeSession = useCallback(async () => {
+    if (logoutInFlight.current) return
+    logoutInFlight.current = true
+    try {
+      await authApi.logout()
+      storePendingLogout(false)
+      setLogoutPending(false)
+      setSessionNotice('')
+    } catch {
+      setSessionNotice(
+        'Данные скрыты. Нет связи с сервером; выход будет завершён при восстановлении связи.',
+      )
+    } finally {
+      logoutInFlight.current = false
+    }
+  }, [])
+
   useEffect(() => {
+    if (!logoutPending) return
+    queueMicrotask(() => void revokeSession())
+    window.addEventListener('online', revokeSession)
+    return () => window.removeEventListener('online', revokeSession)
+  }, [logoutPending, revokeSession])
+
+  useEffect(() => {
+    function onStorage(event: StorageEvent) {
+      if (event.key !== pendingLogoutKey && event.key !== sessionChangeKey) return
+      sessionEpoch.current += 1
+      clearPrivateState()
+      activeUserId.current = undefined
+      setUser(undefined)
+      navigate('/')
+      if (event.key === pendingLogoutKey) {
+        setLogoutPending(event.newValue === '1')
+        return
+      }
+      if (hasPendingLogout()) return
+      const epoch = sessionEpoch.current
+      void authApi
+        .me()
+        .then(({ user: account }) => {
+          if (epoch === sessionEpoch.current) {
+            activeUserId.current = account.id
+            setUser(account)
+          }
+        })
+        .catch(() => undefined)
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [clearPrivateState, navigate])
+
+  useEffect(() => {
+    function onAccountChanged() {
+      sessionEpoch.current += 1
+      const epoch = sessionEpoch.current
+      clearPrivateState()
+      activeUserId.current = undefined
+      setUser(undefined)
+      navigate('/')
+      if (hasPendingLogout()) return
+      void authApi
+        .me()
+        .then(({ user: account }) => {
+          if (epoch === sessionEpoch.current) {
+            activeUserId.current = account.id
+            setUser(account)
+          }
+        })
+        .catch(() => undefined)
+    }
+    window.addEventListener('drop-of-taste:account-changed', onAccountChanged)
+    return () => window.removeEventListener('drop-of-taste:account-changed', onAccountChanged)
+  }, [clearPrivateState, navigate])
+
+  useEffect(() => {
+    if (hasPendingLogout()) return
     let active = true
+    const epoch = sessionEpoch.current
     authApi
       .me()
-      .then(({ user }) => {
-        if (active) setUser(user)
+      .then(({ user: account }) => {
+        if (active && epoch === sessionEpoch.current) {
+          activeUserId.current = account.id
+          setUser(account)
+        }
       })
       .catch((failure) => {
-        if (active && !(failure instanceof ApiError && failure.code === 'UNAUTHENTICATED'))
+        if (
+          active &&
+          epoch === sessionEpoch.current &&
+          !(failure instanceof ApiError && failure.code === 'UNAUTHENTICATED')
+        )
           setSessionNotice('Не удалось проверить вход: нет связи с сервером.')
       })
       .finally(() => {
@@ -123,6 +323,27 @@ function AppContent() {
       active = false
     }
   }, [])
+
+  // Связь вернулась после старта без сервера: вход не был проверен — пробуем снова,
+  // чтобы пользователь не сидел «гостем», пока не обновит вкладку.
+  useEffect(() => {
+    if (user || logoutPending || hasPendingLogout()) return
+    function onOnline() {
+      const epoch = sessionEpoch.current
+      void authApi
+        .me()
+        .then(({ user: account }) => {
+          if (epoch === sessionEpoch.current) {
+            activeUserId.current = account.id
+            setUser(account)
+            setSessionNotice('')
+          }
+        })
+        .catch(() => undefined)
+    }
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
+  }, [user, logoutPending])
 
   function goToAddressesFromCart() {
     setPickAddressForCart(true)
@@ -137,69 +358,148 @@ function AppContent() {
   }
 
   const logout = useCallback(async () => {
-    try {
-      await authApi.logout()
-    } catch {
-      setSessionNotice('Не удалось выйти: нет связи с сервером. Повторите попытку.')
-      return
-    }
-    setSessionNotice('')
+    sessionEpoch.current += 1
+    storePendingLogout(true)
+    broadcastSessionChange()
+    setLogoutPending(true)
+    clearPrivateState()
+    activeUserId.current = undefined
     setUser(undefined)
     navigate('/')
-  }, [navigate])
+  }, [clearPrivateState, navigate])
+
+  const logoutCurrentUser = useMemo(() => {
+    const expectedId = user?.id
+    return () => {
+      if (expectedId && activeUserId.current === expectedId) void logout()
+    }
+  }, [logout, user?.id])
+
+  const authDialogEpoch = sessionEpoch.current
 
   return (
     <>
       <ScrollToTopOnRouteChange />
-      {sessionNotice && <p role="alert">{sessionNotice}</p>}
+      {sessionNotice && (
+        // Немодальный <dialog>: живёт в top layer, поэтому заметен поверх
+        // корзины и окон авторизации (z-index выше top layer не поднять).
+        <dialog
+          className={styles.noticeToast}
+          open
+          role="alert"
+          onClose={() => setSessionNotice('')}
+        >
+          <span className={styles.noticeIcon} aria-hidden="true">
+            <svg viewBox="0 0 20 20" width="18" height="18" fill="none">
+              <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="1.6" />
+              <path d="M10 5.6v5.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              <circle cx="10" cy="14" r="1.1" fill="currentColor" />
+            </svg>
+          </span>
+          <p className={styles.noticeText}>{sessionNotice}</p>
+          {logoutPending && (
+            <button
+              type="button"
+              className={styles.noticeAction}
+              onClick={() => void revokeSession()}
+            >
+              Повторить выход
+            </button>
+          )}
+          <button
+            type="button"
+            className={styles.noticeClose}
+            aria-label="Скрыть уведомление"
+            onClick={() => setSessionNotice('')}
+          >
+            ✕
+          </button>
+        </dialog>
+      )}
       <SiteHeader
         phoneNumber="+7 123 456-78-90"
         addressLabel="Кафе на карте"
         accountLabel={user ? user.name.split(' ')[0] || 'Кабинет' : undefined}
-        onAddressClick={() => setFulfillmentOpen(true)}
-        onAccountClick={() => (user ? navigate('/account/orders') : setAuthOpen(true))}
+        onAddressClick={() => setCafeMapOpen(true)}
+        onAccountClick={() => {
+          if (logoutPending) return
+          if (user) navigate('/account/orders')
+          else setAuthOpen(true)
+        }}
       />
-      <Routes>
-        <Route
-          index
-          element={
-            <HomeScreen onLogin={() => (user ? navigate('/account/loyalty') : setAuthOpen(true))} />
+      <RouteErrorBoundary>
+        <Suspense
+          fallback={
+            <main className={styles.sessionLoading}>
+              <Spinner label="Загружаем страницу…" />
+            </main>
           }
-        />
-        <Route path="menu/:categoryId" element={<CategoryScreen />} />
-        <Route path="about" element={<AboutScreen />} />
-        <Route
-          path="promotions"
-          element={
-            <PromotionsScreen
-              onLogin={() => (user ? navigate('/account/loyalty') : setAuthOpen(true))}
+        >
+          <Routes>
+            <Route
+              index
+              element={
+                <HomeScreen
+                  onLogin={() => {
+                    if (logoutPending) return
+                    if (user) navigate('/account/loyalty')
+                    else setAuthOpen(true)
+                  }}
+                />
+              }
             />
-          }
-        />
-        <Route path="privacy" element={<LegalScreen variant="privacy" />} />
-        <Route path="data-consent" element={<LegalScreen variant="consent" />} />
-        <Route
-          path="account/:section?"
-          element={
-            sessionLoading ? (
-              <main className={styles.sessionLoading}>
-                <Spinner label="Проверяем вход…" />
-              </main>
-            ) : user ? (
-              <AccountScreen
-                user={user}
-                onLogout={logout}
-                onUpdateUser={(updated) =>
-                  setUser((current) => (current ? { ...current, ...updated } : current))
-                }
-                onAddressPicked={pickAddressForCart ? returnToCartAfterPick : undefined}
-              />
-            ) : (
-              <Navigate to="/" replace />
-            )
-          }
-        />
-      </Routes>
+            <Route path="menu/:categoryId" element={<CategoryScreen />} />
+            <Route path="search" element={<SearchScreen />} />
+            <Route path="about" element={<AboutScreen />} />
+            <Route
+              path="promotions"
+              element={
+                <PromotionsScreen
+                  onLogin={() => {
+                    if (logoutPending) return
+                    if (user) navigate('/account/loyalty')
+                    else setAuthOpen(true)
+                  }}
+                />
+              }
+            />
+            <Route path="privacy" element={<LegalScreen variant="privacy" />} />
+            <Route path="data-consent" element={<LegalScreen variant="consent" />} />
+            <Route
+              path="account/:section?"
+              element={
+                sessionLoading ? (
+                  <main className={styles.sessionLoading}>
+                    <Spinner label="Проверяем вход…" />
+                  </main>
+                ) : user ? (
+                  <AccountScreen
+                    key={user.id}
+                    user={user}
+                    ordersRevision={ordersRevision}
+                    onLogout={logoutCurrentUser}
+                    onUpdateUser={(updated) =>
+                      setUser((current) =>
+                        current?.id === user.id ? { ...current, ...updated } : current,
+                      )
+                    }
+                    onAddressPicked={
+                      pickAddressForCart
+                        ? () => {
+                            if (activeUserId.current === user.id) returnToCartAfterPick()
+                          }
+                        : undefined
+                    }
+                  />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
+            <Route path="*" element={<NotFoundScreen />} />
+          </Routes>
+        </Suspense>
+      </RouteErrorBoundary>
       <SiteFooter />
       <ScrollTopButton />
       {isCartOpen && (
@@ -211,6 +511,7 @@ function AppContent() {
           user={user}
           onRequireAuth={() => {
             closeCart()
+            if (logoutPending) return
             setAuthReturnToCart(true)
             setAuthOpen(true)
           }}
@@ -218,28 +519,28 @@ function AppContent() {
           onGoToAddresses={goToAddressesFromCart}
           recommendations={newArrivals}
           onAddRecommendation={addOneToCart}
+          onOrderCreated={() => setOrdersRevision((current) => current + 1)}
         />
       )}
-      {isFulfillmentOpen && (
-        <FulfillmentDialog
-          onClose={() => setFulfillmentOpen(false)}
-          onSave={(selection) => {
-            setFulfillment(selection)
-            setFulfillmentOpen(false)
-          }}
-        />
-      )}
-      {isAuthOpen && (
+      {isCafeMapOpen && <CafeMapDialog onClose={() => setCafeMapOpen(false)} />}
+      {isAuthOpen && !logoutPending && (
         <AuthDialog
           onClose={() => {
             setAuthOpen(false)
             setAuthReturnToCart(false)
           }}
           onAuthenticate={(account) => {
+            if (logoutPending || hasPendingLogout() || authDialogEpoch !== sessionEpoch.current)
+              return
+            sessionEpoch.current += 1
+            activeUserId.current = account.id
+            const changedAccount = user && user.id !== account.id
+            if (changedAccount) clearPrivateState()
+            broadcastSessionChange()
             setSessionNotice('')
             setUser(account)
             setAuthOpen(false)
-            if (authReturnToCart) {
+            if (authReturnToCart && !changedAccount) {
               setAuthReturnToCart(false)
               openCart()
             } else navigate('/account/orders')

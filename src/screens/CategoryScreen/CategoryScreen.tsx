@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ComponentProps } from 'react'
 import { Link, useParams } from 'react-router'
 import {
   dialogItemFromProduct,
@@ -9,6 +9,9 @@ import { ProductDialog } from '../../features/catalog/ui/ProductDialog/ProductDi
 import { homeCategories, homeCombos } from '../../features/catalog/model/homeCatalog'
 import { ProductCard } from '../../features/catalog/ui/ProductCard/ProductCard'
 import { SauceGrid } from '../HomeScreen/HomeClosingSections'
+import { useInfiniteItems } from '../../shared/lib/useInfiniteItems'
+import { ErrorPage } from '../../shared/ui/ErrorPage/ErrorPage'
+import errorStyles from '../../shared/ui/ErrorPage/ErrorPage.module.css'
 import styles from './CategoryScreen.module.css'
 import { CatalogStatus, useCatalog } from '../../features/catalog/api/CatalogProvider'
 
@@ -69,36 +72,27 @@ export function CategoryScreen() {
 
   if (!category) {
     return (
-      <main className={styles.root}>
-        <h1 className={styles.heading}>Раздел не найден</h1>
-        <Link className={styles.back} to="/">
-          Вернуться на главную
-        </Link>
-      </main>
+      <ErrorPage
+        code="404"
+        title="Раздел меню не найден"
+        message="Такого раздела нет в нашем меню — возможно, его уже сняли с подачи. Загляните на главную: там всё самое вкусное."
+        actions={
+          <Link className={`${errorStyles.action} ${errorStyles.primary}`} to="/">
+            На главную
+          </Link>
+        }
+      />
     )
   }
 
   return (
     <>
-      <main className={styles.root}>
-        <nav className={styles.breadcrumbs} aria-label="Навигационная цепочка">
-          <Link to="/">Главная</Link>
-          <span aria-hidden="true">/</span>
-          <span>{category.title}</span>
-        </nav>
-        <h1 className={styles.heading}>{category.title}</h1>
-        <p>Цены примерные для демонстрации.</p>
-        <p className={styles.subtitle}>{category.subtitle}</p>
-        <div className={styles.grid}>
-          {category.products.map((item) => (
-            <ProductCard
-              key={item.id}
-              product={item}
-              onAction={(product) => setSelectedItem(dialogItemFromProduct(product))}
-            />
-          ))}
-        </div>
-      </main>
+      <CategoryProducts
+        categoryTitle={category.title}
+        categorySubtitle={category.subtitle}
+        products={category.products}
+        onAction={(product) => setSelectedItem(dialogItemFromProduct(product))}
+      />
       {selectedItem && (
         <ProductDialog
           key={selectedItem.id}
@@ -107,5 +101,45 @@ export function CategoryScreen() {
         />
       )}
     </>
+  )
+}
+
+type CategoryProduct = ComponentProps<typeof ProductCard>['product']
+
+function CategoryProducts({
+  categoryTitle,
+  categorySubtitle,
+  products,
+  onAction,
+}: {
+  categoryTitle: string
+  categorySubtitle: string
+  products: readonly CategoryProduct[]
+  onAction: (product: CategoryProduct) => void
+}) {
+  const { visibleItems, hasMore, sentinelRef, showMore } = useInfiniteItems(products, 6)
+  return (
+    <main className={styles.root}>
+      <nav className={styles.breadcrumbs} aria-label="Навигационная цепочка">
+        <Link to="/">Главная</Link>
+        <span aria-hidden="true">/</span>
+        <span>{categoryTitle}</span>
+      </nav>
+      <h1 className={styles.heading}>{categoryTitle}</h1>
+      <p>Цены примерные для демонстрации.</p>
+      <p className={styles.subtitle}>{categorySubtitle}</p>
+      <div className={styles.grid}>
+        {visibleItems.map((item) => (
+          <ProductCard key={item.id} product={item} onAction={onAction} />
+        ))}
+      </div>
+      {/* Сторожок дозагрузки: карточки подгружаются сами при прокрутке к концу */}
+      <div ref={sentinelRef} aria-hidden="true" />
+      {hasMore && (
+        <button type="button" className={styles.showMore} onClick={showMore}>
+          Показать ещё
+        </button>
+      )}
+    </main>
   )
 }

@@ -23,6 +23,8 @@ coverage
 coverage/*
 .kimi-assets
 .kimi-assets/*
+docs
+docs/*
 
 # Editor directories and files
 .vscode/*

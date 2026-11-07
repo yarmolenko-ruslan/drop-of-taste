@@ -25,6 +25,20 @@ footer[id] {
   scroll-margin-top: 88px;
 }
 
+@media (max-width: 1050px) {
+  section[id],
+  footer[id] {
+    scroll-margin-top: 270px;
+  }
+}
+
+@media (max-width: 768px) {
+  section[id],
+  footer[id] {
+    scroll-margin-top: 125px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

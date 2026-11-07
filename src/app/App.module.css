@@ -3,3 +3,78 @@
   min-height: 50vh;
   place-items: center;
 }
+
+.noticeToast {
+  position: fixed;
+  /* 88px снизу — запас под кнопку «наверх» (52px + отступы), чтобы не перекрывать её */
+  inset: auto 20px 88px auto;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(420px, calc(100vw - 40px));
+  padding: 14px 16px;
+  border: 1px solid #efd9c4;
+  border-radius: 16px;
+  background: #fff;
+  color: var(--color-text);
+  box-shadow: 0 10px 30px rgb(73 36 30 / 14%);
+}
+
+.noticeIcon {
+  flex: none;
+  color: var(--color-brand-red);
+}
+
+.noticeText {
+  flex: 1;
+  margin: 0;
+  color: #572328;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.noticeAction {
+  flex: none;
+  padding: 8px 14px;
+  border: 1px solid var(--color-gold);
+  border-radius: 999px;
+  background: var(--color-gold);
+  color: #4b2024;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease;
+}
+
+.noticeAction:hover {
+  border-color: #e9cd8f;
+  background: #e9cd8f;
+}
+
+.noticeClose {
+  flex: none;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: #a08a80;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.noticeClose:hover {
+  color: #572328;
+}
+
+@media (max-width: 560px) {
+  .noticeToast {
+    inset: auto 12px 88px 12px;
+    width: auto;
+    flex-wrap: wrap;
+  }
+}

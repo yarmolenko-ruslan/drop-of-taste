@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router'
 import {
   FulfillmentDialog,
@@ -9,16 +9,20 @@ import { issuesByField } from '../../../shared/validation/issues'
 import styles from './AccountScreen.module.css'
 import { ApiError, apiRequest } from '../../features/auth/api/authApi'
 import { Spinner } from '../../shared/ui/Spinner/Spinner'
+import { Dialog } from '../../shared/ui/Dialog/Dialog'
 import { useCartStore } from '../../features/cart'
 import { useCatalog } from '../../features/catalog/api/CatalogProvider'
+import { formatCompactAddress } from '../../shared/lib/formatCompactAddress'
 
 export type AccountUser = {
+  id: string
   name: string
   phone: string
 }
 
 type AccountScreenProps = {
   user: AccountUser
+  ordersRevision?: number
   onLogout: () => void
   onUpdateUser: (user: AccountUser) => void
   /** Вызывается после успешного сохранения выбранного адреса (сценарий «выбор адреса из корзины»). */
@@ -26,6 +30,11 @@ type AccountScreenProps = {
 }
 
 type Address = FulfillmentSelection & { id: string }
+
+function displayAddress(address: Address): string {
+  return address.details ? formatCompactAddress(address.details) : address.label
+}
+
 type Order = {
   _id: string
   createdAt: string
@@ -111,19 +120,10 @@ function OrderDetailsCard({
 }) {
   const completed = order.status === 'completed'
   const pickup = order.input.fulfillment.mode === 'pickup'
-  const steps = completed
-    ? [
-        ['Создан', timeOf(order.createdAt)],
-        ['Передан в кафе', '—'],
-        ['Готовится', '—'],
-        ['Выдан', timeOf(order.completedAt ?? order.createdAt)],
-      ]
-    : [
-        ['Создан', timeOf(order.createdAt)],
-        ['Передан в кафе', '—'],
-        ['Готовится', '—'],
-        ['Выдан', '—'],
-      ]
+  const steps = [
+    ['Создан', timeOf(order.createdAt)],
+    ['Завершён тест', completed ? timeOf(order.completedAt ?? order.createdAt) : '—'],
+  ]
   return (
     <article className={styles.orderCard}>
       <header className={styles.orderHeader}>
@@ -210,6 +210,7 @@ function OrderDetailsCard({
 
 export function AccountScreen({
   user,
+  ordersRevision = 0,
   onLogout,
   onUpdateUser,
   onAddressPicked,
@@ -222,17 +223,43 @@ export function AccountScreen({
   const [month, setMonth] = useState('')
   const [year, setYear] = useState('')
   const [notifications, setNotifications] = useState({ push: false, email: false, sms: false })
+  const [settingsBusy, setSettingsBusy] = useState(false)
+  const settingsBusyRef = useRef(false)
   const [notice, setNotice] = useState('')
   const [orders, setOrders] = useState<Order[]>([])
+  const [ordersError, setOrdersError] = useState('')
+  const [ordersNextCursor, setOrdersNextCursor] = useState<string | null>(null)
+  const [ordersLoadingMore, setOrdersLoadingMore] = useState(false)
+  const ordersLoadMoreRef = useRef<HTMLDivElement | null>(null)
+  const ordersRequestSeq = useRef(0)
+  const ordersRevisionRef = useRef(ordersRevision)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [addresses, setAddresses] = useState<Address[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null)
+  const [selectionBusy, setSelectionBusy] = useState(false)
   const [addressDialog, setAddressDialog] = useState<
     { mode: 'add' } | { mode: 'edit'; address: Address } | null
   >(null)
+  const [addressToDelete, setAddressToDelete] = useState<Address | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [logoutConfirmationOpen, setLogoutConfirmationOpen] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [expandedOrders, setExpandedOrders] = useState<ReadonlySet<string>>(new Set())
   const catalog = useCatalog()
+  const accountRequest = useCallback(
+    <T,>(path: string, init?: RequestInit): Promise<T> => {
+      const headers = new Headers(init?.headers)
+      headers.set('X-Account-Id', user.id)
+      return apiRequest<T>(path, { ...init, headers })
+    },
+    [user.id],
+  )
+
+  useEffect(() => {
+    ordersRevisionRef.current = ordersRevision
+  }, [ordersRevision])
 
   const activeOrders = orders.filter((order) => order.status !== 'completed')
   const historyOrders = orders.filter((order) => order.status === 'completed')
@@ -268,8 +295,9 @@ export function AccountScreen({
 
   useEffect(() => {
     let active = true
-    Promise.all([
-      apiRequest<{
+    const initialRevision = ordersRevisionRef.current
+    Promise.allSettled([
+      accountRequest<{
         profile: {
           name: string
           email: string
@@ -278,34 +306,73 @@ export function AccountScreen({
           selectedAddressId: string | null
         }
       }>('/profile'),
-      apiRequest<{ addresses: Address[] }>('/addresses'),
-      apiRequest<{ orders: Order[] }>('/orders'),
+      accountRequest<{ addresses: Address[] }>('/addresses'),
+      accountRequest<{ orders: Order[]; nextCursor: string | null }>('/orders'),
     ])
       .then(([profileResult, addressResult, orderResult]) => {
         if (!active) return
-        setName(profileResult.profile.name)
-        setEmail(profileResult.profile.email)
-        setSavedEmail(profileResult.profile.email)
-        const [y = '', m = '', d = ''] = profileResult.profile.birthday.split('-')
-        setYear(y)
-        setMonth(m ? String(Number(m)) : '')
-        setDay(d ? String(Number(d)) : '')
-        setNotifications(profileResult.profile.notifications)
-        const loadedAddresses = addressResult.addresses
-        setAddresses(loadedAddresses)
-        const savedSelection = profileResult.profile.selectedAddressId ?? null
-        setSelectedAddressId(
-          loadedAddresses.some((address) => address.id === savedSelection) ? savedSelection : null,
+        const rejected = [profileResult, addressResult, orderResult].filter(
+          (result) => result.status === 'rejected',
         )
-        setOrders(orderResult.orders)
-      })
-      .catch((failure) => {
-        if (!active) return
-        if (failure instanceof ApiError && failure.code === 'UNAUTHENTICATED') {
+        if (
+          rejected.some(
+            (result) =>
+              result.reason instanceof ApiError && result.reason.code === 'UNAUTHENTICATED',
+          )
+        ) {
           onLogout()
           return
         }
-        setNotice(failure instanceof Error ? failure.message : 'Не удалось загрузить данные')
+        if (
+          rejected.some(
+            (result) =>
+              result.reason instanceof ApiError && result.reason.code === 'ACCOUNT_CHANGED',
+          )
+        )
+          return
+        if (profileResult.status === 'fulfilled') {
+          const profile = profileResult.value.profile
+          setName(profile.name)
+          setEmail(profile.email)
+          setSavedEmail(profile.email)
+          const [y = '', m = '', d = ''] = profile.birthday.split('-')
+          setYear(y)
+          setMonth(m ? String(Number(m)) : '')
+          setDay(d ? String(Number(d)) : '')
+          setNotifications(profile.notifications)
+        }
+        if (addressResult.status === 'fulfilled') {
+          const loadedAddresses = addressResult.value.addresses
+          setAddresses(loadedAddresses)
+          if (profileResult.status === 'fulfilled') {
+            const savedSelection = profileResult.value.profile.selectedAddressId ?? null
+            setSelectedAddressId(
+              loadedAddresses.some((address) => address.id === savedSelection)
+                ? savedSelection
+                : null,
+            )
+          }
+        }
+        if (ordersRevisionRef.current === initialRevision) {
+          if (orderResult.status === 'fulfilled') {
+            setOrders(orderResult.value.orders)
+            setOrdersNextCursor(orderResult.value.nextCursor)
+            setOrdersError('')
+          } else {
+            setOrdersError('Не удалось загрузить заказы. Попробуйте ещё раз.')
+          }
+        }
+        const otherFailure = [profileResult, addressResult].find(
+          (result) => result.status === 'rejected',
+        )
+        if (otherFailure?.status === 'rejected') {
+          // Профиль/адреса без повтора: экран остался бы пустым до перезагрузки.
+          setLoadError(
+            otherFailure.reason instanceof Error
+              ? otherFailure.reason.message
+              : 'Не удалось загрузить данные',
+          )
+        }
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -313,27 +380,96 @@ export function AccountScreen({
     return () => {
       active = false
     }
-  }, [onLogout])
+  }, [accountRequest, onLogout, loadAttempt])
+
+  const reloadOrders = useCallback(async () => {
+    const seq = ++ordersRequestSeq.current
+    setOrdersLoadingMore(false)
+    setOrdersNextCursor(null)
+    try {
+      const result = await accountRequest<{ orders: Order[]; nextCursor: string | null }>('/orders')
+      if (seq !== ordersRequestSeq.current) return
+      setOrders(result.orders)
+      setOrdersNextCursor(result.nextCursor)
+      setOrdersError('')
+    } catch (failure) {
+      if (seq !== ordersRequestSeq.current) return
+      setOrdersError(failure instanceof Error ? failure.message : 'Не удалось обновить заказы')
+    }
+  }, [accountRequest])
+
+  useEffect(() => {
+    if (ordersRevision === 0) return
+    let active = true
+    queueMicrotask(() => {
+      if (active) void reloadOrders()
+    })
+    return () => {
+      active = false
+    }
+  }, [ordersRevision, reloadOrders])
+
+  async function loadMoreOrders() {
+    if (!ordersNextCursor || ordersLoadingMore) return
+    const seq = ++ordersRequestSeq.current
+    setOrdersLoadingMore(true)
+    try {
+      const result = await accountRequest<{ orders: Order[]; nextCursor: string | null }>(
+        `/orders?cursor=${encodeURIComponent(ordersNextCursor)}`,
+      )
+      if (seq !== ordersRequestSeq.current) return
+      setOrders((current) => {
+        // На случай, если за время запроса список сдвинулся (новый заказ, обновление),
+        // дубли по _id отсекаем.
+        const known = new Set(current.map((order) => order._id))
+        return [...current, ...result.orders.filter((order) => !known.has(order._id))]
+      })
+      setOrdersNextCursor(result.nextCursor)
+    } catch (failure) {
+      if (seq === ordersRequestSeq.current)
+        setNotice(failure instanceof Error ? failure.message : 'Не удалось загрузить заказы')
+    } finally {
+      if (seq === ordersRequestSeq.current) setOrdersLoadingMore(false)
+    }
+  }
+
+  // Автодозагрузка следующей страницы при прокрутке к концу истории заказов.
+  useEffect(() => {
+    if (!ordersNextCursor || ordersLoadingMore) return
+    if (typeof IntersectionObserver === 'undefined') return
+    const node = ordersLoadMoreRef.current
+    if (!node) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadMoreOrders()
+      },
+      { rootMargin: '800px 0px' },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  })
 
   async function deleteAddress(id: string) {
     try {
-      await apiRequest<void>(`/addresses/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      await accountRequest<void>(`/addresses/${encodeURIComponent(id)}`, { method: 'DELETE' })
       setAddresses((current) => current.filter((address) => address.id !== id))
-      if (selectedAddressId === id) {
-        setSelectedAddressId(null)
-        void apiRequest('/profile/delivery-selection', {
-          method: 'PUT',
-          body: JSON.stringify({ addressId: null }),
-        }).catch(() => undefined)
-      }
+      if (selectedAddressId === id) setSelectedAddressId(null)
     } catch (failure) {
       setNotice(failure instanceof Error ? failure.message : 'Не удалось удалить адрес')
     }
   }
 
+  async function confirmDeleteAddress() {
+    if (!addressToDelete) return
+    setDeleteBusy(true)
+    await deleteAddress(addressToDelete.id)
+    setDeleteBusy(false)
+    setAddressToDelete(null)
+  }
+
   async function completeOrder(id: string) {
     try {
-      const result = await apiRequest<{ order: Order }>(
+      const result = await accountRequest<{ order: Order }>(
         `/orders/${encodeURIComponent(id)}/complete`,
         { method: 'POST' },
       )
@@ -344,15 +480,31 @@ export function AccountScreen({
   }
 
   function repeatOrder(order: Order) {
-    const products = catalog?.data?.categories.flatMap((category) => category.products) ?? []
+    if (!catalog?.data) {
+      // Отделяем «меню не загрузилось» от «блюдо снято с меню» — иначе сообщение вводило в заблуждение.
+      setNotice(
+        catalog?.error
+          ? 'Не удалось повторить заказ: меню не загрузилось. Обновите страницу и попробуйте снова.'
+          : 'Меню ещё загружается. Подождите несколько секунд и повторите.',
+      )
+      return
+    }
+    const products = catalog.data.categories.flatMap((category) => category.products)
+    const missing = order.quote.lines.find(
+      (line) => !products.some((product) => product._id === line.productId && product.available),
+    )
+    if (missing) {
+      setNotice(`Не удалось повторить заказ: «${missing.name}» сейчас недоступен.`)
+      return
+    }
     for (const line of order.quote.lines) {
-      const live = products.find((product) => product._id === line.productId)
+      const live = products.find((product) => product._id === line.productId)!
       useCartStore.getState().add(
         {
           id: line.productId,
-          name: line.name,
-          image: live?.image,
-          priceRub: live ? live.priceKopecks / 100 : line.unitPriceKopecks / 100,
+          name: live.name,
+          image: live.image,
+          priceRub: live.priceKopecks / 100,
         },
         { variant: '', removedIngredients: [], extras: {}, quantity: line.quantity },
       )
@@ -371,9 +523,11 @@ export function AccountScreen({
   }
 
   function saveSelection(addressId: string) {
+    if (selectionBusy) return
     const previous = selectedAddressId
+    setSelectionBusy(true)
     setSelectedAddressId(addressId)
-    void apiRequest('/profile/delivery-selection', {
+    void accountRequest('/profile/delivery-selection', {
       method: 'PUT',
       body: JSON.stringify({ addressId }),
     })
@@ -382,9 +536,11 @@ export function AccountScreen({
         setSelectedAddressId(previous)
         setNotice(failure instanceof Error ? failure.message : 'Не удалось сохранить выбор адреса')
       })
+      .finally(() => setSelectionBusy(false))
   }
 
   async function saveProfile(nextNotifications = notifications) {
+    if (settingsBusyRef.current) return
     const profile = profileSchema.safeParse({ name, email })
     const birthDate = birthDateSchema.safeParse({ day, month, year })
     if (!profile.success || !birthDate.success) {
@@ -398,8 +554,10 @@ export function AccountScreen({
     }
     const birthday =
       day && month && year ? `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}` : ''
+    settingsBusyRef.current = true
+    setSettingsBusy(true)
     try {
-      await apiRequest('/profile', {
+      await accountRequest('/profile', {
         method: 'PUT',
         body: JSON.stringify({
           name: profile.data.name,
@@ -414,6 +572,33 @@ export function AccountScreen({
       setErrors({})
     } catch (failure) {
       setNotice(failure instanceof Error ? failure.message : 'Не удалось сохранить профиль')
+    } finally {
+      settingsBusyRef.current = false
+      setSettingsBusy(false)
+    }
+  }
+
+  async function saveNotification(key: 'push' | 'email' | 'sms', checked: boolean) {
+    if (settingsBusyRef.current) return
+    settingsBusyRef.current = true
+    setSettingsBusy(true)
+    const previous = notifications
+    setNotifications({ ...previous, [key]: checked })
+    try {
+      const result = await accountRequest<{ notifications: typeof notifications }>(
+        '/profile/notifications',
+        {
+          method: 'PUT',
+          body: JSON.stringify({ ...previous, [key]: checked }),
+        },
+      )
+      setNotifications(result.notifications)
+    } catch (failure) {
+      setNotifications(previous)
+      setNotice(failure instanceof Error ? failure.message : 'Не удалось сохранить настройки')
+    } finally {
+      settingsBusyRef.current = false
+      setSettingsBusy(false)
     }
   }
 
@@ -455,7 +640,11 @@ export function AccountScreen({
               </Link>
             ))}
           </nav>
-          <button className={styles.logout} type="button" onClick={onLogout}>
+          <button
+            className={styles.logout}
+            type="button"
+            onClick={() => setLogoutConfirmationOpen(true)}
+          >
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M10 5H5v14h5M14 8l4 4-4 4M8 12h10" />
             </svg>
@@ -464,12 +653,40 @@ export function AccountScreen({
         </aside>
 
         <div className={styles.content}>
+          {loadError && (
+            <div className={styles.loadError} role="alert">
+              <p>{loadError}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoadError('')
+                  setLoading(true)
+                  setLoadAttempt((attempt) => attempt + 1)
+                }}
+              >
+                Повторить загрузку
+              </button>
+            </div>
+          )}
+          {notice && (
+            <p className={styles.notice} role="status">
+              {notice}
+            </p>
+          )}
           {section === 'orders' && (
             <section className={styles.card} aria-labelledby="orders-title">
               <span className={styles.eyebrow}>ВАШИ ЗАКАЗЫ</span>
               <h1 id="orders-title">Активные заказы</h1>
               <p>Тестовый режим — заказы не передаются в кафе.</p>
-              {orders.length === 0 ? (
+              {ordersError && (
+                <div role="alert">
+                  <p>{ordersError}</p>
+                  <button type="button" onClick={() => void reloadOrders()}>
+                    Повторить загрузку заказов
+                  </button>
+                </div>
+              )}
+              {!ordersError && orders.length === 0 ? (
                 <div className={styles.emptyOrders}>
                   <svg
                     className={styles.emptyIcon}
@@ -544,6 +761,20 @@ export function AccountScreen({
                   ))}
                 </div>
               )}
+              {ordersNextCursor && (
+                <>
+                  {/* Сторожок: следующая страница заказов подгружается сама при прокрутке */}
+                  <div ref={ordersLoadMoreRef} aria-hidden="true" />
+                  <button
+                    type="button"
+                    className={styles.loadMore}
+                    disabled={ordersLoadingMore}
+                    onClick={() => void loadMoreOrders()}
+                  >
+                    {ordersLoadingMore ? 'Загружаем…' : 'Загрузить ещё заказы'}
+                  </button>
+                </>
+              )}
             </section>
           )}
 
@@ -564,6 +795,7 @@ export function AccountScreen({
                       name="delivery-address"
                       value={address.id}
                       checked={selectedAddressId === address.id}
+                      disabled={selectionBusy}
                       onChange={() => saveSelection(address.id)}
                     />
                     <span className={styles.radioMark} aria-hidden="true" />
@@ -571,7 +803,7 @@ export function AccountScreen({
                       ⌂
                     </span>
                     <span className={styles.addressInfo}>
-                      <strong>{address.label}</strong>
+                      <strong title={address.label}>{displayAddress(address)}</strong>
                       <span>Доставка</span>
                     </span>
                     <span className={styles.addressStatus}>
@@ -596,7 +828,8 @@ export function AccountScreen({
                       type="button"
                       aria-label={`Удалить адрес: ${address.label}`}
                       title="Удалить адрес"
-                      onClick={() => void deleteAddress(address.id)}
+                      disabled={selectionBusy}
+                      onClick={() => setAddressToDelete(address)}
                     >
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
                         <path d="M5 7h14M10 7V5h4v2m-6 0 1 12h6l1-12" />
@@ -757,15 +990,10 @@ export function AccountScreen({
                       </p>
                     )}
                   </div>
-                  <button className={styles.save} type="submit">
+                  <button className={styles.save} type="submit" disabled={settingsBusy}>
                     Сохранить
                   </button>
                 </form>
-                {notice && (
-                  <p className={styles.notice} role="status">
-                    {notice}
-                  </p>
-                )}
               </section>
 
               <section className={styles.card} aria-labelledby="notifications-title">
@@ -783,22 +1011,8 @@ export function AccountScreen({
                       <input
                         type="checkbox"
                         checked={notifications[key]}
-                        disabled={key === 'email' && !savedEmail}
-                        onChange={(event) => {
-                          const next = { ...notifications, [key]: event.target.checked }
-                          setNotifications(next)
-                          void apiRequest('/profile/notifications', {
-                            method: 'PUT',
-                            body: JSON.stringify(next),
-                          }).catch((failure) => {
-                            setNotifications(notifications)
-                            setNotice(
-                              failure instanceof Error
-                                ? failure.message
-                                : 'Не удалось сохранить настройки',
-                            )
-                          })
-                        }}
+                        disabled={settingsBusy || (key === 'email' && !savedEmail)}
+                        onChange={(event) => void saveNotification(key, event.target.checked)}
                       />
                       {label}
                     </label>
@@ -809,14 +1023,76 @@ export function AccountScreen({
           )}
         </div>
       </div>
+      {addressToDelete && (
+        <Dialog
+          titleId="delete-address-title"
+          onClose={() => {
+            if (!deleteBusy) setAddressToDelete(null)
+          }}
+          className={styles.confirmDialog}
+        >
+          <div className={styles.confirmContent}>
+            <h2 id="delete-address-title">Удалить адрес?</h2>
+            <p>«{displayAddress(addressToDelete)}» будет удалён без возможности восстановления.</p>
+            <div className={styles.confirmActions}>
+              <button
+                type="button"
+                className={styles.confirmCancel}
+                onClick={() => setAddressToDelete(null)}
+                disabled={deleteBusy}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                className={styles.confirmDelete}
+                onClick={() => void confirmDeleteAddress()}
+                disabled={deleteBusy}
+              >
+                {deleteBusy ? 'Удаляем…' : 'Удалить'}
+              </button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+      {logoutConfirmationOpen && (
+        <Dialog
+          titleId="logout-confirm-title"
+          onClose={() => setLogoutConfirmationOpen(false)}
+          className={styles.confirmDialog}
+        >
+          <div className={styles.confirmContent}>
+            <h2 id="logout-confirm-title">Выйти из аккаунта?</h2>
+            <p>Для следующего входа потребуется снова подтвердить номер телефона.</p>
+            <div className={styles.confirmActions}>
+              <button
+                type="button"
+                className={styles.confirmCancel}
+                onClick={() => setLogoutConfirmationOpen(false)}
+              >
+                Остаться
+              </button>
+              <button
+                type="button"
+                className={styles.confirmDelete}
+                onClick={() => {
+                  setLogoutConfirmationOpen(false)
+                  onLogout()
+                }}
+              >
+                Да, выйти
+              </button>
+            </div>
+          </div>
+        </Dialog>
+      )}
       {addressDialog && (
         <FulfillmentDialog
-          allowPickup={false}
           current={addressDialog.mode === 'edit' ? addressDialog.address : undefined}
           onClose={() => setAddressDialog(null)}
           onSave={(selection) => {
             const editing = addressDialog.mode === 'edit' ? addressDialog.address : null
-            void apiRequest<{ address: Address }>(
+            void accountRequest<{ address: Address }>(
               editing ? `/addresses/${encodeURIComponent(editing.id)}` : '/addresses',
               {
                 method: editing ? 'PUT' : 'POST',

@@ -1,9 +1,24 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import type { ClientSession, Db, MongoClient } from 'mongodb'
 import type { Account, AuthStore, ReserveCodeResult, VerifyCodeResult } from './types.ts'
+import {
+  DAY_MS,
+  GLOBAL_DAILY_LIMIT,
+  HOUR_MS,
+  IP_HOURLY_LIMIT,
+  PHONE_DAILY_LIMIT,
+  PHONE_HOURLY_LIMIT,
+} from './limits.ts'
 
 type CodeRecord = { digest: string; expiresAt: number; attempts: number }
-type PendingRecord = { reservationId: string; digest: string; expiresAt: number }
+type PendingRecord = {
+  reservationId: string
+  digest: string
+  expiresAt: number
+  ip: string
+  /** Время записи лимитов при резервировании — по нему лимиты откатываются при сбое доставки. */
+  reservedAt: number
+}
 type ChallengeDoc = {
   _id: string
   active?: CodeRecord
@@ -11,11 +26,11 @@ type ChallengeDoc = {
   cleanupAt: Date
 }
 type LimitDoc = { _id: string; times: number[]; cleanupAt: Date }
-type UserDoc = Account & { _id: string }
+type UserDoc = Account & { _id: string; consentVersion?: string; consentAcceptedAt?: Date }
 type SessionDoc = { _id: string; accountId: string; expiresAt: Date }
 
-const HOUR = 60 * 60_000
-const DAY = 24 * HOUR
+const HOUR = HOUR_MS
+const DAY = DAY_MS
 
 function currentTimes(doc: LimitDoc | null, now: number, window: number) {
   return (doc?.times ?? []).filter((time) => time > now - window)
@@ -75,6 +90,22 @@ export function createMongoAuthStore(client: MongoClient, db: Db): AuthStore {
     )
   }
 
+  /** Убирает одну запись резервирования из лимитного документа (откат при сбое доставки). */
+  async function rollbackLimit(session: ClientSession, key: string, reservedAt: number) {
+    const doc = await limits.findOne({ _id: key }, { session })
+    if (!doc) return
+    const index = doc.times.indexOf(reservedAt)
+    if (index === -1) return
+    await limits.replaceOne(
+      { _id: key },
+      {
+        times: [...doc.times.slice(0, index), ...doc.times.slice(index + 1)],
+        cleanupAt: doc.cleanupAt,
+      },
+      { upsert: true, session },
+    )
+  }
+
   return {
     async reserveCode({
       reservationId,
@@ -87,13 +118,16 @@ export function createMongoAuthStore(client: MongoClient, db: Db): AuthStore {
       return transaction(async (session) => {
         const phoneKey = `phone:${phone}`
         const ipKey = `ip:${ip}`
+        const phoneDayKey = `phone-day:${phone}`
         const phoneDoc = await limits.findOne({ _id: phoneKey }, { session })
         const ipDoc = await limits.findOne({ _id: ipKey }, { session })
-        const dailyDoc = await limits.findOne({ _id: 'daily' }, { session })
+        const phoneDayDoc = await limits.findOne({ _id: phoneDayKey }, { session })
+        const globalDoc = await limits.findOne({ _id: 'global-day' }, { session })
         const challenge = await challenges.findOne({ _id: phone }, { session })
         const phoneTimes = currentTimes(phoneDoc, now, HOUR)
         const ipTimes = currentTimes(ipDoc, now, HOUR)
-        const dailyTimes = currentTimes(dailyDoc, now, DAY)
+        const phoneDayTimes = currentTimes(phoneDayDoc, now, DAY)
+        const globalTimes = currentTimes(globalDoc, now, DAY)
         const pending =
           challenge?.pending?.expiresAt && challenge.pending.expiresAt > now
             ? challenge.pending
@@ -105,15 +139,22 @@ export function createMongoAuthStore(client: MongoClient, db: Db): AuthStore {
         const retryMs = Math.max(
           pending ? pending.expiresAt - now : 0,
           phoneTimes.length ? phoneTimes[phoneTimes.length - 1]! + 60_000 - now : 0,
-          phoneTimes.length >= 5 ? phoneTimes[0]! + HOUR - now : 0,
-          ipTimes.length >= 20 ? ipTimes[0]! + HOUR - now : 0,
-          dailyTimes.length >= 100 ? dailyTimes[0]! + DAY - now : 0,
+          phoneTimes.length >= PHONE_HOURLY_LIMIT ? phoneTimes[0]! + HOUR - now : 0,
+          phoneDayTimes.length >= PHONE_DAILY_LIMIT ? phoneDayTimes[0]! + DAY - now : 0,
+          ipTimes.length >= IP_HOURLY_LIMIT ? ipTimes[0]! + HOUR - now : 0,
+          globalTimes.length >= GLOBAL_DAILY_LIMIT ? globalTimes[0]! + DAY - now : 0,
         )
         if (retryMs > 0) {
           return { status: 'limited', retryAfterSeconds: Math.ceil(retryMs / 1000) }
         }
 
-        await saveChallenge(session, phone, active, { reservationId, digest, expiresAt })
+        await saveChallenge(session, phone, active, {
+          reservationId,
+          digest,
+          expiresAt,
+          ip,
+          reservedAt: now,
+        })
         await limits.replaceOne(
           { _id: phoneKey },
           { times: [...phoneTimes, now], cleanupAt: new Date(now + HOUR) },
@@ -125,8 +166,13 @@ export function createMongoAuthStore(client: MongoClient, db: Db): AuthStore {
           { upsert: true, session },
         )
         await limits.replaceOne(
-          { _id: 'daily' },
-          { times: [...dailyTimes, now], cleanupAt: new Date(now + DAY) },
+          { _id: phoneDayKey },
+          { times: [...phoneDayTimes, now], cleanupAt: new Date(now + DAY) },
+          { upsert: true, session },
+        )
+        await limits.replaceOne(
+          { _id: 'global-day' },
+          { times: [...globalTimes, now], cleanupAt: new Date(now + DAY) },
           { upsert: true, session },
         )
         return { status: 'reserved' }
@@ -152,7 +198,14 @@ export function createMongoAuthStore(client: MongoClient, db: Db): AuthStore {
     async cancelCode(phone, reservationId) {
       await transaction(async (session) => {
         const doc = await challenges.findOne({ _id: phone }, { session })
-        if (doc?.pending?.reservationId !== reservationId) return true
+        if (!doc || doc.pending?.reservationId !== reservationId) return true
+        const pending = doc.pending
+        // SMS не ушёл — откатываем лимиты, записанные при резервировании,
+        // чтобы сбой доставки не сжигал бюджеты номера, IP и всего сервиса.
+        await rollbackLimit(session, `phone:${phone}`, pending.reservedAt)
+        await rollbackLimit(session, `phone-day:${phone}`, pending.reservedAt)
+        await rollbackLimit(session, `ip:${pending.ip}`, pending.reservedAt)
+        await rollbackLimit(session, 'global-day', pending.reservedAt)
         await saveChallenge(session, phone, doc.active)
         return true
       })
@@ -176,13 +229,16 @@ export function createMongoAuthStore(client: MongoClient, db: Db): AuthStore {
         return 'verified'
       })
     },
-    async getOrCreateAccount(phone) {
+    async getOrCreateAccount(phone, consentVersion, consentAcceptedAt) {
       const id = randomUUID()
       let account: UserDoc | null
       try {
         account = await users.findOneAndUpdate(
           { phone },
-          { $setOnInsert: { _id: id, id, phone, name: '' } },
+          {
+            $setOnInsert: { _id: id, id, phone, name: '' },
+            $set: { consentVersion, consentAcceptedAt: new Date(consentAcceptedAt) },
+          },
           { upsert: true, returnDocument: 'after' },
         )
       } catch (failure) {
@@ -198,7 +254,9 @@ export function createMongoAuthStore(client: MongoClient, db: Db): AuthStore {
     async findSession(digest, now) {
       const session = await sessions.findOne({ _id: digest, expiresAt: { $gt: new Date(now) } })
       if (!session) return null
-      const account = await users.findOne({ id: session.accountId })
+      // _id и id у пользователя совпадают (см. getOrCreateAccount) — ищем по _id,
+      // чтобы запрос шёл по встроенному индексу, а не по скану коллекции.
+      const account = await users.findOne({ _id: session.accountId })
       return account ? { id: account.id, phone: account.phone, name: account.name } : null
     },
     async deleteSession(digest) {

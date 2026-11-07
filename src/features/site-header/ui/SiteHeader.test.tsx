@@ -1,6 +1,16 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter, useLocation } from 'react-router'
+import { vi } from 'vitest'
 import { SiteHeader } from './SiteHeader'
+
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute('open', '')
+  }
+  HTMLDialogElement.prototype.close = function () {
+    this.removeAttribute('open')
+  }
+})
 
 function scrollWindowTo(y: number) {
   Object.defineProperty(window, 'scrollY', { value: y, configurable: true, writable: true })
@@ -67,4 +77,63 @@ test('компактный хедер содержит логотип, кате�
   expect(compact).toHaveAccessibleName()
   expect(screen.getAllByRole('button', { name: 'Руслан' }).length).toBe(2)
   expect(screen.getAllByRole('button', { name: /Корзина, 0 поз\./ }).length).toBe(2)
+})
+
+test('бургер открывает меню с разделами сайта и закрывается после выбора', () => {
+  render(
+    <MemoryRouter>
+      <SiteHeader phoneNumber="+7 123 456-78-90" />
+    </MemoryRouter>,
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Открыть меню' }))
+  const menu = screen.getByRole('dialog', { name: 'КАПЕЛА ВКУСА' })
+  expect(within(menu).getByRole('navigation', { name: 'Мобильное меню' })).toBeInTheDocument()
+  expect(within(menu).getByRole('link', { name: 'Завтраки' })).toHaveAttribute(
+    'href',
+    '/#breakfast',
+  )
+  expect(within(menu).getByRole('link', { name: 'Доставка и оплата' })).toHaveAttribute(
+    'href',
+    '/#delivery',
+  )
+  fireEvent.click(within(menu).getByRole('link', { name: 'О нас' }))
+  expect(screen.queryByRole('dialog', { name: 'КАПЕЛА ВКУСА' })).not.toBeInTheDocument()
+})
+
+test('карта открывается из мобильного меню и меню закрывается', () => {
+  const onAddressClick = vi.fn()
+  render(
+    <MemoryRouter>
+      <SiteHeader onAddressClick={onAddressClick} />
+    </MemoryRouter>,
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Открыть меню' }))
+  const menu = screen.getByRole('dialog', { name: 'КАПЕЛА ВКУСА' })
+  fireEvent.click(within(menu).getByRole('button', { name: /Кафе на карте/ }))
+  expect(onAddressClick).toHaveBeenCalledTimes(1)
+  expect(screen.queryByRole('dialog', { name: 'КАПЕЛА ВКУСА' })).not.toBeInTheDocument()
+})
+
+test('поиск отправляет запрос из шапки на страницу результатов', () => {
+  function CurrentLocation() {
+    const { pathname, search } = useLocation()
+    return <output data-testid="location">{pathname + search}</output>
+  }
+
+  render(
+    <MemoryRouter initialEntries={['/about']}>
+      <SiteHeader />
+      <CurrentLocation />
+    </MemoryRouter>,
+  )
+
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Искать блюда' }), {
+    target: { value: '  Сырники  ' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Найти блюда' }))
+  expect(screen.getByTestId('location')).toHaveTextContent(
+    '/search?q=%D0%A1%D1%8B%D1%80%D0%BD%D0%B8%D0%BA%D0%B8',
+  )
 })

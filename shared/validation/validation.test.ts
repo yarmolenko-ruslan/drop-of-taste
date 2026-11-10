@@ -79,6 +79,10 @@ test('profileSchema проверяет имя и необязательную п
   )
   expect(profileSchema.safeParse({ name: 'Руслан', email: 'не-почта' }).success).toBe(false)
   expect(profileSchema.safeParse({ name: 'Руслан123', email: '' }).success).toBe(false)
+  expect(profileSchema.safeParse({ name: 'Я'.repeat(22), email: '' }).success).toBe(true)
+  expect(
+    profileSchema.safeParse({ name: 'Я'.repeat(23), email: '' }).error?.issues[0]?.message,
+  ).toBe('Имя — не более 22 символов')
 })
 
 test('profileSchema обрезает пробелы у почты, но не принимает пробел внутри', () => {

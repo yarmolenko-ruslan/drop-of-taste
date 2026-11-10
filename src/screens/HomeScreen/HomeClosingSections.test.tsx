@@ -4,6 +4,22 @@ import { vi } from 'vitest'
 import { useCartStore } from '../../features/cart'
 import { HomeClosingSections } from './HomeClosingSections'
 
+afterEach(() => vi.unstubAllGlobals())
+
+test('при включённой тестовой оплате убирает устаревший текст, что оплата не принимается', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ testPaymentEnabled: true })),
+  )
+  render(
+    <MemoryRouter>
+      <HomeClosingSections />
+    </MemoryRouter>,
+  )
+  expect(await screen.findByText('Банковской картой')).toBeInTheDocument()
+  expect(screen.queryByText('Оплата пока не принимается')).not.toBeInTheDocument()
+})
+
 test('показывает блоки от соусов до информации о ресторане без строки о доставке в городе', () => {
   render(
     <MemoryRouter>
@@ -14,9 +30,7 @@ test('показывает блоки от соусов до информаци�
   expect(screen.getAllByRole('article')).toHaveLength(5)
   expect(screen.getByRole('heading', { name: 'Соусы' })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: /Весь раздел/ })).toHaveAttribute('href', '/menu/sauces')
-  expect(
-    screen.getByRole('heading', { name: 'Копите бонусы с каждого заказа' }),
-  ).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Всё для удобного заказа' })).toBeInTheDocument()
   expect(
     screen.getByRole('heading', { name: 'Больше, чем еда — это наш край' }),
   ).toBeInTheDocument()

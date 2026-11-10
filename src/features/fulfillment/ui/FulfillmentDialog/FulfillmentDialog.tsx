@@ -3,6 +3,7 @@ import { Dialog } from '../../../../shared/ui/Dialog/Dialog'
 import { issuesByField } from '../../../../../shared/validation/issues'
 import { addressDetailsSchema, formatAddress, type AddressDetails } from './address'
 import styles from './FulfillmentDialog.module.css'
+import { useSiteContent } from '../../../site-content/SiteContentProvider'
 
 export type { AddressDetails }
 
@@ -19,6 +20,7 @@ type FulfillmentDialogProps = {
 }
 
 export function FulfillmentDialog({ current, onClose, onSave }: FulfillmentDialogProps) {
+  const { brandName } = useSiteContent()
   const initial = current?.mode === 'delivery' ? current.details : undefined
   const [street, setStreet] = useState(initial?.street ?? '')
   const [entrance, setEntrance] = useState(initial?.entrance ?? '')
@@ -40,7 +42,7 @@ export function FulfillmentDialog({ current, onClose, onSave }: FulfillmentDialo
   return (
     <Dialog titleId="fulfillment-title" onClose={onClose} className={styles.addressDialog}>
       <div className={`${styles.content} ${styles.addressContent}`}>
-        <span className={styles.eyebrow}>КАПЕЛА ВКУСА</span>
+        <span className={styles.eyebrow}>{brandName}</span>
         <h2 id="fulfillment-title">Адрес доставки</h2>
         <p className={styles.intro}>Укажите адрес для доставки заказа.</p>
 

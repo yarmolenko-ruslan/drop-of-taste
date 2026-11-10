@@ -2,10 +2,18 @@ import { addOneToCart, useCartStore } from '../../../cart'
 import styles from './CatalogActionButton.module.css'
 
 type CatalogActionButtonProps = {
-  item: { id: string; name: string; image?: string; priceRub: number | null; available?: boolean }
+  item: {
+    id: string
+    name: string
+    image?: string
+    priceRub: number | null
+    available?: boolean
+    action?: 'add' | 'choose'
+  }
+  onChoose?: () => void
 }
 
-export function CatalogActionButton({ item }: CatalogActionButtonProps) {
+export function CatalogActionButton({ item, onChoose }: CatalogActionButtonProps) {
   const line = useCartStore((state) =>
     state.lines.find(
       (entry) =>
@@ -39,6 +47,18 @@ export function CatalogActionButton({ item }: CatalogActionButtonProps) {
       </span>
     )
   }
+
+  if (item.action === 'choose' && onChoose)
+    return (
+      <button
+        className={styles.action}
+        type="button"
+        disabled={item.available === false}
+        onClick={onChoose}
+      >
+        {item.available === false ? 'Нет в наличии' : 'Выбрать'}
+      </button>
+    )
 
   return (
     <button

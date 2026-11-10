@@ -12,18 +12,21 @@ import { HomeClosingSections } from './HomeClosingSections'
 import { HeroSlider } from './HeroSlider'
 import styles from './HomeScreen.module.css'
 import { CatalogStatus, useCatalog } from '../../features/catalog/api/CatalogProvider'
+import { useSiteContent } from '../../features/site-content/SiteContentProvider'
 
 export function HomeScreen({ onLogin }: { onLogin?: () => void }) {
+  const content = useSiteContent()
   const [selectedItem, setSelectedItem] = useState<DialogItem | null>(null)
   const catalog = useCatalog()
   return (
     <>
       <main className={styles.root}>
-        <h1 className={styles.title}>Капела вкуса</h1>
+        <h1 className={styles.title}>{content.siteTitle}</h1>
         <HeroSlider />
         <CatalogStatus />
         {catalog?.data && !catalog.error && (
           <>
+            {catalog.data.categories.length === 0 && <p role="status">Меню пока пусто.</p>}
             <NewArrivals
               onProductAction={(product) => setSelectedItem(dialogItemFromProduct(product))}
             />
@@ -32,7 +35,12 @@ export function HomeScreen({ onLogin }: { onLogin?: () => void }) {
               onComboAction={(combo) => setSelectedItem(dialogItemFromCombo(combo))}
             />
             <HomeClosingSections
-              onSauceAction={(name) => setSelectedItem(dialogItemFromSauce(name))}
+              onSauceAction={(name) => {
+                const live = catalog?.data?.categories
+                  .find((category) => category.id === 'sauces')
+                  ?.products.find((item) => item.name === name)
+                setSelectedItem(live ?? dialogItemFromSauce(name))
+              }}
               onLogin={onLogin}
             />
           </>

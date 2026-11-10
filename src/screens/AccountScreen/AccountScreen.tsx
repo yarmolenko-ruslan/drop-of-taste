@@ -39,7 +39,10 @@ type Order = {
   _id: string
   createdAt: string
   status?: 'test' | 'completed'
+  fulfillmentStatus?: 'new' | 'preparing' | 'delivering' | 'completed'
+  paymentStatus?: 'unpaid' | 'creating' | 'error' | 'pending' | 'succeeded' | 'canceled'
   completedAt?: string | null
+  fulfilledAt?: string | null
   input: { fulfillment: { mode: 'pickup' | 'delivery'; label: string } }
   quote: {
     lines: {
@@ -50,6 +53,8 @@ type Order = {
       lineTotalKopecks: number
     }[]
     discountKopecks: number
+    promoCode?: string
+    promoDiscountKopecks?: number
     deliveryKopecks: number
     totalKopecks: number
   }
@@ -58,7 +63,6 @@ type Order = {
 const sections = [
   { id: 'orders', label: 'Заказы' },
   { id: 'addresses', label: 'Адреса доставки' },
-  { id: 'loyalty', label: 'Программа лояльности' },
   { id: 'profile', label: 'Данные' },
 ] as const
 
@@ -112,37 +116,76 @@ function orderSummary(order: Order) {
 function OrderDetailsCard({
   order,
   onRepeat,
-  onComplete,
+  paymentEnabled,
+  onPay,
+  onRefreshPayment,
+  onCompleteFree,
 }: {
   order: Order
   onRepeat: (order: Order) => void
-  onComplete?: (id: string) => void
+  paymentEnabled?: boolean
+  onPay?: (id: string) => void
+  onRefreshPayment?: (id: string) => void
+  onCompleteFree?: (id: string) => void
 }) {
   const completed = order.status === 'completed'
+  const noPaymentRequired = order.quote.totalKopecks === 0
   const pickup = order.input.fulfillment.mode === 'pickup'
-  const steps = [
-    ['Создан', timeOf(order.createdAt)],
-    ['Завершён тест', completed ? timeOf(order.completedAt ?? order.createdAt) : '—'],
-  ]
+  const paid = order.paymentStatus === 'succeeded'
+  const canceled = order.paymentStatus === 'canceled'
+  const waitingForPayment =
+    canceled || (paymentEnabled && !noPaymentRequired && !paid && !completed)
+  const stage = order.fulfillmentStatus ?? (order.status === 'completed' ? 'completed' : 'new')
+  const stages = ['new', 'preparing', 'delivering', 'completed'] as const
+  const labels = ['Обработка заявки', 'Приготовление', 'Доставка', 'Завершён']
+  const current = stages.indexOf(stage)
+  const steps: { label: string; detail: string; state: 'done' | 'current' | 'waiting' }[] =
+    labels.map((label, index) => ({
+      label,
+      detail: waitingForPayment
+        ? index === 0
+          ? canceled
+            ? 'Оплата отменена'
+            : 'Ожидает оплаты'
+          : 'Ожидается'
+        : index < current
+          ? 'Готово'
+          : index === current
+            ? index === 3
+              ? timeOf(order.fulfilledAt ?? order.completedAt ?? order.createdAt)
+              : 'Сейчас'
+            : 'Ожидается',
+      state: waitingForPayment
+        ? 'waiting'
+        : index < current || (index === 3 && current === 3)
+          ? 'done'
+          : index === current
+            ? 'current'
+            : 'waiting',
+    }))
+  const badge = canceled
+    ? 'Оплата отменена'
+    : waitingForPayment
+      ? 'Ожидает оплаты'
+      : labels[current]
   return (
     <article className={styles.orderCard}>
       <header className={styles.orderHeader}>
-        <strong>Тестовый заказ №{order._id.slice(0, 6).toUpperCase()}</strong>
-        <span className={styles.orderBadge}>
-          {completed ? 'Выполнен (тест)' : 'Не передан в кафе'}
-        </span>
+        <strong>Заказ №{order._id.slice(0, 6).toUpperCase()}</strong>
+        <span className={styles.orderBadge}>{badge}</span>
       </header>
-      <ol className={styles.orderSteps}>
-        {steps.map(([stepLabel, stepSub], index) => (
+      <ol className={styles.orderSteps} aria-label="Этапы заказа">
+        {steps.map((step, index) => (
           <li
-            key={stepLabel}
-            className={`${styles.orderStep} ${completed || index === 0 ? styles.orderStepActive : ''}`}
+            key={step.label}
+            className={`${styles.orderStep} ${step.state === 'done' ? styles.orderStepDone : ''} ${step.state === 'current' ? styles.orderStepCurrent : ''}`}
+            aria-current={step.state === 'current' ? 'step' : undefined}
           >
             <span className={styles.orderDot} aria-hidden="true">
-              {completed || index === 0 ? '✓' : index + 1}
+              {step.state === 'done' ? '✓' : index + 1}
             </span>
-            <span className={styles.orderStepLabel}>{stepLabel}</span>
-            <span className={styles.orderStepSub}>{stepSub}</span>
+            <span className={styles.orderStepLabel}>{step.label}</span>
+            <span className={styles.orderStepSub}>{step.detail}</span>
           </li>
         ))}
       </ol>
@@ -157,11 +200,19 @@ function OrderDetailsCard({
         </div>
         <div className={styles.orderTile}>
           <span>Оплата</span>
-          <strong>Не требуется — тестовый режим</strong>
-        </div>
-        <div className={styles.orderTile}>
-          <span>Бонусы</span>
-          <strong>Не начисляются в тестовом режиме</strong>
+          <strong>
+            {noPaymentRequired
+              ? 'Не требуется — заказ на 0 ₽'
+              : paid
+                ? 'Оплачено онлайн'
+                : order.paymentStatus === 'pending' || order.paymentStatus === 'creating'
+                  ? 'Ожидаем подтверждения'
+                  : canceled
+                    ? 'Платёж отменён'
+                    : paymentEnabled
+                      ? 'Не оплачен'
+                      : 'Не указана'}
+          </strong>
         </div>
       </div>
       <ul className={styles.orderLines}>
@@ -179,6 +230,14 @@ function OrderDetailsCard({
             <span>−{(order.quote.discountKopecks / 100).toLocaleString('ru-RU')} ₽</span>
           </li>
         )}
+        {(order.quote.promoDiscountKopecks ?? 0) > 0 && (
+          <li>
+            <span>Бонус-код {order.quote.promoCode}</span>
+            <span>
+              −{((order.quote.promoDiscountKopecks ?? 0) / 100).toLocaleString('ru-RU')} ₽
+            </span>
+          </li>
+        )}
         {order.quote.deliveryKopecks > 0 && (
           <li>
             <span>Доставка</span>
@@ -191,18 +250,43 @@ function OrderDetailsCard({
         <strong>{(order.quote.totalKopecks / 100).toLocaleString('ru-RU')} ₽</strong>
       </p>
       <div className={styles.orderActions}>
+        {noPaymentRequired && !completed && onCompleteFree && (
+          <button
+            type="button"
+            className={styles.repeatButton}
+            onClick={() => onCompleteFree(order._id)}
+          >
+            Завершить оформление
+          </button>
+        )}
+        {paymentEnabled &&
+          !noPaymentRequired &&
+          onPay &&
+          (!order.paymentStatus ||
+            ['unpaid', 'error', 'creating', 'pending'].includes(order.paymentStatus)) && (
+            <button type="button" className={styles.repeatButton} onClick={() => onPay(order._id)}>
+              {order.paymentStatus === 'pending'
+                ? 'Вернуться к оплате'
+                : order.paymentStatus === 'creating' || order.paymentStatus === 'error'
+                  ? 'Повторить попытку оплаты'
+                  : 'Оплатить заказ'}
+            </button>
+          )}
+        {paymentEnabled &&
+          !noPaymentRequired &&
+          onRefreshPayment &&
+          ['pending', 'creating'].includes(order.paymentStatus ?? '') && (
+            <button
+              type="button"
+              className={styles.repeatButton}
+              onClick={() => onRefreshPayment(order._id)}
+            >
+              Проверить оплату
+            </button>
+          )}
         <button type="button" className={styles.repeatButton} onClick={() => onRepeat(order)}>
           Повторить заказ
         </button>
-        {onComplete && (
-          <button
-            type="button"
-            className={styles.completeButton}
-            onClick={() => onComplete(order._id)}
-          >
-            Отметить выполненным (тест)
-          </button>
-        )}
       </div>
     </article>
   )
@@ -227,6 +311,7 @@ export function AccountScreen({
   const settingsBusyRef = useRef(false)
   const [notice, setNotice] = useState('')
   const [orders, setOrders] = useState<Order[]>([])
+  const [testPaymentEnabled, setTestPaymentEnabled] = useState(false)
   const [ordersError, setOrdersError] = useState('')
   const [ordersNextCursor, setOrdersNextCursor] = useState<string | null>(null)
   const [ordersLoadingMore, setOrdersLoadingMore] = useState(false)
@@ -248,6 +333,11 @@ export function AccountScreen({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [expandedOrders, setExpandedOrders] = useState<ReadonlySet<string>>(new Set())
   const catalog = useCatalog()
+  useEffect(() => {
+    void apiRequest<{ testPaymentEnabled: boolean }>('/checkout/config')
+      .then((result) => setTestPaymentEnabled(result.testPaymentEnabled))
+      .catch(() => undefined)
+  }, [])
   const accountRequest = useCallback(
     <T,>(path: string, init?: RequestInit): Promise<T> => {
       const headers = new Headers(init?.headers)
@@ -261,12 +351,20 @@ export function AccountScreen({
     ordersRevisionRef.current = ordersRevision
   }, [ordersRevision])
 
-  const activeOrders = orders.filter((order) => order.status !== 'completed')
-  const historyOrders = orders.filter((order) => order.status === 'completed')
+  const activeOrders = orders.filter(
+    (order) =>
+      (order.fulfillmentStatus ?? (order.status === 'completed' ? 'completed' : 'new')) !==
+        'completed' && order.paymentStatus !== 'canceled',
+  )
+  const historyOrders = orders.filter(
+    (order) =>
+      (order.fulfillmentStatus ?? (order.status === 'completed' ? 'completed' : 'new')) ===
+        'completed' || order.paymentStatus === 'canceled',
+  )
   const historyGroups = (() => {
     const groups = new Map<string, { year: number; month: number; orders: Order[] }>()
     for (const order of historyOrders) {
-      const date = new Date(order.completedAt ?? order.createdAt)
+      const date = new Date(order.fulfilledAt ?? order.completedAt ?? order.createdAt)
       const key = `${date.getFullYear()}-${date.getMonth()}`
       const group = groups.get(key) ?? {
         year: date.getFullYear(),
@@ -409,6 +507,27 @@ export function AccountScreen({
     }
   }, [ordersRevision, reloadOrders])
 
+  useEffect(() => {
+    if (section !== 'orders') return
+    let active = true
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      void accountRequest<{ orders: Order[]; nextCursor: string | null }>('/orders')
+        .then((result) => {
+          if (!active) return
+          setOrders((current) => {
+            const latestIds = new Set(result.orders.map((order) => order._id))
+            return [...result.orders, ...current.filter((order) => !latestIds.has(order._id))]
+          })
+        })
+        .catch(() => undefined)
+    }, 20_000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [section, accountRequest])
+
   async function loadMoreOrders() {
     if (!ordersNextCursor || ordersLoadingMore) return
     const seq = ++ordersRequestSeq.current
@@ -467,15 +586,44 @@ export function AccountScreen({
     setAddressToDelete(null)
   }
 
-  async function completeOrder(id: string) {
+  async function payOrder(id: string) {
+    try {
+      const result = await accountRequest<{ status: string; confirmationUrl?: string }>(
+        `/orders/${encodeURIComponent(id)}/pay`,
+        { method: 'POST' },
+      )
+      if (result.confirmationUrl) window.location.assign(result.confirmationUrl)
+      else await refreshPayment(id)
+    } catch (failure) {
+      setNotice(failure instanceof Error ? failure.message : 'Не удалось начать оплату')
+    }
+  }
+
+  async function completeFreeOrder(id: string) {
     try {
       const result = await accountRequest<{ order: Order }>(
         `/orders/${encodeURIComponent(id)}/complete`,
         { method: 'POST' },
       )
       setOrders((current) => current.map((order) => (order._id === id ? result.order : order)))
+      setNotice('Заказ оформлен без оплаты')
     } catch (failure) {
-      setNotice(failure instanceof Error ? failure.message : 'Не удалось обновить заказ')
+      setNotice(failure instanceof Error ? failure.message : 'Не удалось завершить оформление')
+    }
+  }
+
+  async function refreshPayment(id: string) {
+    try {
+      const result = await accountRequest<{ status: Order['paymentStatus'] }>(
+        `/orders/${encodeURIComponent(id)}/payment`,
+      )
+      setOrders((current) =>
+        current.map((order) =>
+          order._id === id ? { ...order, paymentStatus: result.status } : order,
+        ),
+      )
+    } catch (failure) {
+      setNotice(failure instanceof Error ? failure.message : 'Не удалось проверить оплату')
     }
   }
 
@@ -628,28 +776,30 @@ export function AccountScreen({
               <span>{user.phone}</span>
             </div>
           </div>
-          <nav className={styles.navigation} aria-label="Разделы личного кабинета">
-            {sections.map((item) => (
-              <Link
-                key={item.id}
-                to={`/account/${item.id}`}
-                className={section === item.id ? styles.active : ''}
-                aria-current={section === item.id ? 'page' : undefined}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-          <button
-            className={styles.logout}
-            type="button"
-            onClick={() => setLogoutConfirmationOpen(true)}
-          >
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M10 5H5v14h5M14 8l4 4-4 4M8 12h10" />
-            </svg>
-            Выйти
-          </button>
+          <div className={styles.sidebarActions}>
+            <nav className={styles.navigation} aria-label="Разделы личного кабинета">
+              {sections.map((item) => (
+                <Link
+                  key={item.id}
+                  to={`/account/${item.id}`}
+                  className={section === item.id ? styles.active : ''}
+                  aria-current={section === item.id ? 'page' : undefined}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+            <button
+              className={styles.logout}
+              type="button"
+              onClick={() => setLogoutConfirmationOpen(true)}
+            >
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M10 5H5v14h5M14 8l4 4-4 4M8 12h10" />
+              </svg>
+              Выйти
+            </button>
+          </div>
         </aside>
 
         <div className={styles.content}>
@@ -677,7 +827,6 @@ export function AccountScreen({
             <section className={styles.card} aria-labelledby="orders-title">
               <span className={styles.eyebrow}>ВАШИ ЗАКАЗЫ</span>
               <h1 id="orders-title">Активные заказы</h1>
-              <p>Тестовый режим — заказы не передаются в кафе.</p>
               {ordersError && (
                 <div role="alert">
                   <p>{ordersError}</p>
@@ -686,7 +835,7 @@ export function AccountScreen({
                   </button>
                 </div>
               )}
-              {!ordersError && orders.length === 0 ? (
+              {!ordersError && activeOrders.length === 0 ? (
                 <div className={styles.emptyOrders}>
                   <svg
                     className={styles.emptyIcon}
@@ -708,10 +857,12 @@ export function AccountScreen({
                       stroke="none"
                     />
                   </svg>
-                  <p>Тестовых заказов пока нет.</p>
-                  <p className={styles.emptyHint}>
-                    Оформите тестовый заказ в корзине — он появится здесь.
-                  </p>
+                  <p>{orders.length === 0 ? 'Заказов пока нет.' : 'Нет активных заказов.'}</p>
+                  {orders.length === 0 && (
+                    <p className={styles.emptyHint}>
+                      Выберите блюда в меню и оформите заказ — он появится здесь.
+                    </p>
+                  )}
                 </div>
               ) : (
                 activeOrders.map((order) => (
@@ -719,7 +870,10 @@ export function AccountScreen({
                     key={order._id}
                     order={order}
                     onRepeat={repeatOrder}
-                    onComplete={(id) => void completeOrder(id)}
+                    paymentEnabled={testPaymentEnabled}
+                    onPay={(id) => void payOrder(id)}
+                    onRefreshPayment={(id) => void refreshPayment(id)}
+                    onCompleteFree={(id) => void completeFreeOrder(id)}
                   />
                 ))
               )}
@@ -733,7 +887,9 @@ export function AccountScreen({
                         <span>{group.countLabel}</span>
                       </p>
                       {group.orders.map((order) => {
-                        const done = new Date(order.completedAt ?? order.createdAt)
+                        const done = new Date(
+                          order.fulfilledAt ?? order.completedAt ?? order.createdAt,
+                        )
                         const expanded = expandedOrders.has(order._id)
                         return (
                           <div key={order._id}>
@@ -753,7 +909,13 @@ export function AccountScreen({
                                 {(order.quote.totalKopecks / 100).toLocaleString('ru-RU')} ₽
                               </span>
                             </button>
-                            {expanded && <OrderDetailsCard order={order} onRepeat={repeatOrder} />}
+                            {expanded && (
+                              <OrderDetailsCard
+                                order={order}
+                                onRepeat={repeatOrder}
+                                paymentEnabled={testPaymentEnabled}
+                              />
+                            )}
                           </div>
                         )
                       })}
@@ -849,24 +1011,6 @@ export function AccountScreen({
             </section>
           )}
 
-          {section === 'loyalty' && (
-            <section className={styles.card} aria-labelledby="loyalty-title">
-              <span className={styles.eyebrow}>ПРОГРАММА ЛОЯЛЬНОСТИ</span>
-              <h1 id="loyalty-title">
-                Ваш кешбэк <span className={styles.points}>★ 0 баллов</span>
-              </h1>
-              <h2>Как потратить баллы</h2>
-              <ul className={styles.loyaltyList}>
-                <li>Накапливайте баллы с каждого заказа.</li>
-                <li>Чем больше сумма заказов, тем выше процент кешбэка.</li>
-                <li>
-                  По правилам сайта можно списать до 30% следующего заказа. В тестовом режиме
-                  списание не работает.
-                </li>
-              </ul>
-            </section>
-          )}
-
           {section === 'profile' && (
             <div className={styles.profileSections}>
               <section className={styles.card} aria-labelledby="profile-title">
@@ -884,6 +1028,7 @@ export function AccountScreen({
                       Имя
                       <input
                         value={name}
+                        maxLength={22}
                         aria-invalid={Boolean(errors.name)}
                         aria-describedby={errors.name ? 'profile-name-error' : undefined}
                         onChange={(event) => {

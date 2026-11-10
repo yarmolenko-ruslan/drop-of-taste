@@ -1,5 +1,8 @@
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import styles from './SiteFooter.module.css'
+import { useSiteContent } from '../../site-content/SiteContentProvider'
+import { useCatalog } from '../../catalog/api/CatalogProvider'
+import { formatRussianPhone } from '../../../../shared/validation/phone'
 
 const menuLinks = [
   ['Завтраки', 'breakfast'],
@@ -14,21 +17,32 @@ const menuLinks = [
 ] as const
 
 export function SiteFooter() {
+  const { pathname } = useLocation()
+  const isAccountPage = pathname === '/account' || pathname.startsWith('/account/')
+  const content = useSiteContent()
+  const menuLinksLive =
+    useCatalog()
+      ?.data?.categories.filter((category) => !['combo'].includes(category.id))
+      .map((category) => [category.title, category.id] as const) ?? menuLinks
+  const dialNumber = content.phone.replace(/[^+\d]/g, '')
   return (
-    <footer className={styles.footer} id="contacts">
+    <footer
+      className={`${styles.footer} ${isAccountPage ? styles.accountFooter : ''}`}
+      id="contacts"
+    >
       <div className={styles.container}>
         <div className={styles.columns}>
           <div className={styles.brandColumn}>
-            <Link className={styles.brand} to="/" aria-label="Капела вкуса — главная">
-              <img src="/brand-emblem.png" alt="" width="47" height="47" />
-              <span>КАПЕЛА ВКУСА</span>
+            <Link className={styles.brand} to="/" aria-label={`${content.siteTitle} — главная`}>
+              <img src={content.brandLogo} alt="" width="47" height="47" />
+              <span>{content.brandName}</span>
             </Link>
-            <p>Домашняя кухня, выпечка и кофе с доставкой.</p>
+            <p>{content.footerDescription}</p>
             <div className={styles.socials} aria-label="Социальные сети">
-              <a href="https://vk.com/" target="_blank" rel="noreferrer">
+              <a href={content.vkUrl} target="_blank" rel="noreferrer">
                 VK
               </a>
-              <a href="https://t.me/" target="_blank" rel="noreferrer">
+              <a href={content.telegramUrl} target="_blank" rel="noreferrer">
                 TG
               </a>
             </div>
@@ -36,7 +50,7 @@ export function SiteFooter() {
           <nav aria-label="Меню в подвале">
             <h2>МЕНЮ</h2>
             <ul>
-              {menuLinks.map(([label, id]) => (
+              {menuLinksLive.map(([label, id]) => (
                 <li key={id}>
                   <a href={`/#${id}`}>{label}</a>
                 </li>
@@ -50,7 +64,7 @@ export function SiteFooter() {
                 <Link to="/promotions">Акции</Link>
               </li>
               <li>
-                <a href="/#bonuses">Бонусная программа</a>
+                <a href="/#account-benefits">Личный кабинет</a>
               </li>
               <li>
                 <a href="/#delivery">Доставка и оплата</a>
@@ -68,16 +82,20 @@ export function SiteFooter() {
           </nav>
           <div className={styles.contactColumn}>
             <h2>КОНТАКТЫ</h2>
-            <a className={styles.phone} href="tel:+71234567890">
-              +7 123 456-78-90
-            </a>
-            <p>Ежедневно 08:00–20:00</p>
-            <span>[почта]</span>
+            {dialNumber && (
+              <a className={styles.phone} href={`tel:${dialNumber}`}>
+                {formatRussianPhone(content.phone)}
+              </a>
+            )}
+            <p>{content.hours}</p>
+            {content.email && <span>{content.email}</span>}
           </div>
         </div>
         <div className={styles.bottom}>
-          <span>[ИП / ООО «Название»], ИНН [–], ОГРН [–]</span>
-          <span>© 2026 «Капела вкуса»</span>
+          {!content.legalDetails.includes('[ИП / ООО') && <span>{content.legalDetails}</span>}
+          <span>
+            © {new Date().getFullYear()} «{content.siteTitle}»
+          </span>
         </div>
       </div>
     </footer>

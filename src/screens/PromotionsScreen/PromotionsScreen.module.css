@@ -80,6 +80,38 @@
   box-shadow: 0 8px 24px rgb(63 8 14 / 5%);
 }
 
+.detailCard {
+  margin-top: 30px;
+}
+
+.detailImage {
+  display: block;
+  width: 100%;
+  max-height: 480px;
+  object-fit: cover;
+}
+
+.detailCard .banner h1 {
+  margin: 20px 0 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(32px, 5vw, 54px);
+  font-weight: 400;
+}
+
+.detailConditions {
+  width: 100%;
+  margin-bottom: 24px;
+}
+
+.detailConditions h2 {
+  color: var(--color-burgundy);
+  font-size: 20px;
+}
+
+.detailConditions p {
+  white-space: pre-line;
+}
+
 .banner {
   display: flex;
   flex-direction: column;

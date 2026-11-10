@@ -72,7 +72,11 @@ export function createApp(
     if (result.status === 'delivery_failed') {
       return reply.code(503).send(error('DELIVERY_UNAVAILABLE', 'Не удалось отправить код'))
     }
-    return reply.code(202).send({ status: 'accepted', retryAfterSeconds: result.retryAfterSeconds })
+    return reply.code(202).send({
+      status: 'accepted',
+      retryAfterSeconds: result.retryAfterSeconds,
+      ...(result.developmentCode ? { developmentCode: result.developmentCode } : {}),
+    })
   })
 
   app.post('/api/auth/verify-code', async (request, reply) => {

@@ -44,6 +44,15 @@
   object-position: center 20%;
 }
 
+.noPhoto {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: #a27b56;
+  font-size: 48px;
+}
+
 .badges {
   position: absolute;
   top: 12px;
@@ -134,4 +143,45 @@
   font-size: 18px;
   line-height: 1;
   white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .photoWrap {
+    height: 160px;
+  }
+  .badges {
+    top: 8px;
+    left: 8px;
+    max-width: calc(100% - 16px);
+  }
+  .badge {
+    min-height: 20px;
+    padding-inline: 7px;
+    font-size: 9px;
+  }
+  .body {
+    padding: 12px;
+  }
+  .name {
+    font-size: 16px;
+  }
+  .meta {
+    font-size: 11px;
+  }
+  .details {
+    font-size: 12px;
+  }
+  .footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding-top: 10px;
+  }
+  .price {
+    font-size: 16px;
+    white-space: normal;
+  }
+  .actionWrap {
+    text-align: center;
+  }
 }

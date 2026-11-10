@@ -20,6 +20,7 @@ export function NewArrivals({
           .filter((product) => product._id === id),
       )
     : newArrivals
+  if (products.length === 0) return null
   return (
     <section className={styles.section} id="new" aria-labelledby="new-arrivals-title">
       <div className={styles.headingRow}>
@@ -42,7 +43,7 @@ export function NewArrivals({
       <Swiper
         className={styles.carousel}
         modules={[A11y, Navigation]}
-        slidesPerView={1.15}
+        slidesPerView={2}
         spaceBetween={16}
         speed={550}
         grabCursor
@@ -50,7 +51,7 @@ export function NewArrivals({
         focusableElements="input, select, option, textarea, video, label"
         navigation={{ prevEl: `.${styles.previous}`, nextEl: `.${styles.next}` }}
         breakpoints={{
-          640: { slidesPerView: 2.2, spaceBetween: 16 },
+          768: { slidesPerView: 3, spaceBetween: 16 },
           1000: { slidesPerView: 4, spaceBetween: 20 },
         }}
         a11y={{ prevSlideMessage: 'Предыдущие новинки', nextSlideMessage: 'Следующие новинки' }}

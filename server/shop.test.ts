@@ -1,5 +1,7 @@
 // @vitest-environment node
 import { randomUUID } from 'node:crypto'
+import type { BonusCode } from '../shared/bonus-code.ts'
+import { defaultSiteContent, type SiteContent } from '../shared/site-content.ts'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { MongoClient } from 'mongodb'
@@ -87,6 +89,174 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
       totalKopecks: 32400,
       eligible: true,
     })
+    await db.collection<BonusCode>('bonus_codes').insertMany([
+      {
+        _id: 'PERCENT10',
+        kind: 'percent',
+        value: 20,
+        startsAt: new Date(Date.now() - 60_000).toISOString(),
+        endsAt: new Date(Date.now() + 60_000).toISOString(),
+        active: true,
+      },
+      {
+        _id: 'RUB100',
+        kind: 'rubles',
+        value: 100,
+        startsAt: new Date(Date.now() - 60_000).toISOString(),
+        endsAt: new Date(Date.now() + 60_000).toISOString(),
+        active: true,
+      },
+      {
+        _id: 'EXPIRED',
+        kind: 'percent',
+        value: 10,
+        startsAt: new Date(Date.now() - 120_000).toISOString(),
+        endsAt: new Date(Date.now() - 60_000).toISOString(),
+        active: true,
+      },
+    ])
+    const percentQuote = await app.inject({
+      method: 'POST',
+      url: '/api/checkout/quote',
+      headers: { origin },
+      payload: { lines: lines(1), fulfillment: pickup, promoCode: 'percent10' },
+    })
+    expect(percentQuote.json()).toMatchObject({
+      promoCode: 'PERCENT10',
+      discountKopecks: 0,
+      promoDiscountKopecks: 7200,
+      totalKopecks: 28800,
+    })
+    const rubQuote = await app.inject({
+      method: 'POST',
+      url: '/api/checkout/quote',
+      headers: { origin },
+      payload: { lines: lines(1), fulfillment: pickup, promoCode: 'RUB100' },
+    })
+    expect(rubQuote.json()).toMatchObject({ promoDiscountKopecks: 10000, totalKopecks: 26000 })
+    const comboQuote = await app.inject({
+      method: 'POST',
+      url: '/api/checkout/quote',
+      headers: { origin },
+      payload: { lines: [{ productId: 'lunch', quantity: 1, extras: [] }], fulfillment: pickup },
+    })
+    expect(comboQuote.json()).toMatchObject({
+      subtotalKopecks: 99000,
+      discountableSubtotalKopecks: 0,
+      discountKopecks: 0,
+      totalKopecks: 99000,
+    })
+    const comboWithCode = await app.inject({
+      method: 'POST',
+      url: '/api/checkout/quote',
+      headers: { origin },
+      payload: {
+        lines: [{ productId: 'lunch', quantity: 1, extras: [] }],
+        fulfillment: pickup,
+        promoCode: 'RUB100',
+      },
+    })
+    expect(comboWithCode.json().error.code).toBe('PROMO_NOT_APPLICABLE')
+    const mixedQuote = await app.inject({
+      method: 'POST',
+      url: '/api/checkout/quote',
+      headers: { origin },
+      payload: {
+        lines: [{ productId: 'lunch', quantity: 1, extras: [] }, ...lines(1)],
+        fulfillment: pickup,
+        promoCode: 'PERCENT10',
+      },
+    })
+    expect(mixedQuote.json()).toMatchObject({
+      subtotalKopecks: 135000,
+      discountableSubtotalKopecks: 36000,
+      promoDiscountKopecks: 7200,
+      totalKopecks: 127800,
+    })
+    const expiredQuote = await app.inject({
+      method: 'POST',
+      url: '/api/checkout/quote',
+      headers: { origin },
+      payload: { lines: lines(1), fulfillment: pickup, promoCode: 'EXPIRED' },
+    })
+    expect(expiredQuote.statusCode).toBe(400)
+    expect(expiredQuote.json().error.code).toBe('INVALID_PROMO_CODE')
+    await db
+      .collection<BonusCode>('bonus_codes')
+      .updateOne({ _id: 'PERCENT10' }, { $set: { endsAt: new Date(Date.now() - 1).toISOString() } })
+    const expiredAfterQuote = await app.inject({
+      method: 'POST',
+      url: '/api/orders',
+      headers: { origin, cookie, 'idempotency-key': randomUUID() },
+      payload: {
+        lines: lines(1),
+        fulfillment: pickup,
+        promoCode: 'PERCENT10',
+        expectedTotalKopecks: 28800,
+      },
+    })
+    expect(expiredAfterQuote.json().error.code).toBe('INVALID_PROMO_CODE')
+    await db
+      .collection<BonusCode>('bonus_codes')
+      .updateOne(
+        { _id: 'PERCENT10' },
+        { $set: { endsAt: new Date(Date.now() + 60_000).toISOString() } },
+      )
+    const bonusOrder = await app.inject({
+      method: 'POST',
+      url: '/api/orders',
+      headers: { origin, cookie, 'idempotency-key': randomUUID() },
+      payload: {
+        lines: lines(1),
+        fulfillment: pickup,
+        promoCode: 'percent10',
+        expectedTotalKopecks: 28800,
+      },
+    })
+    expect(bonusOrder.statusCode).toBe(201)
+    expect(bonusOrder.json().order.quote).toMatchObject({
+      promoCode: 'PERCENT10',
+      totalKopecks: 28800,
+    })
+    await db.collection('orders').deleteOne({ _id: bonusOrder.json().order._id })
+    await db.collection<SiteContent & { _id: string }>('site_content').updateOne(
+      { _id: 'public' },
+      {
+        $set: {
+          promotions: defaultSiteContent.promotions.map((promotion) =>
+            promotion.id === 'pickup'
+              ? { ...promotion, endsAt: new Date(Date.now() - 60_000).toISOString() }
+              : promotion,
+          ),
+        },
+      },
+      { upsert: true },
+    )
+    const afterPickupEnds = await app.inject({
+      method: 'POST',
+      url: '/api/checkout/quote',
+      headers: { origin },
+      payload: { lines: lines(1), fulfillment: pickup },
+    })
+    expect(afterPickupEnds.json()).toMatchObject({ discountKopecks: 0, totalKopecks: 36000 })
+    await db.collection<SiteContent & { _id: string }>('site_content').updateOne(
+      { _id: 'public' },
+      {
+        $set: {
+          promotions: defaultSiteContent.promotions.map((promotion) =>
+            promotion.id === 'pickup' ? { ...promotion, discountPercent: 15 } : promotion,
+          ),
+        },
+      },
+    )
+    const adjustedPickup = await app.inject({
+      method: 'POST',
+      url: '/api/checkout/quote',
+      headers: { origin },
+      payload: { lines: lines(1), fulfillment: pickup },
+    })
+    expect(adjustedPickup.json()).toMatchObject({ discountKopecks: 5400, totalKopecks: 30600 })
+    await db.collection<SiteContent & { _id: string }>('site_content').deleteOne({ _id: 'public' })
     const smallDelivery = await app.inject({
       method: 'POST',
       url: '/api/checkout/quote',
@@ -452,6 +622,38 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
         })
       ).statusCode,
     ).toBe(404)
+
+    const newCafeAddress = 'Красноярск, ул. Новая, 25'
+    await db
+      .collection<{ _id: string; address: string }>('site_content')
+      .updateOne({ _id: 'public' }, { $set: { address: newCafeAddress } }, { upsert: true })
+    const stalePickup = await app.inject({
+      method: 'POST',
+      url: '/api/checkout/quote',
+      headers: { origin },
+      payload: { lines: lines(1), fulfillment: pickup },
+    })
+    expect(stalePickup.statusCode).toBe(409)
+    expect(stalePickup.json().error.code).toBe('ADDRESS_CHANGED')
+    const currentPickup = { mode: 'pickup', label: newCafeAddress }
+    const currentQuote = await app.inject({
+      method: 'POST',
+      url: '/api/checkout/quote',
+      headers: { origin },
+      payload: { lines: lines(1), fulfillment: currentPickup },
+    })
+    expect(currentQuote.statusCode).toBe(200)
+    const currentOrder = await app.inject({
+      method: 'POST',
+      url: '/api/orders',
+      headers: { origin, cookie, 'idempotency-key': randomUUID() },
+      payload: {
+        lines: lines(1),
+        fulfillment: currentPickup,
+        expectedTotalKopecks: currentQuote.json().totalKopecks,
+      },
+    })
+    expect(currentOrder.statusCode).toBe(201)
   } finally {
     await app.close()
     await mongo.close()

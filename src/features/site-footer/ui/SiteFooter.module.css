@@ -39,7 +39,7 @@
   display: flex;
   gap: 8px;
 }
-.socials a {
+.footer .columns .socials a {
   display: grid;
   place-items: center;
   width: 38px;
@@ -52,11 +52,15 @@
   text-decoration: none;
   transition:
     border-color 0.3s ease,
-    color 0.3s ease;
+    color 0.3s ease,
+    background-color 0.3s ease,
+    transform 0.3s ease;
 }
-.socials a:hover {
+.footer .columns .socials a:hover {
   border-color: #d2a968;
   color: #ffd16e;
+  background: #743a37;
+  transform: translateY(-2px);
 }
 .columns h2 {
   margin: 3px 0 15px;
@@ -135,6 +139,32 @@
   }
   .columns {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 24px 0 19px;
+  }
+  .columns nav {
+    display: none;
+  }
+  .bottom {
+    padding: 10px 0 12px;
+  }
+  .accountFooter .columns {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+  .accountFooter .brandColumn {
+    display: grid;
+    justify-items: center;
+  }
+  .accountFooter .socials {
+    justify-content: center;
+  }
+  .accountFooter .contactColumn {
+    align-items: center;
+  }
+  .accountFooter .bottom {
+    justify-content: center;
+    text-align: center;
   }
 }
 @media (max-width: 480px) {

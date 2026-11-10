@@ -279,6 +279,17 @@
   border-radius: 10px;
   object-fit: cover;
 }
+.recommendation .recommendationPlaceholder {
+  display: grid;
+  place-items: center;
+  width: 80px;
+  height: 92px;
+  flex: none;
+  border-radius: 10px;
+  background: #f2e3cc;
+  color: #bd9257;
+  font-size: 28px;
+}
 .recommendation > div {
   min-width: 0;
   display: flex;

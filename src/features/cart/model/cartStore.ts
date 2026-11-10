@@ -18,6 +18,14 @@ export type CartLine = {
   unitPriceRub: number | null
 }
 
+type CartCatalogProduct = {
+  _id: string
+  name: string
+  image?: string
+  priceKopecks: number
+  available: boolean
+}
+
 type CartState = {
   lines: readonly CartLine[]
   isOpen: boolean
@@ -34,6 +42,7 @@ type CartState = {
   ) => void
   changeQuantity: (key: string, difference: number) => void
   clear: () => void
+  syncCatalog: (products: readonly CartCatalogProduct[]) => void
 }
 
 export const cartCount = (lines: readonly CartLine[]) =>
@@ -97,6 +106,21 @@ export const useCartStore = create<CartState>((set) => ({
         .filter((line) => line.quantity > 0),
     })),
   clear: () => set({ lines: [] }),
+  syncCatalog: (products) =>
+    set((state) => {
+      const byId = new Map(products.map((product) => [product._id, product]))
+      let changed = false
+      const lines = state.lines.map((line) => {
+        const product = byId.get(line.productId)
+        const price = product?.available ? product.priceKopecks / 100 : null
+        const name = product?.name ?? line.name
+        const image = product?.image ?? line.image
+        if (price === line.unitPriceRub && name === line.name && image === line.image) return line
+        changed = true
+        return { ...line, unitPriceRub: price, name, image }
+      })
+      return changed ? { lines } : state
+    }),
 }))
 
 export function addOneToCart(item: CartProduct) {

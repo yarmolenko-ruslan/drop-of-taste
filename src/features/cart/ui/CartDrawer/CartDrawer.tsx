@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Dialog } from '../../../../shared/ui/Dialog/Dialog'
-import { cartCount, cartTotal, formatCartPrice, useCartStore } from '../../index'
+import { cartCount, cartTotal, formatCartPrice, useCartStore, type CartLine } from '../../index'
 import styles from './CartDrawer.module.css'
 import { ApiError, apiRequest, type AuthUser } from '../../../auth/api/authApi'
 import type { FulfillmentSelection } from '../../../fulfillment/ui/FulfillmentDialog/FulfillmentDialog'
 import { useCatalog } from '../../../catalog/api/CatalogProvider'
 import { formatCompactAddress } from '../../../../shared/lib/formatCompactAddress'
+import { useSiteContent } from '../../../site-content/SiteContentProvider'
 
 type Quote = {
   lines: {
@@ -17,13 +18,30 @@ type Quote = {
   }[]
   subtotalKopecks: number
   discountKopecks: number
+  promoCode?: string
+  promoDiscountKopecks: number
   deliveryKopecks: number
   totalKopecks: number
   eligible: boolean
   testMode: boolean
 }
 
-const cafeAddress = 'г. Красноярск, улица Петра Подзолкова, 3и'
+function orderInput(lines: readonly CartLine[], fulfillment: FulfillmentSelection, code: string) {
+  if (lines.some((line) => line.extras.length > 0))
+    throw new Error('Цены добавок уточняются. Уберите добавки из заказа.')
+  return {
+    lines: lines.map((line) => ({
+      productId: line.productId,
+      quantity: line.quantity,
+      extras: line.extras,
+    })),
+    fulfillment:
+      fulfillment.mode === 'delivery'
+        ? { mode: 'delivery' as const, label: fulfillment.label, details: fulfillment.details }
+        : { mode: 'pickup' as const, label: fulfillment.label },
+    ...(code && { promoCode: code }),
+  }
+}
 
 export type CartRecommendation = {
   id: string
@@ -57,16 +75,24 @@ export function CartDrawer({
   recommendations,
   onAddRecommendation,
 }: CartDrawerProps) {
+  const siteContent = useSiteContent()
+  const cafeAddress = siteContent.address
   const lines = useCartStore((state) => state.lines)
   const close = useCartStore((state) => state.close)
   const clear = useCartStore((state) => state.clear)
   const changeQuantity = useCartStore((state) => state.changeQuantity)
   const [promo, setPromo] = useState('')
+  const [appliedPromo, setAppliedPromo] = useState('')
   const [notice, setNotice] = useState('')
   const [quote, setQuote] = useState<Quote | null>(null)
   const [quoteSignature, setQuoteSignature] = useState('')
   const [busy, setBusy] = useState(false)
+  const [calculating, setCalculating] = useState(false)
+  const [quoteFailed, setQuoteFailed] = useState(false)
+  const [quoteAttempt, setQuoteAttempt] = useState(0)
   const [orderKey, setOrderKey] = useState<string | null>(null)
+  const [testPaymentEnabled, setTestPaymentEnabled] = useState(false)
+  const [orderIdToPay, setOrderIdToPay] = useState<string | null>(null)
   const mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
@@ -77,13 +103,16 @@ export function CartDrawer({
   const catalog = useCatalog()
   const count = cartCount(lines)
   const total = cartTotal(lines)
-  const signature = JSON.stringify([lines, fulfillment])
+  const hasUnpricedExtras = lines.some((line) => line.extras.length > 0)
+  const signature = JSON.stringify([lines, fulfillment, appliedPromo, siteContent.promotions])
+  const latestSignature = useRef(signature)
+  useLayoutEffect(() => {
+    latestSignature.current = signature
+  }, [signature])
   const currentQuote = quoteSignature === signature ? quote : null
   const displayedSubtotal = currentQuote ? currentQuote.subtotalKopecks / 100 : total
   const pricedRecommendations = recommendations.flatMap((item) => {
-    const live = catalog?.data?.categories
-      .flatMap((category) => category.products)
-      .find((product) => product._id === item.id)
+    const live = catalog?.itemsById.get(item.id)
     return live?.available
       ? [
           {
@@ -95,22 +124,9 @@ export function CartDrawer({
         ]
       : []
   })
-
-  function orderInput() {
-    if (lines.some((line) => line.extras.length > 0))
-      throw new Error('Цены добавок уточняются. Уберите добавки для тестового заказа.')
-    return {
-      lines: lines.map((line) => ({
-        productId: line.productId,
-        quantity: line.quantity,
-        extras: line.extras,
-      })),
-      fulfillment:
-        fulfillment.mode === 'delivery'
-          ? { mode: 'delivery', label: fulfillment.label, details: fulfillment.details }
-          : { mode: 'pickup', label: fulfillment.label },
-    }
-  }
+  const visibleRecommendations = pricedRecommendations.filter(
+    (item) => !lines.some((line) => line.productId === item.id),
+  )
 
   function chooseDelivery() {
     if (fulfillment.mode === 'delivery') return
@@ -119,24 +135,70 @@ export function CartDrawer({
     else onGoToAddresses()
   }
 
-  async function prepareQuote() {
-    try {
-      setBusy(true)
-      setNotice('')
-      const result = await apiRequest<Quote>('/checkout/quote', {
-        method: 'POST',
-        body: JSON.stringify(orderInput()),
-      })
-      if (!mounted.current) return
-      setQuote(result)
-      setQuoteSignature(signature)
-      setOrderKey(crypto.randomUUID())
-    } catch (failure) {
-      if (mounted.current)
+  useEffect(() => {
+    if (!lines.length || busy || currentQuote) return
+    const controller = new AbortController()
+    const timer = window.setTimeout(async () => {
+      setCalculating(true)
+      setQuoteFailed(false)
+      setNotice((previous) => (previous.startsWith('Заказ ') ? previous : ''))
+      setOrderIdToPay(null)
+      try {
+        const input = orderInput(lines, fulfillment, appliedPromo)
+        const [config, result] = await Promise.all([
+          apiRequest<{ testPaymentEnabled: boolean }>('/checkout/config', {
+            signal: controller.signal,
+          }),
+          apiRequest<Quote>('/checkout/quote', {
+            method: 'POST',
+            body: JSON.stringify(input),
+            signal: controller.signal,
+          }),
+        ])
+        if (controller.signal.aborted || !mounted.current) return
+        setTestPaymentEnabled(config.testPaymentEnabled)
+        setQuote(result)
+        setQuoteSignature(signature)
+        setOrderKey(crypto.randomUUID())
+        if (appliedPromo)
+          setNotice(
+            result.promoDiscountKopecks > 0
+              ? `Бонус-код ${appliedPromo} применён`
+              : 'На этот заказ действует более выгодная скидка за самовывоз',
+          )
+      } catch (failure) {
+        if (controller.signal.aborted || !mounted.current) return
+        setQuote(null)
+        setQuoteSignature('')
+        setOrderKey(null)
+        setQuoteFailed(true)
         setNotice(failure instanceof Error ? failure.message : 'Не удалось рассчитать заказ')
-    } finally {
-      if (mounted.current) setBusy(false)
+      } finally {
+        if (!controller.signal.aborted && mounted.current) setCalculating(false)
+      }
+    }, 180)
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
     }
+  }, [lines, fulfillment, appliedPromo, signature, busy, currentQuote, quoteAttempt])
+
+  async function startPayment(id: string) {
+    const result = await apiRequest<{ status: string; confirmationUrl?: string }>(
+      `/orders/${encodeURIComponent(id)}/pay`,
+      { method: 'POST', headers: { 'X-Account-Id': user!.id } },
+    )
+    if (result.confirmationUrl) {
+      window.location.assign(result.confirmationUrl)
+      return
+    }
+    if (result.status === 'succeeded') {
+      clear()
+      setNotice(`Оплата заказа ${id.slice(0, 8)} прошла успешно.`)
+      setOrderIdToPay(null)
+      return
+    }
+    setNotice('Платёж не открылся. Проверьте статус заказа в личном кабинете.')
   }
 
   async function createOrder() {
@@ -148,31 +210,79 @@ export function CartDrawer({
     try {
       setBusy(true)
       setNotice('')
-      const submittedLines = useCartStore.getState().lines
-      const result = await apiRequest<{ order: { _id: string } }>('/orders', {
-        method: 'POST',
-        headers: { 'Idempotency-Key': orderKey, 'X-Account-Id': user.id },
-        body: JSON.stringify({ ...orderInput(), expectedTotalKopecks: currentQuote.totalKopecks }),
-      })
+      const submittedSignature = signature
+      const result = orderIdToPay
+        ? { order: { _id: orderIdToPay } }
+        : await apiRequest<{ order: { _id: string } }>('/orders', {
+            method: 'POST',
+            headers: { 'Idempotency-Key': orderKey, 'X-Account-Id': user.id },
+            body: JSON.stringify({
+              ...orderInput(lines, fulfillment, appliedPromo),
+              expectedTotalKopecks: currentQuote.totalKopecks,
+            }),
+          })
       if (!mounted.current) return
-      const cartChanged = useCartStore.getState().lines !== submittedLines
+      if (currentQuote.totalKopecks === 0) {
+        await apiRequest(`/orders/${encodeURIComponent(result.order._id)}/complete`, {
+          method: 'POST',
+          headers: { 'X-Account-Id': user.id },
+        })
+        const cartChanged = latestSignature.current !== submittedSignature
+        if (!cartChanged) clear()
+        setQuote(null)
+        setOrderKey(null)
+        setOrderIdToPay(null)
+        setNotice(
+          `Заказ ${result.order._id.slice(0, 8)} оформлен без оплаты.` +
+            (cartChanged ? ' Корзина изменилась во время оформления — проверьте её.' : ''),
+        )
+        onOrderCreated?.()
+        return
+      }
+      if (testPaymentEnabled) {
+        const cartChanged = latestSignature.current !== submittedSignature
+        if (cartChanged) {
+          setOrderIdToPay(null)
+          setNotice(
+            `Заказ ${result.order._id.slice(0, 8)} сохранён. Корзина или способ получения изменились во время оформления; оплатить сохранённый заказ можно в личном кабинете.`,
+          )
+          onOrderCreated?.()
+          return
+        }
+        setOrderIdToPay(result.order._id)
+        setNotice('Заказ сохранён. Открываем страницу оплаты ЮKassa…')
+        if (!orderIdToPay) onOrderCreated?.()
+        await startPayment(result.order._id)
+        return
+      }
+      const cartChanged = latestSignature.current !== submittedSignature
       if (!cartChanged) clear()
       setQuote(null)
       setOrderKey(null)
       setNotice(
-        `Тестовый заказ ${result.order._id.slice(0, 8)} сохранён. В кафе он не передаётся.` +
-          (cartChanged ? ' Корзина менялась во время сохранения — проверьте её состав.' : ''),
+        `Заказ ${result.order._id.slice(0, 8)} сохранён.` +
+          (cartChanged
+            ? ' Корзина или способ получения менялись во время сохранения — проверьте заказ.'
+            : ''),
       )
       onOrderCreated?.()
     } catch (failure) {
       if (!mounted.current) return
       if (
         failure instanceof ApiError &&
-        (failure.code === 'PRICE_CHANGED' || failure.code === 'ADDRESS_CHANGED')
+        (failure.code === 'PRICE_CHANGED' ||
+          failure.code === 'ADDRESS_CHANGED' ||
+          failure.code === 'INVALID_PROMO_CODE' ||
+          failure.code === 'PROMO_NOT_APPLICABLE')
       )
         setQuote(null)
+      if (
+        failure instanceof ApiError &&
+        ['INVALID_PROMO_CODE', 'PROMO_NOT_APPLICABLE'].includes(failure.code)
+      )
+        setAppliedPromo('')
       if (failure instanceof ApiError && failure.code === 'UNAUTHENTICATED') onRequireAuth?.()
-      setNotice(failure instanceof Error ? failure.message : 'Не удалось сохранить тестовый заказ')
+      setNotice(failure instanceof Error ? failure.message : 'Не удалось сохранить заказ')
     } finally {
       if (mounted.current) setBusy(false)
     }
@@ -345,48 +455,62 @@ export function CartDrawer({
                 className={styles.promo}
                 onSubmit={(event) => {
                   event.preventDefault()
-                  setNotice('Проверка промокода появится после подключения заказов.')
+                  const code = promo.trim().toUpperCase()
+                  setAppliedPromo(code)
                 }}
               >
-                <label htmlFor="cart-promo">Промокод</label>
+                <label htmlFor="cart-promo">Бонус-код</label>
                 <div>
                   <input
                     id="cart-promo"
-                    placeholder="Введите промокод"
+                    placeholder="Введите бонус-код"
                     value={promo}
                     onChange={(event) => setPromo(event.target.value)}
                   />
-                  <button type="submit" aria-label="Применить промокод" disabled={!promo.trim()}>
+                  <button
+                    type="submit"
+                    aria-label="Применить бонус-код"
+                    disabled={busy || (!promo.trim() && !appliedPromo)}
+                  >
                     →
                   </button>
                 </div>
+                {appliedPromo && (
+                  <small>
+                    Код: {appliedPromo}. Очистите поле и нажмите стрелку, чтобы убрать его.
+                  </small>
+                )}
               </form>
 
-              {recommendations.length > 0 && (
+              {visibleRecommendations.length > 0 && (
                 <section
                   className={styles.recommendations}
                   aria-labelledby="cart-recommendations-title"
                 >
                   <h3 id="cart-recommendations-title">Добавить к заказу</h3>
                   <div className={styles.recommendationList}>
-                    {pricedRecommendations
-                      .filter((item) => !lines.some((line) => line.productId === item.id))
-                      .map((item) => (
-                        <article className={styles.recommendation} key={item.id}>
+                    {visibleRecommendations.map((item) => (
+                      <article className={styles.recommendation} key={item.id}>
+                        {item.image ? (
                           <img src={item.image} alt="" loading="lazy" />
-                          <div>
-                            <strong>{item.name}</strong>
-                            <span>{formatCartPrice(item.priceRub)}</span>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => onAddRecommendation(item)}
-                            >
-                              В корзину
-                            </button>
-                          </div>
-                        </article>
-                      ))}
+                        ) : (
+                          <span className={styles.recommendationPlaceholder} aria-hidden="true">
+                            ◉
+                          </span>
+                        )}
+                        <div>
+                          <strong>{item.name}</strong>
+                          <span>{formatCartPrice(item.priceRub)}</span>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => onAddRecommendation(item)}
+                          >
+                            В корзину
+                          </button>
+                        </div>
+                      </article>
+                    ))}
                   </div>
                 </section>
               )}
@@ -397,16 +521,27 @@ export function CartDrawer({
               {currentQuote && (
                 <div className={styles.summary} role="status">
                   <div>
-                    Тестовый расчёт. Блюда:{' '}
-                    {(currentQuote.subtotalKopecks / 100).toLocaleString('ru-RU')} ₽; скидка:{' '}
-                    {(currentQuote.discountKopecks / 100).toLocaleString('ru-RU')} ₽; доставка:{' '}
-                    {(currentQuote.deliveryKopecks / 100).toLocaleString('ru-RU')} ₽.
+                    Ваш заказ. Блюда: {(currentQuote.subtotalKopecks / 100).toLocaleString('ru-RU')}{' '}
+                    ₽; скидка: {(currentQuote.discountKopecks / 100).toLocaleString('ru-RU')} ₽;
+                    {currentQuote.promoCode && (
+                      <>
+                        {' '}
+                        бонус-код {currentQuote.promoCode}:{' '}
+                        {(currentQuote.promoDiscountKopecks / 100).toLocaleString('ru-RU')} ₽;
+                      </>
+                    )}
+                    доставка: {(currentQuote.deliveryKopecks / 100).toLocaleString('ru-RU')} ₽.
                   </div>
                   <strong>
                     Итого: {(currentQuote.totalKopecks / 100).toLocaleString('ru-RU')} ₽
                   </strong>
-                  <p>Тестовый режим — заказ не передаётся в кафе.</p>
                   {!currentQuote.eligible && <p>Для доставки нужно минимум 500 ₽ блюд.</p>}
+                  {fulfillment.mode === 'delivery' && (
+                    <small>
+                      Минимум 500 ₽ и бесплатная доставка от 1 500 ₽ считаются по стоимости блюд до
+                      скидок.
+                    </small>
+                  )}
                 </div>
               )}
               {notice && (
@@ -418,13 +553,33 @@ export function CartDrawer({
             <footer className={styles.footer}>
               <button
                 type="button"
-                disabled={busy || (currentQuote !== null && !currentQuote.eligible)}
+                disabled={
+                  busy ||
+                  calculating ||
+                  hasUnpricedExtras ||
+                  (!currentQuote && !quoteFailed) ||
+                  (currentQuote !== null && !currentQuote.eligible)
+                }
                 onClick={() => {
-                  if (!currentQuote) void prepareQuote()
-                  else void createOrder()
+                  if (currentQuote) void createOrder()
+                  else setQuoteAttempt((value) => value + 1)
                 }}
               >
-                {currentQuote ? 'Подтвердить тестовый заказ' : 'Рассчитать заказ'}{' '}
+                {currentQuote
+                  ? currentQuote.totalKopecks === 0
+                    ? 'Оформить заказ'
+                    : testPaymentEnabled
+                      ? orderIdToPay
+                        ? 'Повторить переход к оплате'
+                        : 'Перейти к оплате'
+                      : 'Оформить заказ'
+                  : hasUnpricedExtras
+                    ? 'Уберите добавки'
+                    : calculating
+                      ? 'Рассчитываем…'
+                      : quoteFailed
+                        ? 'Повторить расчёт'
+                        : 'Ожидаем расчёт…'}{' '}
                 <span>
                   {formatCartPrice(currentQuote ? currentQuote.totalKopecks / 100 : total)}
                 </span>

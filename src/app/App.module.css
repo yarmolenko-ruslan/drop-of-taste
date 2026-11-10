@@ -6,6 +6,7 @@
 
 .noticeToast {
   position: fixed;
+  z-index: 2147483647;
   /* 88px снизу — запас под кнопку «наверх» (52px + отступы), чтобы не перекрывать её */
   inset: auto 20px 88px auto;
   margin: 0;

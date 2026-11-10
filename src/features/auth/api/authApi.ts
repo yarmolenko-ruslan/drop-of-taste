@@ -12,12 +12,16 @@ export class ApiError extends Error {
 
 const REQUEST_TIMEOUT_MS = 15_000
 
-export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiRequest<T>(
+  path: string,
+  init?: RequestInit,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<T> {
   let response: Response
   // Внешний сигнал (отмена диалогом) объединяем с таймаутом: иначе зависший
   // сервер оставлял бы кнопку в busy-состоянии бессрочно.
   const externalSignal = init?.signal ?? null
-  const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+  const timeoutSignal = AbortSignal.timeout(timeoutMs)
   const signal = externalSignal ? AbortSignal.any([externalSignal, timeoutSignal]) : timeoutSignal
   try {
     const headers = new Headers(init?.headers)
@@ -49,11 +53,14 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
 
 export const authApi = {
   requestCode: (phone: string, signal?: AbortSignal) =>
-    apiRequest<{ status: string; retryAfterSeconds: number }>('/auth/request-code', {
-      method: 'POST',
-      body: JSON.stringify({ phone }),
-      signal,
-    }),
+    apiRequest<{ status: string; retryAfterSeconds: number; developmentCode?: string }>(
+      '/auth/request-code',
+      {
+        method: 'POST',
+        body: JSON.stringify({ phone }),
+        signal,
+      },
+    ),
   verifyCode: (phone: string, code: string, consent: boolean, signal?: AbortSignal) =>
     apiRequest<{ user: AuthUser }>('/auth/verify-code', {
       method: 'POST',

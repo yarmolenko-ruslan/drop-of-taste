@@ -32,7 +32,11 @@ beforeEach(() => {
 test('вход возможен только после согласия и верного кода', async () => {
   const user = userEvent.setup()
   const onAuthenticate = vi.fn()
-  requestCode.mockResolvedValue({ status: 'accepted', retryAfterSeconds: 60 })
+  requestCode.mockResolvedValue({
+    status: 'accepted',
+    retryAfterSeconds: 60,
+    developmentCode: '123456',
+  })
   verifyCode.mockResolvedValue({ user: { id: 'u1', phone: '+79991234567', name: '' } })
   render(
     <MemoryRouter>
@@ -48,7 +52,8 @@ test('вход возможен только после согласия и ве
   expect(onAuthenticate).not.toHaveBeenCalled()
   await screen.findByRole('textbox', { name: 'Одноразовый код' })
   expect(requestCode).toHaveBeenCalledWith('+79991234567', expect.any(AbortSignal))
-  expect(screen.getByText(/SMS не отправляется/)).toBeInTheDocument()
+  expect(screen.getByText(/Введите код для номера/)).toBeInTheDocument()
+  expect(screen.getByRole('status')).toHaveTextContent('Код подтверждения: 123456')
   await user.type(screen.getByRole('textbox', { name: 'Одноразовый код' }), '123456')
   await user.click(screen.getByRole('button', { name: 'Войти' }))
   expect(verifyCode).toHaveBeenCalledWith('+79991234567', '123456', true, expect.any(AbortSignal))

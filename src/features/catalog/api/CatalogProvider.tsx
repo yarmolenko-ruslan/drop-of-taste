@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { apiRequest } from '../../auth/api/authApi'
+import { subscribeSiteUpdate } from '../../../shared/lib/siteUpdates'
 import { Spinner } from '../../../shared/ui/Spinner/Spinner'
 import styles from './CatalogStatus.module.css'
 import type { CatalogProduct } from '../model/product'
@@ -47,7 +48,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     apiRequest<CatalogData>('/catalog')
       .then((result) => {
         if (!active) return
-        if (!result.categories?.length) throw new Error('Меню пока недоступно')
+        if (!Array.isArray(result.categories)) throw new Error('Меню пока недоступно')
         setData(result)
         setError('')
       })
@@ -71,6 +72,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     },
     [],
   )
+  useEffect(() => subscribeSiteUpdate('catalog', retry), [retry])
   const value = useMemo(
     () => ({ data, itemsById, loading, error, retry }),
     [data, itemsById, loading, error, retry],

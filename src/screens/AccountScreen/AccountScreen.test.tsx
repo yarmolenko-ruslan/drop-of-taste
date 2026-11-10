@@ -19,6 +19,7 @@ const { calls, state, catalogState } = vi.hoisted(() => ({
     addresses: [] as { id: string; mode: 'delivery'; label: string; details: unknown }[],
     orders: [] as unknown[],
     ordersNextCursor: null as string | null,
+    paymentEnabled: false,
     moreOrdersResponse: null as Promise<{ orders: unknown[]; nextCursor: string | null }> | null,
     failOrders: false,
     notificationSaves: [] as Array<() => void>,
@@ -35,6 +36,7 @@ vi.mock('../../features/auth/api/authApi', () => ({
     const method = init?.method ?? 'GET'
     const body = init?.body ? JSON.parse(String(init.body)) : undefined
     calls.push({ path, method, body, accountId: new Headers(init?.headers).get('X-Account-Id') })
+    if (path === '/checkout/config') return { testPaymentEnabled: state.paymentEnabled }
     if (path === '/profile' && method === 'PUT') {
       state.profile = { ...state.profile, ...body }
       return { profile: state.profile }
@@ -112,6 +114,7 @@ beforeEach(() => {
   state.addresses = []
   state.orders = []
   state.ordersNextCursor = null
+  state.paymentEnabled = false
   state.moreOrdersResponse = null
   state.failOrders = false
   state.notificationSaves = []
@@ -162,10 +165,10 @@ test('ошибка загрузки заказов не выглядит как 
   expect(
     await screen.findByRole('button', { name: 'Повторить загрузку заказов' }),
   ).toBeInTheDocument()
-  expect(screen.queryByText('Тестовых заказов пока нет.')).not.toBeInTheDocument()
+  expect(screen.queryByText('Заказов пока нет.')).not.toBeInTheDocument()
   state.failOrders = false
   await userEvent.setup().click(screen.getByRole('button', { name: 'Повторить загрузку заказов' }))
-  expect(await screen.findByText('Тестовых заказов пока нет.')).toBeInTheDocument()
+  expect(await screen.findByText('Заказов пока нет.')).toBeInTheDocument()
 })
 
 test('старый ответ продолжения не портит обновлённую историю заказов', async () => {
@@ -206,14 +209,14 @@ test('старый ответ продолжения не портит обно�
     </MemoryRouter>,
   )
   const user = userEvent.setup()
-  expect(await screen.findByText('Тестовый заказ №AAAAAA')).toBeInTheDocument()
+  expect(await screen.findByText('Заказ №AAAAAA')).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Загрузить ещё заказы' }))
   state.orders = [makeOrder('bbbbbb'), ...state.orders]
   state.ordersNextCursor = 'new-cursor'
   await user.click(screen.getByRole('button', { name: 'Обновить список' }))
-  expect(await screen.findByText('Тестовый заказ №BBBBBB')).toBeInTheDocument()
+  expect(await screen.findByText('Заказ №BBBBBB')).toBeInTheDocument()
   await act(async () => finishMore({ orders: [makeOrder('cccccc')], nextCursor: null }))
-  expect(screen.queryByText('Тестовый заказ №CCCCCC')).not.toBeInTheDocument()
+  expect(screen.queryByText('Заказ №CCCCCC')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Загрузить ещё заказы' })).toBeInTheDocument()
 })
 
@@ -243,6 +246,7 @@ test('профиль загружается и сохраняется через
   const user = userEvent.setup()
   const onUpdate = renderAccount('profile')
   const name = await screen.findByRole('textbox', { name: 'Имя' })
+  expect(name).toHaveAttribute('maxLength', '22')
   await user.clear(name)
   await user.type(name, 'Руслан')
   await user.type(screen.getByRole('textbox', { name: 'Эл. почта' }), 'test@example.ru')
@@ -288,7 +292,7 @@ test('настройки уведомлений сохраняются посл�
 
 test('вкладка заказов показывает иконку пустого состояния', async () => {
   renderAccount('orders')
-  expect(await screen.findByText('Тестовых заказов пока нет.')).toBeInTheDocument()
+  expect(await screen.findByText('Заказов пока нет.')).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'Активные заказы' })).toBeInTheDocument()
 })
 
@@ -318,10 +322,10 @@ test('карточка заказа показывает статус-ленту
     },
   ]
   renderAccount('orders')
-  expect(await screen.findByText('Тестовый заказ №ABCDEF')).toBeInTheDocument()
-  expect(screen.getByText('Не передан в кафе')).toBeInTheDocument()
-  expect(screen.getByText('Создан')).toBeInTheDocument()
-  expect(screen.getByText('Завершён тест')).toBeInTheDocument()
+  expect(await screen.findByText('Заказ №ABCDEF')).toBeInTheDocument()
+  expect(screen.getAllByText('Обработка заявки')).toHaveLength(2)
+  expect(screen.getByText('Завершён')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Отметить выполненным/ })).not.toBeInTheDocument()
   expect(screen.queryByText('Передан в кафе')).not.toBeInTheDocument()
   expect(
     screen.getByText('Самовывоз · г. Красноярск, улица Петра Подзолкова, 3и'),
@@ -332,12 +336,91 @@ test('карточка заказа показывает статус-ленту
   expect(screen.getByText('324 ₽')).toBeInTheDocument()
 })
 
-test('заказ можно отметить выполненным — он переходит в историю и раскрывается', async () => {
+test('заказ на 0 ₽ показывает бонус-код и завершается без попытки оплаты', async () => {
+  state.paymentEnabled = true
+  state.orders = [
+    {
+      _id: 'free1234-3456-7890-abcd-ef1234567890',
+      createdAt: '2026-11-04T12:02:00.000Z',
+      status: 'test',
+      paymentStatus: 'unpaid',
+      input: {
+        fulfillment: { mode: 'pickup', label: 'г. Красноярск, улица Петра Подзолкова, 3и' },
+      },
+      quote: {
+        lines: [
+          {
+            productId: 'borscht',
+            name: 'Борщ',
+            quantity: 1,
+            unitPriceKopecks: 36000,
+            lineTotalKopecks: 36000,
+          },
+        ],
+        subtotalKopecks: 36000,
+        discountKopecks: 0,
+        promoCode: 'FREE100',
+        promoDiscountKopecks: 36000,
+        deliveryKopecks: 0,
+        totalKopecks: 0,
+      },
+    },
+  ]
+  renderAccount('orders')
+  expect(await screen.findByText('Бонус-код FREE100')).toBeInTheDocument()
+  expect(screen.getAllByText('Обработка заявки').length).toBeGreaterThan(0)
+  expect(screen.getByText('Не требуется — заказ на 0 ₽')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Оплатить заказ' })).not.toBeInTheDocument()
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Завершить оформление' }))
+  await waitFor(() =>
+    expect(
+      calls.some(
+        (call) =>
+          call.path === '/orders/free1234-3456-7890-abcd-ef1234567890/complete' &&
+          call.method === 'POST',
+      ),
+    ).toBe(true),
+  )
+})
+
+test.each(['pending', 'succeeded', 'canceled'] as const)(
+  'этапы приготовления сохраняются при статусе оплаты $paymentStatus',
+  async (paymentStatus) => {
+    state.paymentEnabled = true
+    state.orders = [
+      {
+        _id: 'abcdef12-3456-7890-abcd-ef1234567890',
+        createdAt: '2026-11-04T12:02:00.000Z',
+        status: 'test',
+        paymentStatus,
+        input: {
+          fulfillment: { mode: 'pickup', label: 'г. Красноярск, улица Петра Подзолкова, 3и' },
+        },
+        quote: { lines: [], discountKopecks: 0, deliveryKopecks: 0, totalKopecks: 32400 },
+      },
+    ]
+    renderAccount('orders')
+    if (paymentStatus === 'canceled') {
+      expect(await screen.findByText('Нет активных заказов.')).toBeInTheDocument()
+      await userEvent.setup().click(screen.getByRole('button', { name: /4 ноября/ }))
+    }
+    const timeline = await screen.findByRole('list', { name: 'Этапы заказа' })
+    expect(within(timeline).getAllByRole('listitem')).toHaveLength(4)
+    expect(within(timeline).getByText('Обработка заявки')).toBeInTheDocument()
+    expect(within(timeline).getByText('Приготовление')).toBeInTheDocument()
+    expect(within(timeline).getByText('Завершён')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Отметить выполненным/ })).not.toBeInTheDocument()
+  },
+)
+
+test('завершённый заказ находится в истории и раскрывается', async () => {
   const user = userEvent.setup()
   state.orders = [
     {
       _id: 'abcdef12-3456-7890-abcd-ef1234567890',
       createdAt: '2026-11-04T10:00:00.000Z',
+      status: 'completed',
+      completedAt: '2026-11-04T11:00:00.000Z',
       input: {
         fulfillment: { mode: 'pickup', label: 'г. Красноярск, улица Петра Подзолкова, 3и' },
       },
@@ -359,13 +442,12 @@ test('заказ можно отметить выполненным — он п�
     },
   ]
   renderAccount('orders')
-  await user.click(await screen.findByRole('button', { name: 'Отметить выполненным (тест)' }))
   expect(await screen.findByText('История заказов')).toBeInTheDocument()
   expect(screen.getByText('Ноябрь 2026')).toBeInTheDocument()
   expect(screen.getByText('1 заказ')).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: /4 ноября/ }))
   expect(screen.getByRole('button', { name: 'Повторить заказ' })).toBeInTheDocument()
-  expect(screen.getByText('Выполнен (тест)')).toBeInTheDocument()
+  expect(screen.getAllByText('Завершён')).toHaveLength(2)
   expect(screen.queryByText('Выдан')).not.toBeInTheDocument()
 })
 
@@ -509,4 +591,23 @@ test('адрес добавляется и удаляется через API', a
         (call.body as { addressId: string | null }).addressId === null,
     ),
   ).toBe(false)
+})
+
+test.each([
+  { stage: 'preparing', current: 'Приготовление' },
+  { stage: 'delivering', current: 'Доставка' },
+] as const)('личный кабинет показывает этап $current', async ({ stage, current }) => {
+  state.orders = [
+    {
+      _id: 'abcdef12-3456-7890-abcd-ef1234567890',
+      createdAt: '2026-11-04T12:02:00.000Z',
+      fulfillmentStatus: stage,
+      input: { fulfillment: { mode: 'delivery', label: 'Красноярск, Ленина, 1' } },
+      quote: { lines: [], discountKopecks: 0, deliveryKopecks: 0, totalKopecks: 50000 },
+    },
+  ]
+  renderAccount('orders')
+  const timeline = await screen.findByRole('list', { name: 'Этапы заказа' })
+  expect(within(timeline).getAllByRole('listitem')).toHaveLength(4)
+  expect(within(timeline).getByText(current).closest('li')).toHaveAttribute('aria-current', 'step')
 })

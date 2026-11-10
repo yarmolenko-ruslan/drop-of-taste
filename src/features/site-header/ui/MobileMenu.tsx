@@ -1,23 +1,38 @@
 import { Link } from 'react-router'
 import { Dialog } from '../../../shared/ui/Dialog/Dialog'
 import { categories } from './navigation'
+import { formatRussianPhone } from '../../../../shared/validation/phone'
 import styles from './SiteHeader.module.css'
 
 type MobileMenuProps = {
   phoneNumber?: string
+  categories?: readonly (readonly [string, string])[]
+  address?: string
+  hours?: string
+  brandName?: string
+  brandLogo?: string
   onAddressClick?: () => void
   onClose: () => void
 }
 
-export function MobileMenu({ phoneNumber, onAddressClick, onClose }: MobileMenuProps) {
+export function MobileMenu({
+  phoneNumber,
+  categories: liveCategories = categories,
+  address = 'Красноярск, ул. Петра Подзолкова, 3и',
+  hours = 'Ежедневно 08:00–20:00',
+  brandName = 'КАПЕЛА ВКУСА',
+  brandLogo = '/brand-emblem.png',
+  onAddressClick,
+  onClose,
+}: MobileMenuProps) {
   const dialNumber = phoneNumber?.replace(/[^+\d]/g, '')
 
   return (
     <Dialog titleId="mobile-menu-title" onClose={onClose} className={styles.menuDialog}>
       <div className={styles.menuHeader}>
         <Link className={styles.menuBrand} to="/" onClick={onClose}>
-          <img src="/brand-emblem.png" alt="" width="40" height="40" />
-          <span id="mobile-menu-title">КАПЕЛА ВКУСА</span>
+          <img src={brandLogo} alt="" width="40" height="40" />
+          <span id="mobile-menu-title">{brandName}</span>
         </Link>
       </div>
 
@@ -33,20 +48,20 @@ export function MobileMenu({ phoneNumber, onAddressClick, onClose }: MobileMenuP
           >
             <span>
               <strong>Кафе на карте</strong>
-              <small>Красноярск, ул. Петра Подзолкова, 3и</small>
+              <small>{address}</small>
             </span>
             <span aria-hidden="true">›</span>
           </button>
           {dialNumber && (
             <a className={styles.menuPhone} href={`tel:${dialNumber}`}>
-              {phoneNumber}
-              <small>Ежедневно 08:00–20:00</small>
+              {formatRussianPhone(phoneNumber ?? '')}
+              <small>{hours}</small>
             </a>
           )}
         </div>
 
         <nav className={styles.menuNavigation} aria-label="Мобильное меню">
-          <span className={styles.menuSectionTitle}>КАПЕЛА ВКУСА</span>
+          <span className={styles.menuSectionTitle}>{brandName}</span>
           <Link to="/promotions" onClick={onClose}>
             Акции
           </Link>
@@ -56,12 +71,12 @@ export function MobileMenu({ phoneNumber, onAddressClick, onClose }: MobileMenuP
           <a href="/#delivery" onClick={onClose}>
             Доставка и оплата
           </a>
-          <a href="/#bonuses" onClick={onClose}>
-            Бонусная программа
+          <a href="/#account-benefits" onClick={onClose}>
+            Личный кабинет
           </a>
 
           <span className={styles.menuSectionTitle}>МЕНЮ</span>
-          {categories
+          {liveCategories
             .filter(([, anchor]) => anchor !== 'promotions')
             .map(([label, anchor]) => (
               <a href={`/#${anchor}`} key={anchor} onClick={onClose}>

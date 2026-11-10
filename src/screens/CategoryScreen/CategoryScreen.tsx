@@ -38,6 +38,13 @@ export function CategoryScreen() {
           })),
         }
       : homeCategories.find(({ id }) => id === categoryId)
+  const shownCategory =
+    category ??
+    (catalog
+      ? undefined
+      : categoryId === 'sauces'
+        ? { id: 'sauces', title: 'Соусы', subtitle: 'Добавьте вкуса любимому блюду', products: [] }
+        : undefined)
   if (catalog && (!catalog.data || catalog.error))
     return (
       <main className={styles.root}>
@@ -45,19 +52,25 @@ export function CategoryScreen() {
       </main>
     )
 
-  if (categoryId === 'sauces') {
+  if (categoryId === 'sauces' && shownCategory) {
     return (
       <>
         <main className={styles.root}>
           <nav className={styles.breadcrumbs} aria-label="Навигационная цепочка">
             <Link to="/">Главная</Link>
             <span aria-hidden="true">/</span>
-            <span>Соусы</span>
+            <span>{shownCategory.title}</span>
           </nav>
-          <h1 className={styles.heading}>Соусы</h1>
-          <p>Цены примерные для демонстрации.</p>
-          <p className={styles.subtitle}>Добавьте вкуса любимому блюду</p>
-          <SauceGrid onSauceAction={(name) => setSelectedItem(dialogItemFromSauce(name))} />
+          <h1 className={styles.heading}>{shownCategory.title}</h1>
+          <p className={styles.subtitle}>{shownCategory.subtitle}</p>
+          <SauceGrid
+            onSauceAction={(name) => {
+              const live = catalog?.data?.categories
+                .find((item) => item.id === 'sauces')
+                ?.products.find((item) => item.name === name)
+              setSelectedItem(live ?? dialogItemFromSauce(name))
+            }}
+          />
         </main>
         {selectedItem && (
           <ProductDialog
@@ -126,7 +139,6 @@ function CategoryProducts({
         <span>{categoryTitle}</span>
       </nav>
       <h1 className={styles.heading}>{categoryTitle}</h1>
-      <p>Цены примерные для демонстрации.</p>
       <p className={styles.subtitle}>{categorySubtitle}</p>
       <div className={styles.grid}>
         {visibleItems.map((item) => (

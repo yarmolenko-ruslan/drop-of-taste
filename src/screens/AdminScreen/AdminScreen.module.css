@@ -1,0 +1,323 @@
+.root,
+.login {
+  min-height: 70vh;
+  background: #f7f3ec;
+  color: #29231e;
+  padding: clamp(24px, 4vw, 64px);
+}
+.root {
+  width: 100%;
+  padding-inline: 24px;
+}
+.top {
+  display: flex;
+  justify-content: space-between;
+  gap: 32px;
+  align-items: start;
+}
+.top > div {
+  min-width: 0;
+}
+.top h1,
+.login h1 {
+  font-size: clamp(30px, 4vw, 52px);
+  margin: 8px 0;
+}
+.top p {
+  max-width: 750px;
+}
+.eyebrow {
+  color: #a0242a;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+.topActions,
+.row,
+.actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.topActions a {
+  color: #8f1723;
+  font-weight: 700;
+}
+.topActions button {
+  border: 0;
+  border-radius: 9px;
+  padding: 10px 16px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 32px 0 24px;
+  border-bottom: 1px solid #ddd3c7;
+  padding-bottom: 12px;
+}
+.tabs button {
+  background: transparent;
+  color: #493c35;
+  border: 0;
+  border-radius: 9px;
+  padding: 11px 16px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.tabs button:hover:not(.active) {
+  background: #eee6db;
+}
+.tabs button:focus-visible {
+  outline: 2px solid #8f1723;
+  outline-offset: 2px;
+}
+.tabs .active {
+  background: #8f1723;
+  color: white;
+}
+.root > * {
+  max-width: var(--content-max-width);
+  margin-inline: auto;
+}
+.editor {
+  width: 100%;
+  min-width: 0;
+  background: white;
+  border: 1px solid #e9dfd2;
+  border-radius: 18px;
+  padding: clamp(20px, 3vw, 36px);
+  box-shadow: 0 8px 28px #4d2a1510;
+}
+.editor h2 {
+  font-size: 25px;
+  margin: 28px 0 18px;
+}
+.editor h2:first-child {
+  margin-top: 0;
+}
+.editor h3 {
+  font-size: 19px;
+  margin: 0;
+}
+.editor p {
+  line-height: 1.55;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 16px;
+  font-weight: 650;
+}
+.field span:first-child {
+  font-size: 14px;
+}
+.field input:not([type='file']),
+.field select,
+.field textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #c9bdaf;
+  border-radius: 9px;
+  padding: 11px 12px;
+  font: inherit;
+  color: #27211d;
+  background: white;
+}
+.field textarea {
+  resize: vertical;
+}
+.root select {
+  appearance: none;
+  cursor: pointer;
+  padding-right: 44px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='m3 6 5 5 5-5' stroke='%235b3027' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  background-size: 16px;
+}
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+  outline: 2px solid #9c2531;
+  outline-offset: 1px;
+}
+.imageRow {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.imageRow input:first-child {
+  flex: 1 1 230px;
+  min-width: 0;
+}
+.imageRow input[type='file'] {
+  max-width: 100%;
+  font-weight: 400;
+}
+.preview {
+  display: block;
+  max-width: 220px;
+  max-height: 130px;
+  object-fit: contain;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #f6f2ec;
+}
+.panel {
+  padding: 20px;
+  border: 1px solid #e3d8cb;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  overflow-wrap: anywhere;
+}
+.panel .row {
+  justify-content: space-between;
+  margin-bottom: 15px;
+}
+.editor button,
+.login button,
+.productList button {
+  border: 0;
+  border-radius: 9px;
+  background: #8f1723;
+  color: white;
+  padding: 10px 16px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.editor button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.editor .secondary,
+.topActions .secondary {
+  background: #eee6db;
+  color: #5b3027;
+}
+.editor .danger {
+  background: #fff0ee;
+  color: #9f1c2a;
+}
+.actions {
+  margin-top: 24px;
+}
+.error {
+  color: #a71928;
+}
+.login {
+  display: grid;
+  place-items: center;
+}
+.loginCard {
+  width: min(100%, 440px);
+  background: white;
+  padding: 32px;
+  border-radius: 18px;
+  box-shadow: 0 16px 48px #4d2a1520;
+}
+.loginCard a {
+  color: #8f1723;
+}
+.loginCard form {
+  margin-top: 22px;
+}
+.productsLayout {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.productList {
+  max-height: 80vh;
+  overflow: auto;
+  background: white;
+  border: 1px solid #e9dfd2;
+  border-radius: 18px;
+  padding: 16px;
+}
+.productList h3 {
+  margin: 20px 0 8px;
+  font-size: 16px;
+}
+.productList button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 4px 0;
+  background: transparent;
+  color: #38302b;
+  font-weight: 500;
+}
+.productList button:hover,
+.productList .selected {
+  background: #f7e7e7;
+  color: #8f1723;
+}
+.checks {
+  border: 1px solid #e3d8cb;
+  border-radius: 10px;
+  margin: 14px 0;
+}
+.checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 8px;
+}
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 14px;
+}
+code {
+  font-size: 0.9em;
+}
+@media (max-width: 800px) {
+  .top,
+  .productsLayout {
+    display: block;
+  }
+  .productList {
+    max-height: 300px;
+    margin-bottom: 16px;
+  }
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+}
+@media (max-width: 600px) {
+  .root,
+  .login {
+    padding: 16px;
+  }
+  .editor {
+    padding: 16px;
+  }
+  .panel {
+    padding: 14px;
+  }
+  .loginCard {
+    padding: 20px;
+  }
+  .topActions {
+    margin-top: 16px;
+  }
+}

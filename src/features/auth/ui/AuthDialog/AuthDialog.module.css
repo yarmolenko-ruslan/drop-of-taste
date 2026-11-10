@@ -33,6 +33,23 @@
   line-height: 1.5;
 }
 
+.localCode {
+  margin: -10px 0 22px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: #f7efe4;
+  color: #4d2528;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.localCode strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 28px;
+  letter-spacing: 0.12em;
+}
+
 .form {
   display: grid;
   gap: 18px;

@@ -82,6 +82,13 @@
   border-radius: 12px;
   background: #f3e7d3;
 }
+.saucePictureImage {
+  width: 62px;
+  height: 62px;
+  flex: none;
+  border-radius: 12px;
+  object-fit: cover;
+}
 .saucePicture span {
   width: 23px;
   height: 23px;
@@ -361,22 +368,38 @@
     padding: 38px;
   }
 }
-@media (max-width: 720px) {
-  .sectionHeading h2 {
-    font-size: 32px;
-  }
+@media (max-width: 768px) {
   .bonus,
   .about {
     grid-template-columns: 1fr;
   }
-  .bonusSteps li {
-    min-height: 105px;
+  .bonusSteps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .about {
     gap: 24px;
   }
   .about img {
-    height: 240px;
+    height: auto;
+    aspect-ratio: 16 / 9;
+  }
+}
+@media (max-width: 720px) {
+  .benefits {
+    margin-top: 31px;
+  }
+  .bonus {
+    margin-top: 16px;
+  }
+  .about {
+    margin-top: 34px;
+    margin-bottom: 39px;
+  }
+  .sectionHeading h2 {
+    font-size: 32px;
+  }
+  .bonusSteps li {
+    min-height: 105px;
   }
 }
 @media (max-width: 520px) {

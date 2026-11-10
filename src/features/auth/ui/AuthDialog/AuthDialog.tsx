@@ -1,34 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
-import { normalizeRussianMobilePhone } from '../../../../../shared/validation/phone'
-import { otpCodeSchema } from '../../../../../shared/validation/auth'
+import {
+  formatRussianPhoneInput,
+  normalizeRussianMobilePhone,
+} from '../../../../../shared/validation/phone'
+import { otpCodeSchema, OTP_CODE_TTL_SECONDS } from '../../../../../shared/validation/auth'
 import { Dialog } from '../../../../shared/ui/Dialog/Dialog'
 import { ApiError, authApi, type AuthUser } from '../../api/authApi'
 import styles from './AuthDialog.module.css'
 
 type AuthDialogProps = { onClose: () => void; onAuthenticate: (user: AuthUser) => void }
-
-function formatPhone(value: string, previous: string) {
-  let digits = value.replace(/\D/g, '')
-  const previousDigits = previous.replace(/\D/g, '')
-  // Стирать разделитель (скобку, пробел, дефис) должно продолжать стирание номера:
-  // удаление символа оформления убирает последнюю цифру, иначе скобка возвращалась бы обратно.
-  if (digits && digits.length === previousDigits.length && value.length < previous.length) {
-    digits = digits.slice(0, -1)
-  }
-  if (digits.startsWith('8')) digits = `7${digits.slice(1)}`
-  if (digits && !digits.startsWith('7')) digits = `7${digits}`
-  digits = digits.slice(0, 11)
-  if (!digits) return '+7'
-  const rest = digits.slice(1)
-  let result = '+7'
-  if (rest) result += ` (${rest.slice(0, 3)}`
-  if (rest.length >= 3) result += ')'
-  if (rest.length > 3) result += ` ${rest.slice(3, 6)}`
-  if (rest.length > 6) result += `-${rest.slice(6, 8)}`
-  if (rest.length > 8) result += `-${rest.slice(8, 10)}`
-  return result
-}
 
 export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
   const [phone, setPhone] = useState('+7')
@@ -40,6 +21,7 @@ export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
   const [remaining, setRemaining] = useState(0)
   const [error, setError] = useState('')
   const [retryNotice, setRetryNotice] = useState(false)
+  const [localCode, setLocalCode] = useState<{ value: string; expiresAt: number } | null>(null)
   const pendingRequest = useRef<AbortController | null>(null)
 
   useEffect(() => () => pendingRequest.current?.abort(), [])
@@ -51,6 +33,15 @@ export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
     const timer = window.setInterval(tick, 1000)
     return () => window.clearInterval(timer)
   }, [retryAt])
+
+  useEffect(() => {
+    if (!localCode) return
+    const timer = window.setTimeout(
+      () => setLocalCode(null),
+      Math.max(0, localCode.expiresAt - Date.now()),
+    )
+    return () => window.clearTimeout(timer)
+  }, [localCode])
 
   async function requestCode() {
     const normalized = normalizeRussianMobilePhone(phone)
@@ -69,6 +60,11 @@ export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
       if (controller.signal.aborted) return
       setPhone(normalized)
       setRetryAt(Date.now() + result.retryAfterSeconds * 1000)
+      setLocalCode(
+        result.developmentCode
+          ? { value: result.developmentCode, expiresAt: Date.now() + OTP_CODE_TTL_SECONDS * 1000 }
+          : null,
+      )
       setStep('code')
     } catch (failure) {
       if (controller.signal.aborted) return
@@ -103,6 +99,8 @@ export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
       // Исчерпаны попытки кода (429 + Retry-After): показываем таймер повторной отправки.
       if (failure instanceof ApiError && failure.retryAfterSeconds)
         setRetryAt(Date.now() + failure.retryAfterSeconds * 1000)
+      if (failure instanceof ApiError && failure.code === 'CODE_ATTEMPTS_EXCEEDED')
+        setLocalCode(null)
       setError(failure instanceof Error ? failure.message : 'Не удалось проверить код')
     } finally {
       if (pendingRequest.current === controller) pendingRequest.current = null
@@ -118,8 +116,13 @@ export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
         <p className={styles.intro}>
           {step === 'phone'
             ? 'Войдите, чтобы видеть заказы и адреса доставки.'
-            : `Код для ${phone}. Посмотрите код в терминале локального API. SMS не отправляется.`}
+            : `Введите код для номера ${phone}.`}
         </p>
+        {step === 'code' && localCode && (
+          <p className={styles.localCode} role="status">
+            Код подтверждения: <strong>{localCode.value}</strong>
+          </p>
+        )}
         <form
           className={styles.form}
           onSubmit={(event) => {
@@ -154,7 +157,7 @@ export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
                     }
                   }}
                   onChange={(event) => {
-                    setPhone(formatPhone(event.target.value, phone))
+                    setPhone(formatRussianPhoneInput(event.target.value, phone))
                     setError('')
                   }}
                   placeholder="+7 (999) 123-45-67"
@@ -219,7 +222,6 @@ export function AuthDialog({ onClose, onAuthenticate }: AuthDialogProps) {
             {busy ? 'Подождите…' : step === 'phone' ? 'Продолжить' : 'Войти'}
           </button>
         </form>
-        <p className={styles.legal}>Тестовый режим: реальные сообщения не отправляются.</p>
       </div>
     </Dialog>
   )

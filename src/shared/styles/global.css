@@ -17,7 +17,17 @@ body {
   font-size: var(--font-size-base);
   color: var(--color-text);
   background: var(--color-bg);
+  cursor: default;
+  caret-color: transparent;
+  user-select: none;
   -webkit-text-size-adjust: 100%;
+}
+
+input,
+textarea {
+  cursor: auto;
+  caret-color: auto;
+  user-select: text;
 }
 
 section[id],

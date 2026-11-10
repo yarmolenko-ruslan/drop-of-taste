@@ -42,7 +42,10 @@ export function ProductDialog({ item: inputItem, onClose }: ProductDialogProps) 
       <div className={styles.layout}>
         <div className={styles.visual}>
           {item.image ? (
-            <img src={item.image} alt={item.imageAlt ?? item.name} />
+            <>
+              <img className={styles.imageBackdrop} src={item.image} alt="" aria-hidden="true" />
+              <img className={styles.productImage} src={item.image} alt={item.imageAlt ?? item.name} />
+            </>
           ) : (
             <div className={styles.sauceVisual} aria-label={`Соус «${item.name}»`}>
               <span aria-hidden="true">◉</span>

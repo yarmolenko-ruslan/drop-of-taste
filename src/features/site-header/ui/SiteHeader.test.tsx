@@ -32,6 +32,66 @@ test('номер в шапке открывает звонок без подпи
   expect(screen.getByRole('navigation', { name: 'Категории меню' })).toBeInTheDocument()
 })
 
+test('номер без оформления показывается в едином формате', () => {
+  render(
+    <MemoryRouter>
+      <SiteHeader phoneNumber="+79998887766" />
+    </MemoryRouter>,
+  )
+  expect(screen.getByRole('link', { name: '+7 (999) 888-77-66' })).toHaveAttribute(
+    'href',
+    'tel:+79998887766',
+  )
+})
+
+test('«Акции» в хедере открывают отдельную страницу', () => {
+  render(
+    <MemoryRouter initialEntries={['/promotions']}>
+      <SiteHeader />
+    </MemoryRouter>,
+  )
+  const nav = screen.getByRole('navigation', { name: 'Категории меню' })
+  expect(within(nav).getByRole('link', { name: 'Акции' })).toHaveAttribute('href', '/promotions')
+  expect(within(nav).getByRole('link', { name: 'Акции' })).toHaveAttribute('aria-current', 'page')
+})
+
+test('подсвечивает раздел, до которого прокрутили главную страницу', async () => {
+  render(
+    <MemoryRouter>
+      <SiteHeader />
+      <section id="new" />
+      <section id="breakfast" />
+    </MemoryRouter>,
+  )
+  let newTop = 500
+  let breakfastTop = 900
+  vi.spyOn(document.getElementById('new')!, 'getBoundingClientRect').mockImplementation(
+    () => ({ top: newTop }) as DOMRect,
+  )
+  vi.spyOn(document.getElementById('breakfast')!, 'getBoundingClientRect').mockImplementation(
+    () => ({ top: breakfastTop }) as DOMRect,
+  )
+  const nav = screen.getByRole('navigation', { name: 'Категории меню' })
+  newTop = 180
+  fireEvent.scroll(window)
+  await waitFor(() =>
+    expect(within(nav).getByRole('link', { name: 'Новинки' })).toHaveAttribute(
+      'aria-current',
+      'location',
+    ),
+  )
+  newTop = -300
+  breakfastTop = 150
+  fireEvent.scroll(window)
+  await waitFor(() =>
+    expect(within(nav).getByRole('link', { name: 'Завтраки' })).toHaveAttribute(
+      'aria-current',
+      'location',
+    ),
+  )
+  expect(within(nav).getByRole('link', { name: 'Новинки' })).not.toHaveAttribute('aria-current')
+})
+
 test('скрывает меню категорий на странице «О ресторане»', () => {
   render(
     <MemoryRouter initialEntries={['/about']}>

@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { HomeScreen } from '../screens/HomeScreen/HomeScreen'
 // Экраны подгружаются по маршруту: первый визит начинается с лёгкого чанка,
@@ -33,6 +34,14 @@ const LegalScreen = lazy(() =>
 const AccountScreen = lazy(() =>
   import('../screens/AccountScreen/AccountScreen').then((m) => ({ default: m.AccountScreen })),
 )
+const AdminScreen = lazy(() =>
+  import('../screens/AdminScreen/AdminScreen').then((m) => ({ default: m.AdminScreen })),
+)
+const PaymentReturnScreen = lazy(() =>
+  import('../screens/PaymentReturnScreen/PaymentReturnScreen').then((m) => ({
+    default: m.PaymentReturnScreen,
+  })),
+)
 const NotFoundScreen = lazy(() =>
   import('../screens/NotFoundScreen/NotFoundScreen').then((m) => ({ default: m.NotFoundScreen })),
 )
@@ -43,9 +52,9 @@ import { CartDrawer } from '../features/cart/ui/CartDrawer/CartDrawer'
 import { AuthDialog } from '../features/auth/ui/AuthDialog/AuthDialog'
 import type { FulfillmentSelection } from '../features/fulfillment/ui/FulfillmentDialog/FulfillmentDialog'
 import { CafeMapDialog } from '../features/fulfillment/ui/FulfillmentDialog/CafeMapDialog'
-import { newArrivals } from '../features/catalog/model/newArrivals'
 import { ApiError, apiRequest, authApi, type AuthUser } from '../features/auth/api/authApi'
-import { CatalogProvider } from '../features/catalog/api/CatalogProvider'
+import { CatalogProvider, useCatalog } from '../features/catalog/api/CatalogProvider'
+import { SiteContentProvider, useSiteContent } from '../features/site-content/SiteContentProvider'
 import { Spinner } from '../shared/ui/Spinner/Spinner'
 import { ScrollTopButton } from '../shared/ui/ScrollTopButton/ScrollTopButton'
 import { ErrorPage } from '../shared/ui/ErrorPage/ErrorPage'
@@ -94,6 +103,43 @@ function ScrollToTopOnRouteChange() {
   return null
 }
 
+function ToastLayer({ children }: { children: ReactNode }) {
+  const [container, setContainer] = useState<HTMLElement>(document.body)
+  const toastRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const updateContainer = () => {
+      const dialogs = document.querySelectorAll<HTMLDialogElement>('dialog[open]')
+      setContainer(dialogs[dialogs.length - 1] ?? document.body)
+    }
+    updateContainer()
+    const observer = new MutationObserver(updateContainer)
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['open'],
+    })
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const toast = toastRef.current
+    if (!toast || !toast.showPopover) return
+    toast.showPopover()
+    return () => {
+      if (toast.matches(':popover-open')) toast.hidePopover()
+    }
+  }, [container])
+
+  return createPortal(
+    <div ref={toastRef} className={styles.noticeToast} popover="manual" role="alert">
+      {children}
+    </div>,
+    container,
+  )
+}
+
 /**
  * Ленивые экраны грузятся отдельными чанками: если старый открытый сайт запросит
  * чанк, которого уже нет после выкладки (хеши имён меняются), импорт отклоняется.
@@ -134,13 +180,43 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
 }
 
 function AppContent() {
+  const siteContent = useSiteContent()
+  const catalog = useCatalog()?.data
+  const recommendations = useMemo(() => {
+    if (!catalog) return []
+    const products = new Map(
+      catalog.categories.flatMap((category) =>
+        category.products.map((product) => [product._id, product] as const),
+      ),
+    )
+    return catalog.newArrivalIds.flatMap((id) => {
+      const product = products.get(id)
+      return product?.available
+        ? [
+            {
+              id,
+              name: product.name,
+              image: product.image ?? '',
+              priceRub: product.priceKopecks / 100,
+            },
+          ]
+        : []
+    })
+  }, [catalog])
+  useEffect(() => {
+    if (catalog)
+      useCartStore
+        .getState()
+        .syncCatalog(catalog.categories.flatMap((category) => category.products))
+  }, [catalog])
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const isAdmin = pathname === '/admin'
   const isCartOpen = useCartStore((state) => state.isOpen)
   const closeCart = useCartStore((state) => state.close)
   const openCart = useCartStore((state) => state.open)
   const clearCart = useCartStore((state) => state.clear)
-  const cafeAddress = 'г. Красноярск, улица Петра Подзолкова, 3и'
+  const cafeAddress = siteContent.address
   const [fulfillment, setFulfillment] = useState<FulfillmentSelection>({
     mode: 'pickup',
     label: cafeAddress,
@@ -207,7 +283,7 @@ function AppContent() {
     return () => {
       active = false
     }
-  }, [user, isCartOpen])
+  }, [user, isCartOpen, cafeAddress])
 
   const clearPrivateState = useCallback(() => {
     closeCart()
@@ -219,7 +295,7 @@ function AppContent() {
     setAuthOpen(false)
     setCafeMapOpen(false)
     setOrdersRevision(0)
-  }, [clearCart, closeCart])
+  }, [clearCart, closeCart, cafeAddress])
 
   const revokeSession = useCallback(async () => {
     if (logoutInFlight.current) return
@@ -381,14 +457,7 @@ function AppContent() {
     <>
       <ScrollToTopOnRouteChange />
       {sessionNotice && (
-        // Немодальный <dialog>: живёт в top layer, поэтому заметен поверх
-        // корзины и окон авторизации (z-index выше top layer не поднять).
-        <dialog
-          className={styles.noticeToast}
-          open
-          role="alert"
-          onClose={() => setSessionNotice('')}
-        >
+        <ToastLayer>
           <span className={styles.noticeIcon} aria-hidden="true">
             <svg viewBox="0 0 20 20" width="18" height="18" fill="none">
               <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="1.6" />
@@ -414,19 +483,21 @@ function AppContent() {
           >
             ✕
           </button>
-        </dialog>
+        </ToastLayer>
       )}
-      <SiteHeader
-        phoneNumber="+7 123 456-78-90"
-        addressLabel="Кафе на карте"
-        accountLabel={user ? user.name.split(' ')[0] || 'Кабинет' : undefined}
-        onAddressClick={() => setCafeMapOpen(true)}
-        onAccountClick={() => {
-          if (logoutPending) return
-          if (user) navigate('/account/orders')
-          else setAuthOpen(true)
-        }}
-      />
+      {!isAdmin && (
+        <SiteHeader
+          phoneNumber={siteContent.phone}
+          addressLabel="Кафе на карте"
+          accountLabel={user ? user.name.split(' ')[0] || 'Кабинет' : undefined}
+          onAddressClick={() => setCafeMapOpen(true)}
+          onAccountClick={() => {
+            if (logoutPending) return
+            if (user) navigate('/account/orders')
+            else setAuthOpen(true)
+          }}
+        />
+      )}
       <RouteErrorBoundary>
         <Suspense
           fallback={
@@ -442,7 +513,7 @@ function AppContent() {
                 <HomeScreen
                   onLogin={() => {
                     if (logoutPending) return
-                    if (user) navigate('/account/loyalty')
+                    if (user) navigate('/account/orders')
                     else setAuthOpen(true)
                   }}
                 />
@@ -451,13 +522,38 @@ function AppContent() {
             <Route path="menu/:categoryId" element={<CategoryScreen />} />
             <Route path="search" element={<SearchScreen />} />
             <Route path="about" element={<AboutScreen />} />
+            <Route path="admin" element={<AdminScreen />} />
+            <Route
+              path="payment/return"
+              element={
+                sessionLoading ? (
+                  <Spinner label="Проверяем вход…" />
+                ) : user ? (
+                  <PaymentReturnScreen />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
             <Route
               path="promotions"
               element={
                 <PromotionsScreen
                   onLogin={() => {
                     if (logoutPending) return
-                    if (user) navigate('/account/loyalty')
+                    if (user) navigate('/account/orders')
+                    else setAuthOpen(true)
+                  }}
+                />
+              }
+            />
+            <Route
+              path="promotions/:promotionId"
+              element={
+                <PromotionsScreen
+                  onLogin={() => {
+                    if (logoutPending) return
+                    if (user) navigate('/account/orders')
                     else setAuthOpen(true)
                   }}
                 />
@@ -500,11 +596,13 @@ function AppContent() {
           </Routes>
         </Suspense>
       </RouteErrorBoundary>
-      <SiteFooter />
-      <ScrollTopButton />
+      {!isAdmin && <SiteFooter />}
+      {!isAdmin && <ScrollTopButton />}
       {isCartOpen && (
         <CartDrawer
-          fulfillment={fulfillment}
+          fulfillment={
+            fulfillment.mode === 'pickup' ? { mode: 'pickup', label: cafeAddress } : fulfillment
+          }
           savedDelivery={
             user && savedDelivery?.forUser === user.id ? savedDelivery.selection : null
           }
@@ -517,7 +615,7 @@ function AppContent() {
           }}
           onFulfillmentChange={setFulfillment}
           onGoToAddresses={goToAddressesFromCart}
-          recommendations={newArrivals}
+          recommendations={recommendations}
           onAddRecommendation={addOneToCart}
           onOrderCreated={() => setOrdersRevision((current) => current + 1)}
         />
@@ -554,9 +652,11 @@ function AppContent() {
 export function App() {
   return (
     <BrowserRouter>
-      <CatalogProvider>
-        <AppContent />
-      </CatalogProvider>
+      <SiteContentProvider>
+        <CatalogProvider>
+          <AppContent />
+        </CatalogProvider>
+      </SiteContentProvider>
     </BrowserRouter>
   )
 }

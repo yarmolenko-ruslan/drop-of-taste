@@ -1,19 +1,16 @@
 import { Link } from 'react-router'
+import { useEffect, useState } from 'react'
 import { addOneToCart } from '../../features/cart'
+import { apiRequest } from '../../features/auth/api/authApi'
 import { dialogItemFromSauce } from '../../features/catalog/model/dialogContent'
 import styles from './HomeClosingSections.module.css'
-import { useCatalogItem } from '../../features/catalog/api/CatalogProvider'
+import { useCatalog, useCatalogItem } from '../../features/catalog/api/CatalogProvider'
+import { useSiteContent } from '../../features/site-content/SiteContentProvider'
+import { pickupDiscountPercent } from '../../../shared/promotion'
 
 const sauces = ['Сметана', 'Чесночный', 'Горчица', 'Хрен со свёклой', 'Аджика']
 
-const benefits = [
-  { icon: 'clock', title: 'От 60 минут', detail: 'Привезём горячим' },
-  { icon: 'truck', title: 'Бесплатно от 1 500 ₽', detail: 'Тестовые условия' },
-  { icon: 'card', title: 'Тестовый заказ', detail: 'Оплата пока не принимается' },
-  { icon: 'pin', title: 'Самовывоз −10%', detail: 'Одно кафе в городе' },
-] as const
-
-function BenefitIcon({ name }: { name: (typeof benefits)[number]['icon'] }) {
+function BenefitIcon({ name }: { name: 'clock' | 'truck' | 'card' | 'pin' }) {
   const path = {
     clock: (
       <>
@@ -59,18 +56,24 @@ function BenefitIcon({ name }: { name: (typeof benefits)[number]['icon'] }) {
 
 function SauceCard({
   name,
+  id,
   onSauceAction,
 }: {
   name: string
+  id: string
   onSauceAction?: (name: string) => void
 }) {
-  const live = useCatalogItem(`sauce-${name}`)
+  const live = useCatalogItem(id)
   const priceRub = live ? live.priceKopecks / 100 : null
   return (
     <article className={styles.sauceCard}>
-      <span className={styles.saucePicture} aria-hidden="true">
-        <span />
-      </span>
+      {live?.image ? (
+        <img className={styles.saucePictureImage} src={live.image} alt="" loading="lazy" />
+      ) : (
+        <span className={styles.saucePicture} aria-hidden="true">
+          <span />
+        </span>
+      )}
       <div className={styles.sauceText}>
         <h3>{name}</h3>
         <p>
@@ -83,7 +86,8 @@ function SauceCard({
           type="button"
           aria-label={`Добавить соус «${name}» в корзину`}
           className={styles.sauceAdd}
-          onClick={() => addOneToCart({ ...dialogItemFromSauce(name), priceRub })}
+          disabled={live?.available === false}
+          onClick={() => addOneToCart({ ...(live ?? dialogItemFromSauce(name)), id, priceRub })}
         >
           +
         </button>
@@ -101,22 +105,33 @@ function SauceCard({
 }
 
 export function SauceGrid({ onSauceAction }: { onSauceAction?: (name: string) => void }) {
+  const catalog = useCatalog()?.data
+  const sauceItems = catalog
+    ? (catalog.categories.find((category) => category.id === 'sauces')?.products ?? []).map(
+        (item) => ({ name: item.name, id: item._id }),
+      )
+    : sauces.map((name) => ({ name, id: `sauce-${name}` }))
   return (
     <div className={styles.sauceGrid}>
-      {sauces.map((name) => (
-        <SauceCard name={name} onSauceAction={onSauceAction} key={name} />
+      {sauceItems.map(({ name, id }) => (
+        <SauceCard name={name} id={id} onSauceAction={onSauceAction} key={id} />
       ))}
     </div>
   )
 }
 
 function Sauces({ onSauceAction }: { onSauceAction?: (name: string) => void }) {
+  const content = useSiteContent()
+  const catalog = useCatalog()?.data
+  const sauceCategory = catalog?.categories.find((category) => category.id === 'sauces')
+  if (catalog && !sauceCategory) return null
+  const saucesTitle = sauceCategory?.title ?? 'Соусы'
   return (
     <section className={styles.sauces} id="sauces" aria-labelledby="sauces-title">
       <div className={styles.sectionHeading}>
         <div>
-          <h2 id="sauces-title">Соусы</h2>
-          <p>Добавьте вкуса любимому блюду</p>
+          <h2 id="sauces-title">{saucesTitle}</h2>
+          <p>{content.saucesSubtitle}</p>
         </div>
         <Link to="/menu/sauces">
           Весь раздел <span aria-hidden="true">→</span>
@@ -134,31 +149,56 @@ export function HomeClosingSections({
   onSauceAction?: (name: string) => void
   onLogin?: () => void
 }) {
+  const content = useSiteContent()
+  const pickupPercent = pickupDiscountPercent(content.promotions)
+  const [testPaymentEnabled, setTestPaymentEnabled] = useState(false)
+  useEffect(() => {
+    void apiRequest<{ testPaymentEnabled: boolean }>('/checkout/config')
+      .then((config) => setTestPaymentEnabled(config.testPaymentEnabled))
+      .catch(() => undefined)
+  }, [])
   return (
     <>
       <Sauces onSauceAction={onSauceAction} />
       <section className={styles.benefits} id="delivery" aria-label="Условия доставки и оплаты">
-        {benefits.map(({ icon, title, detail }) => (
-          <div className={styles.benefitCard} key={title}>
+        {content.benefits.map(({ icon, title, detail }) => (
+          <div className={styles.benefitCard} key={`${icon}-${title}`}>
             <span className={`${styles.benefitIcon} ${icon === 'pin' ? styles.greenIcon : ''}`}>
               <BenefitIcon name={icon} />
             </span>
             <div>
-              <strong>{title}</strong>
-              <span>{detail}</span>
+              <strong>
+                {icon === 'card' && (title === 'Тестовый заказ' || title === 'Оформление заказа')
+                  ? testPaymentEnabled
+                    ? 'Онлайн-оплата'
+                    : 'Оформление заказа'
+                  : icon === 'pin' && title === 'Самовывоз −10%'
+                    ? pickupPercent > 0
+                      ? `Самовывоз −${pickupPercent}%`
+                      : 'Самовывоз'
+                    : title}
+              </strong>
+              <span>
+                {icon === 'card' &&
+                (detail === 'Оплата пока не принимается' || detail === 'За пару минут')
+                  ? testPaymentEnabled
+                    ? 'Банковской картой'
+                    : 'За пару минут'
+                  : icon === 'pin' && title === 'Самовывоз −10%' && pickupPercent === 0
+                    ? 'Заберите заказ в кафе'
+                    : detail === 'Тестовые условия'
+                      ? 'Условия в корзине'
+                      : detail}
+              </span>
             </div>
           </div>
         ))}
       </section>
-      <section className={styles.bonus} id="bonuses" aria-labelledby="bonus-title">
+      <section className={styles.bonus} id="account-benefits" aria-labelledby="bonus-title">
         <div className={styles.bonusCopy}>
-          <span className={styles.eyebrow}>БОНУСНАЯ ПРОГРАММА</span>
-          <h2 id="bonus-title">Копите бонусы с каждого заказа</h2>
-          <p>
-            Возвращаем 5% бонусами. Оплачивайте ими до 30% следующих заказов, а в день рождения —
-            подарок от шефа.
-          </p>
-          <p>В тестовом режиме бонусы и подарки пока не начисляются.</p>
+          <span className={styles.eyebrow}>ЛИЧНЫЙ КАБИНЕТ</span>
+          <h2 id="bonus-title">{content.bonusTitle}</h2>
+          <p>{content.bonusText}</p>
           <div className={styles.bonusActions}>
             <button type="button" className={styles.goldButton} onClick={onLogin}>
               Войти по номеру
@@ -169,29 +209,20 @@ export function HomeClosingSections({
           </div>
         </div>
         <ol className={styles.bonusSteps} id="bonus-steps">
-          <li>
-            <strong>1</strong>
-            <span>Войдите по номеру телефона</span>
-          </li>
-          <li>
-            <strong>2</strong>
-            <span>Получайте 5% бонусами</span>
-          </li>
-          <li>
-            <strong>3</strong>
-            <span>Оплачивайте до 30% заказа</span>
-          </li>
+          {content.bonusSteps.map((step, index) => (
+            <li key={index}>
+              <strong>{index + 1}</strong>
+              <span>{step}</span>
+            </li>
+          ))}
         </ol>
       </section>
       <section className={styles.about} id="about" aria-labelledby="about-title">
-        <img src="/banners/cafe-interior.jpg" alt="Интерьер кафе «Капела вкуса»" loading="lazy" />
+        <img src={content.aboutImage} alt={content.aboutImageAlt} loading="lazy" />
         <div className={styles.aboutCopy}>
           <span className={styles.eyebrow}>О НАС</span>
-          <h2 id="about-title">Больше, чем еда — это наш край</h2>
-          <p>
-            Домашняя кухня, выпечка из печи каждое утро и кофе, ради которого хочется вернуться.
-            Пара предложений об истории кафе и шеф-поваре.
-          </p>
+          <h2 id="about-title">{content.aboutLead}</h2>
+          <p>{content.homeAboutText}</p>
           <Link to="/about" className={styles.aboutButton}>
             О кафе
           </Link>

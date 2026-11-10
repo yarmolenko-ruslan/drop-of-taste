@@ -3,6 +3,9 @@ import { Link, useLocation, useNavigate } from 'react-router'
 import { cartCount, useCartStore } from '../../cart'
 import { MobileMenu } from './MobileMenu'
 import { categories } from './navigation'
+import { useCatalog } from '../../catalog/api/CatalogProvider'
+import { useSiteContent } from '../../site-content/SiteContentProvider'
+import { formatRussianPhone } from '../../../../shared/validation/phone'
 import styles from './SiteHeader.module.css'
 
 type SiteHeaderProps = {
@@ -20,6 +23,24 @@ export function SiteHeader({
   onAddressClick,
   onAccountClick,
 }: SiteHeaderProps) {
+  const content = useSiteContent()
+  const catalog = useCatalog()?.data
+  const orderedCategories = catalog
+    ? [
+        ...catalog.categories.filter(
+          (category) => category.id === 'combo' && category.products.length > 0,
+        ),
+        ...catalog.categories.filter((category) => !['combo', 'sauces'].includes(category.id)),
+        ...catalog.categories.filter((category) => category.id === 'sauces'),
+      ]
+    : null
+  const liveCategories: readonly (readonly [string, string])[] = catalog
+    ? [
+        ['Акции', 'promotions'],
+        ...(catalog.newArrivalIds.length > 0 ? [['Новинки', 'new'] as const] : []),
+        ...orderedCategories!.map((category) => [category.title, category.id] as const),
+      ]
+    : categories
   const dialNumber = phoneNumber?.replace(/[^+\d]/g, '')
   const { pathname, search } = useLocation()
   const navigate = useNavigate()
@@ -29,16 +50,80 @@ export function SiteHeader({
   const openCart = useCartStore((state) => state.open)
   const headerRef = useRef<HTMLElement>(null)
   const [compactVisible, setCompactVisible] = useState(false)
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const categoryAnchors = liveCategories
+    .map(([, anchor]) => anchor)
+    .filter((anchor) => anchor !== 'promotions')
+    .join('|')
 
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 768px)')
+    const media = window.matchMedia('(max-width: 1050px)')
     const closeOnWideScreen = () => {
       if (!media.matches) setMenuOpen(false)
     }
     media.addEventListener('change', closeOnWideScreen)
     return () => media.removeEventListener('change', closeOnWideScreen)
   }, [])
+
+  useEffect(() => {
+    if (!isHome) return
+    let frame = 0
+    const update = () => {
+      frame = 0
+      const line = Math.min(220, Math.max(96, window.innerHeight * 0.28))
+      let current: string | null = null
+      let closestTop = -Infinity
+      for (const anchor of categoryAnchors.split('|')) {
+        const top = document.getElementById(anchor)?.getBoundingClientRect().top
+        if (top !== undefined && top <= line && top > closestTop) {
+          current = anchor
+          closestTop = top
+        }
+      }
+      setActiveCategory(current)
+    }
+    const scheduleUpdate = () => {
+      if (!frame) frame = requestAnimationFrame(update)
+    }
+    window.addEventListener('scroll', scheduleUpdate, { passive: true })
+    window.addEventListener('resize', scheduleUpdate)
+    scheduleUpdate()
+    return () => {
+      window.removeEventListener('scroll', scheduleUpdate)
+      window.removeEventListener('resize', scheduleUpdate)
+      cancelAnimationFrame(frame)
+    }
+  }, [isHome, categoryAnchors])
+
+  const renderCategoryLink = ([label, anchor]: readonly [string, string]) => {
+    const active =
+      anchor === 'promotions'
+        ? pathname.startsWith('/promotions')
+        : isHome && activeCategory === anchor
+    const className = `${styles.category} ${anchor === 'promotions' ? styles.promotion : ''} ${active ? styles.current : ''}`
+    if (anchor === 'promotions')
+      return (
+        <Link
+          className={className}
+          to="/promotions"
+          key={anchor}
+          aria-current={active ? 'page' : undefined}
+        >
+          {label}
+        </Link>
+      )
+    return (
+      <a
+        className={className}
+        href={`${isHome ? '' : '/'}#${anchor}`}
+        key={anchor}
+        aria-current={isHome && active ? 'location' : undefined}
+      >
+        {label}
+      </a>
+    )
+  }
 
   useEffect(() => {
     let ticking = false
@@ -81,13 +166,13 @@ export function SiteHeader({
               <span />
               <span />
             </button>
-            <Link className={styles.brand} to="/" aria-label="Капела вкуса — главная">
-              <img src="/brand-emblem.png" alt="" width="64" height="64" />
+            <Link className={styles.brand} to="/" aria-label={`${content.siteTitle} — главная`}>
+              <img src={content.brandLogo} alt="" width="64" height="64" />
               <span className={styles.brandText}>
-                <span className={styles.brandName}>КАПЕЛА ВКУСА</span>
+                <span className={styles.brandName}>{content.brandName}</span>
                 <span className={styles.brandTagline}>
                   <span className={styles.taglineRule} aria-hidden="true" />
-                  <span>ДОМАШНЯЯ КУХНЯ</span>
+                  <span>{content.tagline}</span>
                   <span className={styles.taglineDot} aria-hidden="true" />
                   <span>КАФЕ</span>
                   <span className={styles.taglineRule} aria-hidden="true" />
@@ -140,12 +225,10 @@ export function SiteHeader({
             <div className={styles.phoneBlock}>
               {dialNumber ? (
                 <a className={styles.phone} href={`tel:${dialNumber}`}>
-                  {phoneNumber}
+                  {formatRussianPhone(phoneNumber ?? '')}
                 </a>
-              ) : (
-                <span className={styles.phone}>+7 (000) 000-00-00</span>
-              )}
-              <span className={styles.hours}>Ежедневно 08:00–20:00</span>
+              ) : null}
+              <span className={styles.hours}>{content.hours}</span>
             </div>
 
             <button
@@ -182,15 +265,7 @@ export function SiteHeader({
         {showCategories && (
           <nav className={styles.categoryBar} aria-label="Категории меню">
             <div className={`${styles.container} ${styles.categoryList}`}>
-              {categories.map(([label, anchor]) => (
-                <a
-                  className={`${styles.category} ${anchor === 'promotions' ? styles.promotion : ''} ${anchor === 'new' ? styles.current : ''}`}
-                  href={`${isHome ? '' : '/'}#${anchor}`}
-                  key={anchor}
-                >
-                  {label}
-                </a>
-              ))}
+              {liveCategories.map(renderCategoryLink)}
             </div>
           </nav>
         )}
@@ -203,22 +278,34 @@ export function SiteHeader({
         aria-label="Быстрая навигация"
       >
         <div className={`${styles.container} ${styles.compactContent}`}>
-          <Link className={styles.compactBrand} to="/" aria-label="Капела вкуса — главная">
-            <img src="/brand-emblem.png" alt="" width="40" height="40" />
+          <button
+            className={styles.compactMenu}
+            type="button"
+            aria-label="Открыть меню"
+            aria-haspopup="dialog"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(true)}
+          >
+            <span className={styles.compactMenuLines} aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+            Меню
+          </button>
+
+          <Link
+            className={styles.compactBrand}
+            to="/"
+            aria-label={`${content.siteTitle} — главная`}
+          >
+            <img src={content.brandLogo} alt="" width="40" height="40" />
           </Link>
 
           {showCategories && (
             <nav className={styles.compactNav} aria-label="Категории меню">
               <div className={styles.compactCategories}>
-                {categories.map(([label, anchor]) => (
-                  <a
-                    className={`${styles.category} ${anchor === 'promotions' ? styles.promotion : ''} ${anchor === 'new' ? styles.current : ''}`}
-                    href={`${isHome ? '' : '/'}#${anchor}`}
-                    key={anchor}
-                  >
-                    {label}
-                  </a>
-                ))}
+                {liveCategories.map(renderCategoryLink)}
               </div>
             </nav>
           )}
@@ -258,6 +345,11 @@ export function SiteHeader({
       {menuOpen && (
         <MobileMenu
           phoneNumber={phoneNumber}
+          categories={liveCategories}
+          address={content.address}
+          hours={content.hours}
+          brandName={content.brandName}
+          brandLogo={content.brandLogo}
           onAddressClick={onAddressClick}
           onClose={() => setMenuOpen(false)}
         />

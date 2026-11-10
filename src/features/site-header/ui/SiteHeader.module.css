@@ -362,6 +362,32 @@
   height: 48px;
   object-fit: contain;
 }
+.compactMenu {
+  display: none;
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid #ead4b7;
+  border-radius: 999px;
+  background: #fffefa;
+  color: var(--color-brand-red);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.compactMenuLines {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.compactMenuLines span {
+  width: 16px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+}
 .compactNav {
   flex: 1 1 auto;
   min-width: 0;
@@ -578,12 +604,6 @@ dialog.menuDialog > div {
   }
 }
 @media (max-width: 1050px) {
-  .header {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    background: var(--color-brand-red);
-  }
   .mainBar {
     border-bottom: 1px solid rgb(255 255 255 / 16%);
     background: var(--color-brand-red);
@@ -591,29 +611,34 @@ dialog.menuDialog > div {
   }
   .mainContent {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px 44px;
+    grid-template-columns: max-content max-content minmax(0, 1fr) 48px 48px;
     grid-template-areas:
-      'brand brand login cart'
-      'address phone phone phone'
-      'search search search search';
+      'brand address phone login cart'
+      'search search search search search';
     gap: 12px;
     padding-block: 10px 14px;
   }
   .brand {
     grid-area: brand;
+    flex-basis: auto;
+    width: max-content;
+    max-width: 100%;
+    justify-self: start;
     margin-right: 0;
   }
   .brandName {
     color: #ffd16e;
+    font-size: 24px;
   }
   .brandTagline {
     color: #b2d66a;
   }
   .address {
     grid-area: address;
-    justify-content: flex-start;
-    max-width: none;
+    width: max-content;
+    max-width: 100%;
     min-height: 44px;
+    padding-inline: 10px;
     border: 1px dashed #e6b8a5;
     background: rgb(255 255 255 / 7%);
     color: #fff8ef;
@@ -625,6 +650,7 @@ dialog.menuDialog > div {
     grid-area: phone;
     justify-self: end;
     align-self: center;
+    justify-items: end;
     text-align: right;
   }
   .phone,
@@ -670,8 +696,11 @@ dialog.menuDialog > div {
   .category {
     flex: none;
   }
-  .compactBar {
+  .compactNav {
     display: none;
+  }
+  .compactMenu {
+    display: flex;
   }
 }
 @media (max-width: 768px) {
@@ -725,7 +754,7 @@ dialog.menuDialog > div {
     height: 42px;
   }
   .brandName {
-    font-size: 16px;
+    font-size: 19px;
   }
   .brandTagline {
     font-size: 7px;
@@ -759,9 +788,18 @@ dialog.menuDialog > div {
     height: 36px;
   }
   .brandName {
-    font-size: 14px;
+    font-size: 17px;
   }
   .brandTagline {
     font-size: 6px;
+  }
+}
+@media (max-width: 340px) {
+  .brand {
+    gap: 5px;
+  }
+  .brand img {
+    width: 32px;
+    height: 32px;
   }
 }

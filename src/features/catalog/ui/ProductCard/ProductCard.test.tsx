@@ -4,7 +4,7 @@ import { useCartStore } from '../../../cart'
 import type { CatalogProduct } from '../../model/product'
 import { ProductCard } from './ProductCard'
 
-test('кнопка добавляет блюдо, а нажатие на карточку открывает описание', () => {
+test('кнопка выбора открывает карточку, а не добавляет блюдо без выбора', () => {
   useCartStore.setState({ lines: [], isOpen: false })
   const product: CatalogProduct = {
     id: 'test',
@@ -27,13 +27,11 @@ test('кнопка добавляет блюдо, а нажатие на кар�
   expect(screen.getByText('ХИТ')).toBeInTheDocument()
   expect(screen.getByText('350 г · 210 ккал')).toBeInTheDocument()
   expect(screen.getByText('420 ₽')).toBeInTheDocument()
-  const action = screen.getByRole('button', { name: 'В корзину' })
-  fireEvent.mouseEnter(action)
-  expect(screen.getByRole('button', { name: 'В корзину' })).toBeInTheDocument()
+  const action = screen.getByRole('button', { name: 'Выбрать' })
   fireEvent.click(action)
-  expect(useCartStore.getState().lines[0]).toMatchObject({ productId: 'test', quantity: 1 })
+  expect(useCartStore.getState().lines).toHaveLength(0)
   expect(useCartStore.getState().isOpen).toBe(false)
-  expect(onAction).not.toHaveBeenCalled()
+  expect(onAction).toHaveBeenCalledWith(product)
 
   fireEvent.click(screen.getByRole('button', { name: 'Подробнее о блюде «Тестовое блюдо»' }))
   expect(onAction).toHaveBeenCalledWith(product)
@@ -48,7 +46,7 @@ test('после добавления кнопка меняется на счё�
     image: '/products/ukha.jpg',
     imageAlt: 'Блюдо на тарелке',
     badges: [],
-    action: 'choose',
+    action: 'add',
     measure: 'г',
     amount: 300,
     calories: 200,

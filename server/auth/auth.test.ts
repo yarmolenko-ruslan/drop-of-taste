@@ -6,7 +6,7 @@ import { createAuthService } from './service.ts'
 const origin = 'http://localhost:5173'
 const phone = '+7 (999) 123-45-67'
 
-function setup(options: { failingSender?: boolean } = {}) {
+function setup(options: { failingSender?: boolean; exposeDevelopmentCode?: boolean } = {}) {
   let now = 1_000_000
   const sent: Array<{ phone: string; code: string }> = []
   const auth = createAuthService({
@@ -20,6 +20,7 @@ function setup(options: { failingSender?: boolean } = {}) {
     secret: 'test-secret',
     now: () => now,
     developmentCode: '123456',
+    exposeDevelopmentCode: options.exposeDevelopmentCode,
   })
   return {
     app: createApp(auth, { origins: [origin], secureCookies: false }),
@@ -29,6 +30,45 @@ function setup(options: { failingSender?: boolean } = {}) {
     },
   }
 }
+
+test('returns the one-time code only when the local API explicitly enables it', async () => {
+  const { app } = setup({ exposeDevelopmentCode: true })
+  try {
+    const request = await app.inject({
+      method: 'POST',
+      url: '/api/auth/request-code',
+      headers: { origin },
+      payload: { phone },
+    })
+    expect(request.statusCode).toBe(202)
+    expect(request.headers['cache-control']).toBe('no-store')
+    expect(request.json()).toEqual({
+      status: 'accepted',
+      retryAfterSeconds: 60,
+      developmentCode: '123456',
+    })
+  } finally {
+    await app.close()
+  }
+})
+
+test('does not reveal a code when its delivery fails', async () => {
+  const { app } = setup({ failingSender: true, exposeDevelopmentCode: true })
+  try {
+    const request = await app.inject({
+      method: 'POST',
+      url: '/api/auth/request-code',
+      headers: { origin },
+      payload: { phone },
+    })
+    expect(request.statusCode).toBe(503)
+    expect(request.json()).toEqual({
+      error: { code: 'DELIVERY_UNAVAILABLE', message: 'Не удалось отправить код' },
+    })
+  } finally {
+    await app.close()
+  }
+})
 
 test('issues a code, creates a session and revokes it on logout', async () => {
   const { app, sent } = setup()

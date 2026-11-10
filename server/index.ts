@@ -6,6 +6,11 @@ import { createAuthService } from './auth/service.ts'
 import { getCatalog, seedCatalog } from './catalog/mongo-catalog.ts'
 import { ensureShopIndexes, registerShopRoutes } from './shop.ts'
 import { registerProfileRoutes } from './profile.ts'
+import { registerAdminRoutes } from './admin.ts'
+import { getPublicSiteContent, getSiteContent } from './site-content.ts'
+import { registerIikoRoutes } from './iiko.ts'
+import { registerSiteUpdateRoutes } from './site-updates.ts'
+import { createYooGateway } from './yookassa.ts'
 
 if (process.env.NODE_ENV === 'production') {
   throw new Error('Production requires a real SMS sender and deployment configuration')
@@ -37,20 +42,38 @@ const auth = createAuthService({
     },
   },
   secret: process.env.AUTH_HMAC_SECRET ?? randomBytes(32).toString('hex'),
+  exposeDevelopmentCode: true,
+  consentVersion: async () => (await getSiteContent(db)).legalRevision,
 })
 
 const alternateHost = originUrl.hostname === 'localhost' ? '127.0.0.1' : 'localhost'
 const alternateOrigin = `http://${alternateHost}${originUrl.port ? `:${originUrl.port}` : ''}`
 const app = createApp(auth, { origins: [origin, alternateOrigin], secureCookies: false })
 app.get('/api/catalog', async (_request, reply) => {
-  reply.header('Cache-Control', 'public, max-age=30')
+  reply.header('Cache-Control', 'no-store')
   return getCatalog(db)
 })
-registerShopRoutes(app, db, mongo, auth, [origin, alternateOrigin])
+app.get('/api/site-content', async (_request, reply) => {
+  reply.header('Cache-Control', 'no-store')
+  return getPublicSiteContent(db)
+})
+const paymentShopId = process.env.YOOKASSA_TEST_SHOP_ID
+const paymentSecret = process.env.YOOKASSA_TEST_SECRET_KEY
+if (Boolean(paymentShopId) !== Boolean(paymentSecret))
+  throw new Error('Укажите оба параметра тестового магазина ЮKassa')
+const paymentGateway =
+  paymentShopId && paymentSecret ? createYooGateway(paymentShopId, paymentSecret) : undefined
+registerShopRoutes(app, db, mongo, auth, [origin, alternateOrigin], false, paymentGateway)
 registerProfileRoutes(app, db, mongo, auth, [origin, alternateOrigin])
+const adminPassword = process.env.ADMIN_PASSWORD ?? randomBytes(18).toString('base64url')
+await registerAdminRoutes(app, db, [origin, alternateOrigin], adminPassword)
+registerIikoRoutes(app, db, mongo)
+registerSiteUpdateRoutes(app)
 app.addHook('onClose', async () => mongo.close())
 await app.listen({ host: '127.0.0.1', port })
 process.stdout.write(`Local API ready at http://127.0.0.1:${port}\n`)
+if (!process.env.ADMIN_PASSWORD)
+  process.stdout.write(`Temporary administrator password: ${adminPassword}\n`)
 
 let shuttingDown = false
 async function shutdown(signal: string) {

@@ -10,6 +10,7 @@ import type { CatalogProduct } from '../../model/product'
 import { ProductCard } from '../ProductCard/ProductCard'
 import styles from './HomeCatalog.module.css'
 import { useCatalog, useCatalogItem } from '../../api/CatalogProvider'
+import { useSiteContent } from '../../../site-content/SiteContentProvider'
 
 function ComboCard({
   combo,
@@ -18,19 +19,26 @@ function ComboCard({
   combo: HomeCombo
   onAction?: (combo: HomeCombo) => void
 }) {
+  const content = useSiteContent()
   const live = useCatalogItem(combo.id)
   const priceRub = live ? live.priceKopecks / 100 : null
   return (
     <article className={styles.comboCard}>
       <div className={styles.comboImageWrap}>
-        <img className={styles.comboImage} src={combo.image} alt={combo.name} loading="lazy" />
-        <span className={styles.comboBadge}>ГОТОВЫЙ НАБОР</span>
+        {combo.image ? (
+          <img className={styles.comboImage} src={combo.image} alt={combo.name} loading="lazy" />
+        ) : (
+          <span className={styles.comboNoImage} aria-label="Фото пока нет">
+            ◉
+          </span>
+        )}
+        <span className={styles.comboBadge}>{content.comboBadge}</span>
       </div>
       <div className={styles.comboBody}>
         <h3 className={styles.comboName}>{combo.name}</h3>
         <p className={styles.comboMeta}>{combo.portions}</p>
         <p className={styles.comboDetails}>{combo.details}</p>
-        <p className={styles.comboNote}>На комбо не распространяются другие акции и промокоды</p>
+        <p className={styles.comboNote}>{content.comboNote}</p>
         <div className={styles.comboFooter}>
           <strong className={styles.comboPrice}>
             {priceRub === null ? 'Цена уточняется' : `${priceRub.toLocaleString('ru-RU')} ₽`}
@@ -96,6 +104,7 @@ export function HomeCatalog({
   onProductAction?: (product: CatalogProduct) => void
   onComboAction?: (combo: HomeCombo) => void
 }) {
+  const content = useSiteContent()
   const catalog = useCatalog()?.data
   const combos = catalog
     ? (catalog.categories.find((category) => category.id === 'combo')?.products ?? []).map(
@@ -113,19 +122,19 @@ export function HomeCatalog({
     : homeCategories
   return (
     <div className={styles.catalog}>
-      <section id="combo" aria-labelledby="combos-title">
-        <h2 className={styles.heading} id="combos-title">
-          Комбо и наборы
-        </h2>
-        <p className={styles.subtitle}>
-          Собрали готовые обеды и наборы на компанию — выгоднее, чем по отдельности.
-        </p>
-        <div className={styles.comboGrid}>
-          {combos.map((combo) => (
-            <ComboCard combo={combo} onAction={onComboAction} key={combo.id} />
-          ))}
-        </div>
-      </section>
+      {combos.length > 0 && (
+        <section id="combo" aria-labelledby="combos-title">
+          <h2 className={styles.heading} id="combos-title">
+            {content.comboTitle}
+          </h2>
+          <p className={styles.subtitle}>{content.comboSubtitle}</p>
+          <div className={styles.comboGrid}>
+            {combos.map((combo) => (
+              <ComboCard combo={combo} onAction={onComboAction} key={combo.id} />
+            ))}
+          </div>
+        </section>
+      )}
       {categories.map((category) => (
         <CategorySection category={category} onProductAction={onProductAction} key={category.id} />
       ))}

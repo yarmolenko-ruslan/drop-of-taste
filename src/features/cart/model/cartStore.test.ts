@@ -45,3 +45,19 @@ test('не превышает серверный предел 99 порций в
   store.changeQuantity(line.key, -98)
   expect(useCartStore.getState().lines[0]?.quantity).toBe(1)
 })
+
+test('обновляет цену товара в корзине после изменения каталога', () => {
+  const store = useCartStore.getState()
+  store.add(product, { variant: '', removedIngredients: [], extras: {}, quantity: 2 })
+  store.syncCatalog([
+    { _id: 'borscht', name: 'Новый борщ', image: '/new.jpg', priceKopecks: 30000, available: true },
+  ])
+  expect(useCartStore.getState().lines[0]).toMatchObject({
+    name: 'Новый борщ',
+    image: '/new.jpg',
+    unitPriceRub: 300,
+  })
+  expect(cartTotal(useCartStore.getState().lines)).toBe(600)
+  store.syncCatalog([{ _id: 'borscht', name: 'Новый борщ', priceKopecks: 30000, available: false }])
+  expect(cartTotal(useCartStore.getState().lines)).toBeNull()
+})

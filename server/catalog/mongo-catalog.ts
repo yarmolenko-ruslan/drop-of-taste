@@ -1,5 +1,5 @@
 import type { Db } from 'mongodb'
-import { categoryMeta, createTemplateCatalog, newArrivalIds, type CatalogDoc } from './template.ts'
+import { categoryMeta, createTemplateCatalog, type CatalogDoc } from './template.ts'
 
 const CATALOG_CACHE_TTL_MS = 30_000
 
@@ -9,30 +9,70 @@ const cacheByDatabase = new Map<string, { at: number; data: CatalogPayload }>()
 
 export async function seedCatalog(db: Db) {
   const collection = db.collection<CatalogDoc>('catalog')
-  const items = createTemplateCatalog()
-  for (const item of items) {
-    await collection.updateOne({ _id: item._id }, { $setOnInsert: item }, { upsert: true })
+  const marker = db.collection<{ _id: string }>('site_meta')
+  // A marker preserves deliberate deletion of the last product/category across restarts.
+  if (!(await marker.findOne({ _id: 'catalog-seeded' }))) {
+    await collection.bulkWrite(
+      createTemplateCatalog().map((product) => ({
+        updateOne: {
+          filter: { _id: product._id },
+          update: { $setOnInsert: product },
+          upsert: true,
+        },
+      })),
+    )
+    await marker.insertOne({ _id: 'catalog-seeded' })
+  }
+  const categories = db.collection<{
+    _id: string
+    title: string
+    subtitle: string
+    sortOrder: number
+  }>('catalog_categories')
+  if (!(await marker.findOne({ _id: 'categories-seeded' }))) {
+    await categories.bulkWrite(
+      categoryMeta.map((item, sortOrder) => ({
+        updateOne: {
+          filter: { _id: item.id },
+          update: {
+            $setOnInsert: {
+              _id: item.id,
+              title: item.title,
+              subtitle: item.subtitle,
+              sortOrder,
+            },
+          },
+          upsert: true,
+        },
+      })),
+    )
+    await marker.insertOne({ _id: 'categories-seeded' })
   }
 }
 
 async function buildCatalog(db: Db) {
-  const items = await db
-    .collection<CatalogDoc>('catalog')
+  const categories = await db
+    .collection<{ _id: string; title: string; subtitle: string; sortOrder: number }>(
+      'catalog_categories',
+    )
     .find({})
-    .sort({ categoryId: 1, sortOrder: 1 })
+    .sort({ sortOrder: 1 })
     .toArray()
-  const byCategory = new Map(categoryMeta.map((category) => [category.id, [] as CatalogDoc[]]))
+  const items = await db.collection<CatalogDoc>('catalog').find({}).sort({ sortOrder: 1 }).toArray()
+  const byCategory = new Map(categories.map((category) => [category._id, [] as CatalogDoc[]]))
   for (const item of items) byCategory.get(item.categoryId)?.push(item)
   return {
-    categories: categoryMeta.map((category) => ({
-      ...category,
-      products: (byCategory.get(category.id) ?? []).map((item) => ({
+    categories: categories.map((category) => ({
+      id: category._id,
+      title: category.title,
+      subtitle: category.subtitle,
+      products: (byCategory.get(category._id) ?? []).map((item) => ({
         ...item,
         id: item._id,
         priceRub: item.priceKopecks / 100,
       })),
     })),
-    newArrivalIds,
+    newArrivalIds: items.filter((item) => item.badges.includes('new')).map((item) => item._id),
   }
 }
 

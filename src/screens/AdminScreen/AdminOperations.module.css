@@ -1,0 +1,218 @@
+.workspace {
+  background: #fff;
+  min-width: 0;
+  border: 1px solid #e9dfd2;
+  border-radius: 18px;
+  padding: clamp(20px, 3vw, 36px);
+}
+.heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.heading h2 {
+  margin: 0 0 6px;
+  font-size: 28px;
+}
+.heading > div {
+  min-width: 0;
+}
+.heading p {
+  margin: 0;
+  color: #74665d;
+}
+.heading button,
+.more {
+  padding: 10px 15px;
+  border: 1px solid #cdbbad;
+  background: #fff;
+  border-radius: 9px;
+  cursor: pointer;
+  font: inherit;
+}
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 22px 0;
+}
+.filters button {
+  border: 1px solid #e0d6cb;
+  background: #f8f4ef;
+  padding: 11px 14px;
+  border-radius: 9px;
+  font: inherit;
+  cursor: pointer;
+}
+.filters .active {
+  color: white;
+  background: #8f1723;
+  border-color: #8f1723;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 14px;
+}
+.card {
+  background: #fffdf9;
+  border: 1px solid #e8ded1;
+  border-radius: 14px;
+  padding: 18px;
+  min-width: 0;
+}
+.cardTop {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cardTop div {
+  display: grid;
+  gap: 4px;
+}
+.cardTop span {
+  color: #786d65;
+  font-size: 13px;
+}
+.cardTop b {
+  white-space: nowrap;
+}
+.card p {
+  margin: 12px 0;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.customer {
+  font-size: 17px;
+}
+.link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #8f1723;
+  text-decoration: underline;
+  font: inherit;
+  cursor: pointer;
+}
+.card details {
+  margin: 14px 0;
+}
+.card summary {
+  cursor: pointer;
+  color: #8f1723;
+  font-weight: 700;
+}
+.card ul {
+  padding-left: 20px;
+}
+.card li {
+  margin: 6px 0;
+}
+.card li b {
+  float: right;
+  margin-left: 12px;
+}
+.primary {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  background: #8f1723;
+  border: 0;
+  border-radius: 9px;
+  color: white;
+  padding: 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.primary:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.error {
+  color: #9d1f29;
+}
+.empty {
+  padding: 24px;
+  color: #776b61;
+  background: #f9f5ef;
+  border-radius: 12px;
+}
+.more {
+  margin-top: 20px;
+}
+.search {
+  display: flex;
+  gap: 10px;
+  margin: 22px 0;
+}
+.search input,
+.search select {
+  border: 1px solid #cbbeb2;
+  border-radius: 9px;
+  padding: 12px;
+  font: inherit;
+}
+.search select {
+  padding-right: 44px;
+}
+.search input {
+  flex: 1;
+  min-width: 0;
+}
+.clientLayout {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: 20px;
+}
+.clientList {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  max-height: 700px;
+  overflow: auto;
+}
+.clientList button {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  background: #faf6f0;
+  border: 1px solid #e4d8c9;
+  border-radius: 10px;
+  padding: 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.clientList .selectedClient {
+  border-color: #8f1723;
+  background: #f9eeee;
+}
+.clientList span,
+.clientList small {
+  color: #716157;
+}
+.profile {
+  min-width: 0;
+}
+.profile h3 {
+  margin: 0 0 18px;
+}
+.profile .card {
+  margin-bottom: 12px;
+}
+@media (max-width: 720px) {
+  .clientLayout {
+    grid-template-columns: 1fr;
+  }
+  .clientList {
+    max-height: 280px;
+  }
+  .search {
+    flex-direction: column;
+  }
+}

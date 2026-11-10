@@ -13,7 +13,7 @@ test('показывает описание ресторана и карту к�
 
   expect(screen.getByRole('heading', { name: 'О кафе', level: 1 })).toBeInTheDocument()
   expect(screen.getAllByText(cafeAddress)).toHaveLength(2)
-  expect(screen.getByTitle(`Кафе «Место вкуса» на Яндекс Карте: ${cafeAddress}`)).toHaveAttribute(
+  expect(screen.getByTitle(`Кафе «Капела вкуса» на Яндекс Карте: ${cafeAddress}`)).toHaveAttribute(
     'src',
     'https://yandex.ru/map-widget/v1/?ll=92.884165%2C56.049189&mode=search&oid=172905214895&ol=biz&z=16.73',
   )

@@ -24,7 +24,13 @@ export function ProductCard({ product, onAction }: ProductCardProps) {
   return (
     <article className={styles.card}>
       <div className={styles.photoWrap}>
-        <img className={styles.photo} src={shown.image} alt={shown.imageAlt} loading="lazy" />
+        {shown.image ? (
+          <img className={styles.photo} src={shown.image} alt={shown.imageAlt} loading="lazy" />
+        ) : (
+          <span className={styles.noPhoto} aria-label="Фото пока нет">
+            ◉
+          </span>
+        )}
         <div className={styles.badges}>
           {shown.badges.map((badge) => (
             <span className={`${styles.badge} ${styles[badge]}`} key={badge}>
@@ -47,7 +53,10 @@ export function ProductCard({ product, onAction }: ProductCardProps) {
               : `${shown.priceRub.toLocaleString('ru-RU')} ₽`}
           </strong>
           <span className={styles.actionWrap}>
-            <CatalogActionButton item={shown} />
+            <CatalogActionButton
+              item={shown}
+              onChoose={onAction ? () => onAction(shown) : undefined}
+            />
           </span>
         </div>
       </div>

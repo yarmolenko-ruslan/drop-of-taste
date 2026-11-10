@@ -1,19 +1,22 @@
 import { createHash, createHmac, randomBytes, randomInt, randomUUID } from 'node:crypto'
 import { normalizeRussianMobilePhone } from '../../shared/validation/phone.ts'
-import { CONSENT_VERSION } from '../../shared/validation/auth.ts'
+import { CONSENT_VERSION, OTP_CODE_TTL_SECONDS } from '../../shared/validation/auth.ts'
 import { SESSION_TTL_SECONDS, type AuthStore, type CodeSender } from './types.ts'
 
 export { SESSION_TTL_SECONDS } from './types.ts'
 
-const CODE_TTL_MS = 5 * 60_000
+const CODE_TTL_MS = OTP_CODE_TTL_SECONDS * 1000
 
 export type AuthServiceOptions = {
   store: AuthStore
   sender: CodeSender
   secret: string
+  consentVersion?: () => Promise<string>
   now?: () => number
   // This exists only for the local stub sender and must never be used in production.
   developmentCode?: string
+  // Only the local development API may return the one-time code to the browser.
+  exposeDevelopmentCode?: boolean
 }
 
 function tokenDigest(token: string): string {
@@ -26,6 +29,8 @@ export function createAuthService({
   secret,
   now = Date.now,
   developmentCode,
+  exposeDevelopmentCode = false,
+  consentVersion,
 }: AuthServiceOptions) {
   function codeDigest(phone: string, code: string): string {
     return createHmac('sha256', secret).update(`${phone}:${code}`).digest('hex')
@@ -57,7 +62,11 @@ export function createAuthService({
       }
       const confirmed = await store.confirmCode(phone, reservationId, now())
       if (!confirmed) return { status: 'delivery_failed' } as const
-      return { status: 'accepted', retryAfterSeconds: 60 } as const
+      return {
+        status: 'accepted',
+        retryAfterSeconds: 60,
+        ...(exposeDevelopmentCode ? { developmentCode: code } : {}),
+      } as const
     },
     async verifyCode(rawPhone: string, code: string) {
       const phone = normalizeRussianMobilePhone(rawPhone)
@@ -65,7 +74,11 @@ export function createAuthService({
       const result = await store.verifyCode(phone, codeDigest(phone, code), now())
       if (result !== 'verified') return { status: result } as const
 
-      const account = await store.getOrCreateAccount(phone, CONSENT_VERSION, now())
+      const account = await store.getOrCreateAccount(
+        phone,
+        consentVersion ? await consentVersion() : CONSENT_VERSION,
+        now(),
+      )
       const token = randomBytes(32).toString('base64url')
       await store.createSession(tokenDigest(token), account.id, now() + SESSION_TTL_SECONDS * 1000)
       return { status: 'verified', account, token } as const

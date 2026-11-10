@@ -4,7 +4,7 @@ export const nameSchema = z
   .string()
   .trim()
   .min(1, 'Введите имя')
-  .max(50, 'Имя слишком длинное')
+  .max(22, 'Имя — не более 22 символов')
   .regex(/^[\p{L} -]+$/u, 'Имя может содержать только буквы, пробелы и дефис')
 
 export const emailSchema = z

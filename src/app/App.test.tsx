@@ -14,6 +14,7 @@ vi.mock('../features/auth/api/authApi', () => ({
 }))
 vi.mock('../features/catalog/api/CatalogProvider', () => ({
   CatalogProvider: ({ children }: { children: React.ReactNode }) => children,
+  useCatalog: () => null,
 }))
 vi.mock('../screens/HomeScreen/HomeScreen', () => ({
   HomeScreen: ({ onLogin }: { onLogin: () => void }) => <button onClick={onLogin}>Вход</button>,
@@ -131,4 +132,26 @@ test('failed logout hides data and finishes after connection returns', async () 
   logout.mockResolvedValue(undefined)
   act(() => window.dispatchEvent(new Event('online')))
   await waitFor(() => expect(localStorage.getItem('drop-of-taste:pending-logout')).toBeNull())
+})
+
+test('session toast stays above page content and inside an open dialog', async () => {
+  me.mockRejectedValue(new Error('offline'))
+  render(<App />)
+
+  const toast = await screen.findByRole('alert', { hidden: true })
+  expect(toast).toHaveAttribute('popover', 'manual')
+  expect(toast.parentElement).toBe(document.body)
+
+  const dialog = document.createElement('dialog')
+  dialog.setAttribute('open', '')
+  document.body.append(dialog)
+  await waitFor(() =>
+    expect(dialog.contains(screen.getByRole('alert', { hidden: true }))).toBe(true),
+  )
+
+  dialog.removeAttribute('open')
+  await waitFor(() =>
+    expect(screen.getByRole('alert', { hidden: true }).parentElement).toBe(document.body),
+  )
+  dialog.remove()
 })

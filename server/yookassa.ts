@@ -4,6 +4,7 @@ const paymentSchema = z.object({
   id: z.string().min(1),
   status: z.enum(['pending', 'waiting_for_capture', 'succeeded', 'canceled']),
   paid: z.boolean(),
+  captured_at: z.iso.datetime().optional(),
   test: z.boolean(),
   amount: z.object({ value: z.string(), currency: z.literal('RUB') }),
   confirmation: z.object({ confirmation_url: z.string().url().optional() }).optional(),

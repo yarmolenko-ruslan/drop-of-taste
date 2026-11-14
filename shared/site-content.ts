@@ -12,6 +12,7 @@ export type SiteContent = {
   address: string
   hours: string
   mapEmbedUrl: string
+  mapBackupEmbedUrl: string
   mapRouteUrl: string
   footerDescription: string
   legalDetails: string
@@ -52,6 +53,7 @@ export type SiteContent = {
     startsAt?: string
     endsAt?: string
     discountPercent?: number
+    enabled?: boolean
     theme: 'red' | 'cream' | 'burgundy' | 'gold' | 'green' | 'white'
   }[]
   heroSlides: {
@@ -77,6 +79,7 @@ export const defaultSiteContent: SiteContent = {
   hours: 'Ежедневно 08:00–20:00',
   mapEmbedUrl:
     'https://yandex.ru/map-widget/v1/?ll=92.884165%2C56.049189&mode=search&oid=172905214895&ol=biz&z=16.73',
+  mapBackupEmbedUrl: '',
   mapRouteUrl: 'https://yandex.ru/maps/?rtext=~56.049189,92.884165',
   footerDescription: 'Домашняя кухня, выпечка и кофе с доставкой.',
   legalDetails: '[ИП / ООО «Название»], ИНН [–], ОГРН [–]',
@@ -125,11 +128,13 @@ export const defaultSiteContent: SiteContent = {
       badge: 'ДЕНЬ РОЖДЕНИЯ',
       title: '−10%',
       subtitle: 'Скидка 10% в день рождения',
-      description: 'Поздравляем вкусно: скидка на весь заказ в ваш праздник.',
+      description: 'Поздравляем вкусно: скидка на блюда в ваш праздник.',
       conditions:
-        'Действует по паспорту при получении. В день рождения и три дня после. Скидки и бонусы не суммируются.',
-      action: 'В меню',
-      href: '/menu/combo',
+        'Укажите дату рождения в личном кабинете один раз. Скидка действует за 3 дня до и 3 дня после дня рождения включительно, один раз в год. Не распространяется на комбо и доставку; скидки не суммируются.',
+      action: 'Указать дату рождения',
+      href: '/account/profile',
+      discountPercent: 10,
+      enabled: true,
       theme: 'red',
     },
     {
@@ -202,7 +207,7 @@ export const defaultSiteContent: SiteContent = {
       id: 'birthday',
       badge: 'АКЦИЯ',
       title: 'Скидка 10% в день рождения',
-      description: 'По паспорту · скидки не суммируются',
+      description: 'За 3 дня до и 3 дня после · один раз в год',
       image: '/banners/cafe-exterior.jpg',
       imageAlt: 'Фасад кафе «Капела вкуса» вечером',
       href: '/promotions/birthday',

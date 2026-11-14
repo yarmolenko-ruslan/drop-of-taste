@@ -47,7 +47,7 @@ const NotFoundScreen = lazy(() =>
 )
 import { SiteHeader } from '../features/site-header/ui/SiteHeader'
 import { SiteFooter } from '../features/site-footer/ui/SiteFooter'
-import { addOneToCart, useCartStore } from '../features/cart'
+import { addOneToCart, syncCartAcrossTabs, useCartStore } from '../features/cart'
 import { CartDrawer } from '../features/cart/ui/CartDrawer/CartDrawer'
 import { AuthDialog } from '../features/auth/ui/AuthDialog/AuthDialog'
 import type { FulfillmentSelection } from '../features/fulfillment/ui/FulfillmentDialog/FulfillmentDialog'
@@ -180,6 +180,7 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
 }
 
 function AppContent() {
+  useEffect(syncCartAcrossTabs, [])
   const siteContent = useSiteContent()
   const catalog = useCatalog()?.data
   const recommendations = useMemo(() => {
@@ -598,8 +599,9 @@ function AppContent() {
       </RouteErrorBoundary>
       {!isAdmin && <SiteFooter />}
       {!isAdmin && <ScrollTopButton />}
-      {isCartOpen && (
+      {!isAdmin && (
         <CartDrawer
+          isOpen={isCartOpen}
           fulfillment={
             fulfillment.mode === 'pickup' ? { mode: 'pickup', label: cafeAddress } : fulfillment
           }

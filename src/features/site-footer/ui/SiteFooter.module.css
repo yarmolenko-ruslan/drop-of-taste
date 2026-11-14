@@ -1,7 +1,7 @@
 .footer {
   background: var(--color-burgundy);
   color: #e7d0bd;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-family-ruble), Arial, Helvetica, sans-serif;
 }
 .container {
   width: min(100% - 48px, var(--content-max-width));
@@ -18,7 +18,7 @@
   align-items: center;
   gap: 11px;
   color: var(--color-gold-light);
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-family-ruble), Georgia, 'Times New Roman', serif;
   font-size: 22px;
   text-decoration: none;
   white-space: nowrap;

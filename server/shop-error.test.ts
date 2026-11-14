@@ -10,6 +10,7 @@ test('сбой базы при расчёте возвращает 500 без в
   const db = {
     collection: () => ({
       find: () => ({
+        async *[Symbol.asyncIterator]() {},
         toArray: async () => {
           throw new Error('mongodb://internal-user:secret@private-host')
         },

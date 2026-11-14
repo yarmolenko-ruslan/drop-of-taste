@@ -3,10 +3,12 @@ export type AuthUser = { id: string; phone: string; name: string }
 export class ApiError extends Error {
   code: string
   retryAfterSeconds: number
-  constructor(code: string, message: string, retryAfterSeconds = 0) {
+  status: number
+  constructor(code: string, message: string, retryAfterSeconds = 0, status = 0) {
     super(message)
     this.code = code
     this.retryAfterSeconds = retryAfterSeconds
+    this.status = status
   }
 }
 
@@ -46,6 +48,7 @@ export async function apiRequest<T>(
       body?.error?.code ?? 'REQUEST_FAILED',
       body?.error?.message ?? 'Не удалось выполнить запрос',
       Number(response.headers.get('Retry-After') ?? 0),
+      response.status,
     )
   }
   return response.status === 204 ? (undefined as T) : response.json()

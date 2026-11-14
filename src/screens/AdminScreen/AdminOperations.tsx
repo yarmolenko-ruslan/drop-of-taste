@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiRequest } from '../../features/auth/api/authApi'
+import { LoadingState } from '../../shared/ui/LoadingState/LoadingState'
 import styles from './AdminOperations.module.css'
 
 type Stage = 'new' | 'preparing' | 'delivering' | 'completed'
@@ -16,6 +17,7 @@ type Order = {
   accountId: string
   createdAt: string
   completedAt?: string
+  canceledAt?: string | null
   fulfillmentStatus: Stage
   customer?: Client | null
   payment?: { status: string }
@@ -48,6 +50,7 @@ function OrderCard({
   onAdvance?: () => void
   busy?: boolean
 }) {
+  const canceled = Boolean(order.canceledAt) || order.payment?.status === 'canceled'
   const current = stages.findIndex((stage) => stage.id === order.fulfillmentStatus)
   return (
     <article className={styles.card}>
@@ -67,12 +70,14 @@ function OrderCard({
         {order.input.fulfillment.label}
       </p>
       <p>
-        <b>Этап:</b> {stages[current]?.label}
+        <b>Этап:</b> {canceled ? 'Отменён' : stages[current]?.label}
       </p>
       <p>
         <b>Оплата:</b>{' '}
         {order.payment?.status === 'succeeded'
-          ? 'Оплачено'
+          ? order.canceledAt
+            ? 'Оплачено после отмены — требуется проверка возврата'
+            : 'Оплачено'
           : order.payment?.status === 'pending'
             ? 'Ожидает подтверждения'
             : order.payment?.status === 'canceled'
@@ -96,7 +101,7 @@ function OrderCard({
         )}
         {order.quote.deliveryKopecks > 0 && <p>Доставка: {money(order.quote.deliveryKopecks)}</p>}
       </details>
-      {onAdvance && (
+      {onAdvance && !canceled && (
         <button type="button" className={styles.primary} disabled={busy} onClick={onAdvance}>
           {busy ? 'Сохраняем…' : stages[current]?.action} →
         </button>
@@ -111,11 +116,13 @@ export function OrdersEditor() {
   const [nextBefore, setNextBefore] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
   const requestSeq = useRef(0)
   const loadedCount = useRef(50)
   const activeStage = useRef<Stage>('new')
   const load = useCallback(async (current: Stage, before?: string) => {
     const seq = ++requestSeq.current
+    setLoading(true)
     try {
       const query = new URLSearchParams({ stage: current })
       if (before) query.set('before', before)
@@ -133,6 +140,8 @@ export function OrdersEditor() {
     } catch (failure) {
       if (seq !== requestSeq.current) return
       setError(failure instanceof Error ? failure.message : 'Не удалось загрузить заказы')
+    } finally {
+      if (seq === requestSeq.current) setLoading(false)
     }
   }, [])
   useEffect(() => {
@@ -159,6 +168,8 @@ export function OrdersEditor() {
       if (activeStage.current === stage) {
         setOrders((old) => old.filter((item) => item._id !== order._id))
         setError('')
+        // Отменяем устаревший ответ опроса, начатого до смены этапа.
+        void load(stage)
       }
     } catch (failure) {
       if (activeStage.current === stage) {
@@ -193,6 +204,7 @@ export function OrdersEditor() {
               loadedCount.current = 50
               activeStage.current = item.id
               setOrders([])
+              setLoading(true)
               setNextBefore(null)
               setStage(item.id)
             }}
@@ -206,6 +218,7 @@ export function OrdersEditor() {
           {error}
         </p>
       )}
+      {loading && <LoadingState compact={orders.length > 0} label="Загружаем заказы…" />}
       <div className={styles.cards}>
         {orders.map((order) => (
           <OrderCard
@@ -216,10 +229,17 @@ export function OrdersEditor() {
           />
         ))}
       </div>
-      {!orders.length && !error && <p className={styles.empty}>Заказов в этом разделе пока нет.</p>}
+      {!orders.length && !error && !loading && (
+        <p className={styles.empty}>Заказов в этом разделе пока нет.</p>
+      )}
       {nextBefore && (
-        <button type="button" className={styles.more} onClick={() => void load(stage, nextBefore)}>
-          Показать ещё
+        <button
+          type="button"
+          className={styles.more}
+          disabled={loading}
+          onClick={() => void load(stage, nextBefore)}
+        >
+          {loading ? 'Загружаем…' : 'Показать ещё'}
         </button>
       )}
     </section>
@@ -237,11 +257,14 @@ export function ClientsEditor() {
     orders: Order[]
   } | null>(null)
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [loadingProfile, setLoadingProfile] = useState(false)
   const requestSeq = useRef(0)
   const selectionSeq = useRef(0)
   const load = useCallback(
     async (before?: string) => {
       const seq = ++requestSeq.current
+      setLoading(true)
       try {
         const params = new URLSearchParams({ q: query, filter })
         if (before) params.set('before', before)
@@ -255,6 +278,8 @@ export function ClientsEditor() {
       } catch (failure) {
         if (seq !== requestSeq.current) return
         setError(failure instanceof Error ? failure.message : 'Не удалось загрузить клиентов')
+      } finally {
+        if (seq === requestSeq.current) setLoading(false)
       }
     },
     [query, filter],
@@ -267,6 +292,8 @@ export function ClientsEditor() {
   }, [load])
   async function open(id: string) {
     const seq = ++selectionSeq.current
+    setLoadingProfile(true)
+    setSelected(null)
     try {
       const result = await apiRequest<{ client: Client; addresses: string[]; orders: Order[] }>(
         `/admin/clients/${id}`,
@@ -277,6 +304,8 @@ export function ClientsEditor() {
     } catch (failure) {
       if (seq !== selectionSeq.current) return
       setError(failure instanceof Error ? failure.message : 'Не удалось открыть клиента')
+    } finally {
+      if (seq === selectionSeq.current) setLoadingProfile(false)
     }
   }
   return (
@@ -296,6 +325,8 @@ export function ClientsEditor() {
             requestSeq.current++
             selectionSeq.current++
             setSelected(null)
+            setLoading(true)
+            setLoadingProfile(false)
             setClients([])
             setNextBefore(null)
             setQuery(event.target.value)
@@ -308,6 +339,8 @@ export function ClientsEditor() {
             requestSeq.current++
             selectionSeq.current++
             setSelected(null)
+            setLoading(true)
+            setLoadingProfile(false)
             setClients([])
             setNextBefore(null)
             setFilter(event.target.value)
@@ -325,6 +358,7 @@ export function ClientsEditor() {
       )}
       <div className={styles.clientLayout}>
         <div className={styles.clientList}>
+          {loading && <LoadingState compact={clients.length > 0} label="Загружаем клиентов…" />}
           {clients.map((client) => (
             <button
               type="button"
@@ -337,15 +371,19 @@ export function ClientsEditor() {
               {client.email && <small>{client.email}</small>}
             </button>
           ))}
-          {!clients.length && !error && <p className={styles.empty}>Клиенты не найдены.</p>}
+          {!clients.length && !error && !loading && (
+            <p className={styles.empty}>Клиенты не найдены.</p>
+          )}
           {nextBefore && (
-            <button type="button" onClick={() => void load(nextBefore)}>
-              Показать ещё
+            <button type="button" disabled={loading} onClick={() => void load(nextBefore)}>
+              {loading ? 'Загружаем…' : 'Показать ещё'}
             </button>
           )}
         </div>
         <div className={styles.profile}>
-          {selected ? (
+          {loadingProfile ? (
+            <LoadingState label="Загружаем профиль клиента…" />
+          ) : selected ? (
             <>
               <h3>{selected.client.name || 'Клиент без имени'}</h3>
               <p>

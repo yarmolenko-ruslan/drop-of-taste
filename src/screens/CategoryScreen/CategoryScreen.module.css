@@ -19,7 +19,7 @@
 .heading {
   margin: 26px 0 0;
   color: #572328;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-family-ruble), Georgia, 'Times New Roman', serif;
   font-size: 64px;
   font-weight: 400;
   line-height: 1.1;
@@ -67,8 +67,7 @@
   border-radius: 999px;
   background: transparent;
   color: var(--color-brand-red);
-  font:
-    700 14px Arial,
+  font: 700 14px var(--font-family-ruble), Arial,
     sans-serif;
   cursor: pointer;
 }

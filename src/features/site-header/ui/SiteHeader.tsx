@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { cartCount, useCartStore } from '../../cart'
 import { MobileMenu } from './MobileMenu'
+import { CategoryScroller } from './CategoryScroller'
 import { categories } from './navigation'
 import { useCatalog } from '../../catalog/api/CatalogProvider'
 import { useSiteContent } from '../../site-content/SiteContentProvider'
@@ -263,11 +264,9 @@ export function SiteHeader({
         </div>
 
         {showCategories && (
-          <nav className={styles.categoryBar} aria-label="Категории меню">
-            <div className={`${styles.container} ${styles.categoryList}`}>
-              {liveCategories.map(renderCategoryLink)}
-            </div>
-          </nav>
+          <div className={styles.categoryBar}>
+            <CategoryScroller>{liveCategories.map(renderCategoryLink)}</CategoryScroller>
+          </div>
         )}
       </header>
 
@@ -303,11 +302,7 @@ export function SiteHeader({
           </Link>
 
           {showCategories && (
-            <nav className={styles.compactNav} aria-label="Категории меню">
-              <div className={styles.compactCategories}>
-                {liveCategories.map(renderCategoryLink)}
-              </div>
-            </nav>
+            <CategoryScroller compact>{liveCategories.map(renderCategoryLink)}</CategoryScroller>
           )}
 
           <div className={styles.compactActions}>

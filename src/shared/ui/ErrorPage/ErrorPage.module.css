@@ -17,7 +17,7 @@
 .code {
   margin: 0 0 8px;
   color: #d9b876;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-family-ruble), Georgia, 'Times New Roman', serif;
   font-size: 84px;
   line-height: 1;
   letter-spacing: 0.04em;
@@ -33,7 +33,7 @@
 .title {
   margin: 0;
   color: #572328;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-family-ruble), Georgia, 'Times New Roman', serif;
   font-size: 34px;
   font-weight: 400;
   line-height: 1.15;

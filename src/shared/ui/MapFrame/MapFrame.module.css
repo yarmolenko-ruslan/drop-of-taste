@@ -1,0 +1,66 @@
+.frame {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: #f8f5f0;
+  text-align: center;
+}
+
+.overlay p {
+  margin: 0 0 16px;
+}
+
+.overlay a,
+.overlay button {
+  color: var(--color-brand-red, #a52832);
+}
+
+.overlay button {
+  padding: 8px 14px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.overlay a {
+  margin-top: 12px;
+}
+
+.help {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 7px 10px;
+  border: 1px solid #e4d9cd;
+  border-radius: 8px;
+  background: #fffefa;
+  color: var(--color-brand-red, #a52832);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.frame :is(a, button):focus-visible {
+  outline: 3px solid var(--color-gold);
+  outline-offset: 3px;
+}

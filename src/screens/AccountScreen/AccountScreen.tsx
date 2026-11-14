@@ -4,7 +4,11 @@ import {
   FulfillmentDialog,
   type FulfillmentSelection,
 } from '../../features/fulfillment/ui/FulfillmentDialog/FulfillmentDialog'
-import { birthDateSchema, profileSchema } from '../../../shared/validation/profile'
+import {
+  birthDateSchema,
+  krasnoyarskToday,
+  profileSchema,
+} from '../../../shared/validation/profile'
 import { issuesByField } from '../../../shared/validation/issues'
 import styles from './AccountScreen.module.css'
 import { ApiError, apiRequest } from '../../features/auth/api/authApi'
@@ -13,6 +17,7 @@ import { Dialog } from '../../shared/ui/Dialog/Dialog'
 import { useCartStore } from '../../features/cart'
 import { useCatalog } from '../../features/catalog/api/CatalogProvider'
 import { formatCompactAddress } from '../../shared/lib/formatCompactAddress'
+import { BIRTHDAY_CLAIM_RELEASED_EVENT } from '../../../shared/birthday'
 
 export type AccountUser = {
   id: string
@@ -38,12 +43,15 @@ function displayAddress(address: Address): string {
 type Order = {
   _id: string
   createdAt: string
+  paymentExpiresAt?: string | null
+  paymentCapturedAt?: string | null
+  canceledAt?: string | null
   status?: 'test' | 'completed'
   fulfillmentStatus?: 'new' | 'preparing' | 'delivering' | 'completed'
   paymentStatus?: 'unpaid' | 'creating' | 'error' | 'pending' | 'succeeded' | 'canceled'
   completedAt?: string | null
   fulfilledAt?: string | null
-  input: { fulfillment: { mode: 'pickup' | 'delivery'; label: string } }
+  input: { fulfillment: { mode: 'pickup' | 'delivery'; label: string }; birthdayDiscount?: boolean }
   quote: {
     lines: {
       productId: string
@@ -55,10 +63,24 @@ type Order = {
     discountKopecks: number
     promoCode?: string
     promoDiscountKopecks?: number
+    birthdayDiscountKopecks?: number
     deliveryKopecks: number
+    adjustments?: { label: string; amountKopecks: number }[]
     totalKopecks: number
   }
 }
+
+type OrderStatus = Pick<
+  Order,
+  | '_id'
+  | 'status'
+  | 'fulfillmentStatus'
+  | 'paymentStatus'
+  | 'completedAt'
+  | 'fulfilledAt'
+  | 'canceledAt'
+  | 'paymentCapturedAt'
+>
 
 const sections = [
   { id: 'orders', label: 'Заказы' },
@@ -113,26 +135,65 @@ function orderSummary(order: Order) {
   return rest > 0 ? `${names.join(', ')} · ещё ${rest}` : names.join(', ')
 }
 
+// Старый pending-ответ не снимает отмену. Восстановление требует доказанного списания вовремя.
+function cancellationAfterUpdate(
+  order: Order,
+  update: Pick<Order, 'canceledAt' | 'paymentStatus' | 'paymentCapturedAt'>,
+) {
+  if (update.canceledAt) return update.canceledAt
+  if (
+    update.paymentStatus === 'succeeded' &&
+    update.paymentCapturedAt &&
+    order.paymentExpiresAt &&
+    Date.parse(update.paymentCapturedAt) < Date.parse(order.paymentExpiresAt)
+  )
+    return null
+  return order.canceledAt ?? update.canceledAt
+}
+
+function PaymentCountdown({ expiresAt }: { expiresAt: string }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000)
+    return () => window.clearInterval(timer)
+  }, [])
+  const remaining = Math.max(0, Math.ceil((Date.parse(expiresAt) - now) / 1000))
+  const time = `${Math.floor(remaining / 60)
+    .toString()
+    .padStart(2, '0')}:${(remaining % 60).toString().padStart(2, '0')}`
+  return (
+    <p className={styles.paymentCountdown}>
+      {remaining > 0 ? (
+        <>
+          Осталось на оплату: <strong role="timer">{time}</strong>. Затем заказ будет отменён.
+        </>
+      ) : (
+        'Время оплаты истекло. Обновляем статус заказа…'
+      )}
+    </p>
+  )
+}
+
 function OrderDetailsCard({
   order,
   onRepeat,
   paymentEnabled,
   onPay,
-  onRefreshPayment,
+  onCancel,
   onCompleteFree,
 }: {
   order: Order
   onRepeat: (order: Order) => void
   paymentEnabled?: boolean
   onPay?: (id: string) => void
-  onRefreshPayment?: (id: string) => void
+  onCancel?: (id: string) => void
   onCompleteFree?: (id: string) => void
 }) {
   const completed = order.status === 'completed'
   const noPaymentRequired = order.quote.totalKopecks === 0
   const pickup = order.input.fulfillment.mode === 'pickup'
   const paid = order.paymentStatus === 'succeeded'
-  const canceled = order.paymentStatus === 'canceled'
+  const canceled = Boolean(order.canceledAt) || order.paymentStatus === 'canceled'
   const waitingForPayment =
     canceled || (paymentEnabled && !noPaymentRequired && !paid && !completed)
   const stage = order.fulfillmentStatus ?? (order.status === 'completed' ? 'completed' : 'new')
@@ -145,7 +206,9 @@ function OrderDetailsCard({
       detail: waitingForPayment
         ? index === 0
           ? canceled
-            ? 'Оплата отменена'
+            ? order.canceledAt
+              ? 'Истекло время оплаты'
+              : 'Оплата отменена'
             : 'Ожидает оплаты'
           : 'Ожидается'
         : index < current
@@ -163,17 +226,16 @@ function OrderDetailsCard({
             ? 'current'
             : 'waiting',
     }))
-  const badge = canceled
-    ? 'Оплата отменена'
-    : waitingForPayment
-      ? 'Ожидает оплаты'
-      : labels[current]
+  const badge = canceled ? 'Заказ отменён' : waitingForPayment ? 'Ожидает оплаты' : labels[current]
   return (
     <article className={styles.orderCard}>
       <header className={styles.orderHeader}>
         <strong>Заказ №{order._id.slice(0, 6).toUpperCase()}</strong>
         <span className={styles.orderBadge}>{badge}</span>
       </header>
+      {waitingForPayment && !canceled && order.paymentExpiresAt && (
+        <PaymentCountdown expiresAt={order.paymentExpiresAt} />
+      )}
       <ol className={styles.orderSteps} aria-label="Этапы заказа">
         {steps.map((step, index) => (
           <li
@@ -224,13 +286,22 @@ function OrderDetailsCard({
             <span>{(line.lineTotalKopecks / 100).toLocaleString('ru-RU')} ₽</span>
           </li>
         ))}
-        {order.quote.discountKopecks > 0 && (
+        {order.quote.adjustments?.map((adjustment) => (
+          <li key={adjustment.label}>
+            <span>{adjustment.label}</span>
+            <span>
+              {adjustment.amountKopecks < 0 ? '−' : adjustment.amountKopecks > 0 ? '+' : ''}
+              {(Math.abs(adjustment.amountKopecks) / 100).toLocaleString('ru-RU')} ₽
+            </span>
+          </li>
+        ))}
+        {!order.quote.adjustments && order.quote.discountKopecks > 0 && (
           <li>
             <span>Скидка самовывоза</span>
             <span>−{(order.quote.discountKopecks / 100).toLocaleString('ru-RU')} ₽</span>
           </li>
         )}
-        {(order.quote.promoDiscountKopecks ?? 0) > 0 && (
+        {!order.quote.adjustments && (order.quote.promoDiscountKopecks ?? 0) > 0 && (
           <li>
             <span>Бонус-код {order.quote.promoCode}</span>
             <span>
@@ -238,7 +309,7 @@ function OrderDetailsCard({
             </span>
           </li>
         )}
-        {order.quote.deliveryKopecks > 0 && (
+        {!order.quote.adjustments && order.quote.deliveryKopecks > 0 && (
           <li>
             <span>Доставка</span>
             <span>{(order.quote.deliveryKopecks / 100).toLocaleString('ru-RU')} ₽</span>
@@ -250,7 +321,7 @@ function OrderDetailsCard({
         <strong>{(order.quote.totalKopecks / 100).toLocaleString('ru-RU')} ₽</strong>
       </p>
       <div className={styles.orderActions}>
-        {noPaymentRequired && !completed && onCompleteFree && (
+        {noPaymentRequired && !completed && !canceled && onCompleteFree && (
           <button
             type="button"
             className={styles.repeatButton}
@@ -261,6 +332,7 @@ function OrderDetailsCard({
         )}
         {paymentEnabled &&
           !noPaymentRequired &&
+          !canceled &&
           onPay &&
           (!order.paymentStatus ||
             ['unpaid', 'error', 'creating', 'pending'].includes(order.paymentStatus)) && (
@@ -272,16 +344,20 @@ function OrderDetailsCard({
                   : 'Оплатить заказ'}
             </button>
           )}
-        {paymentEnabled &&
-          !noPaymentRequired &&
-          onRefreshPayment &&
-          ['pending', 'creating'].includes(order.paymentStatus ?? '') && (
+        {(order.quote.birthdayDiscountKopecks ?? 0) > 0 &&
+          onCancel &&
+          !completed &&
+          !canceled &&
+          !paid &&
+          (!order.paymentStatus || ['unpaid', 'pending'].includes(order.paymentStatus)) && (
             <button
               type="button"
               className={styles.repeatButton}
-              onClick={() => onRefreshPayment(order._id)}
+              onClick={() => onCancel(order._id)}
             >
-              Проверить оплату
+              {order.paymentStatus === 'pending'
+                ? 'Проверить отмену оплаты'
+                : 'Отменить заказ и освободить скидку'}
             </button>
           )}
         <button type="button" className={styles.repeatButton} onClick={() => onRepeat(order)}>
@@ -300,17 +376,43 @@ export function AccountScreen({
   onAddressPicked,
 }: AccountScreenProps) {
   const { section = 'orders' } = useParams()
+  const currentBirthYear = Number(krasnoyarskToday().slice(0, 4))
   const [name, setName] = useState(user.name)
   const [email, setEmail] = useState('')
   const [savedEmail, setSavedEmail] = useState('')
   const [day, setDay] = useState('')
   const [month, setMonth] = useState('')
   const [year, setYear] = useState('')
+  const [savedBirthday, setSavedBirthday] = useState('')
   const [notifications, setNotifications] = useState({ push: false, email: false, sms: false })
   const [settingsBusy, setSettingsBusy] = useState(false)
   const settingsBusyRef = useRef(false)
   const [notice, setNotice] = useState('')
   const [orders, setOrders] = useState<Order[]>([])
+  const pendingCartPayment = useCartStore((state) => state.pendingPayment)
+  useEffect(() => {
+    if (pendingCartPayment?.accountId !== user.id) return
+    if (
+      orders.some(
+        (order) =>
+          order._id === pendingCartPayment.orderId &&
+          (order.paymentStatus === 'canceled' ||
+            (order.canceledAt && order.paymentStatus === 'succeeded')),
+      )
+    ) {
+      useCartStore.getState().forgetPayment(pendingCartPayment.orderId, user.id)
+      return
+    }
+    if (
+      orders.some(
+        (order) =>
+          order._id === pendingCartPayment.orderId &&
+          !order.canceledAt &&
+          order.paymentStatus === 'succeeded',
+      )
+    )
+      useCartStore.getState().finishPayment(pendingCartPayment.orderId, user.id)
+  }, [orders, pendingCartPayment, user.id])
   const [testPaymentEnabled, setTestPaymentEnabled] = useState(false)
   const [ordersError, setOrdersError] = useState('')
   const [ordersNextCursor, setOrdersNextCursor] = useState<string | null>(null)
@@ -318,6 +420,16 @@ export function AccountScreen({
   const ordersLoadMoreRef = useRef<HTMLDivElement | null>(null)
   const ordersRequestSeq = useRef(0)
   const ordersRevisionRef = useRef(ordersRevision)
+  const pendingPaymentIds = orders
+    .filter(
+      (order) =>
+        !order.canceledAt &&
+        order.quote.totalKopecks > 0 &&
+        (order.paymentStatus === 'pending' || order.paymentStatus === 'creating'),
+    )
+    .map((order) => order._id)
+    .join('|')
+  const loadedOrderIds = orders.map((order) => order._id).join('|')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [loadAttempt, setLoadAttempt] = useState(0)
@@ -354,12 +466,16 @@ export function AccountScreen({
   const activeOrders = orders.filter(
     (order) =>
       (order.fulfillmentStatus ?? (order.status === 'completed' ? 'completed' : 'new')) !==
-        'completed' && order.paymentStatus !== 'canceled',
+        'completed' &&
+      !order.canceledAt &&
+      order.paymentStatus !== 'canceled',
   )
   const historyOrders = orders.filter(
     (order) =>
       (order.fulfillmentStatus ?? (order.status === 'completed' ? 'completed' : 'new')) ===
-        'completed' || order.paymentStatus === 'canceled',
+        'completed' ||
+      Boolean(order.canceledAt) ||
+      order.paymentStatus === 'canceled',
   )
   const historyGroups = (() => {
     const groups = new Map<string, { year: number; month: number; orders: Order[] }>()
@@ -437,6 +553,7 @@ export function AccountScreen({
           setYear(y)
           setMonth(m ? String(Number(m)) : '')
           setDay(d ? String(Number(d)) : '')
+          setSavedBirthday(profile.birthday)
           setNotifications(profile.notifications)
         }
         if (addressResult.status === 'fulfilled') {
@@ -508,25 +625,181 @@ export function AccountScreen({
   }, [ordersRevision, reloadOrders])
 
   useEffect(() => {
-    if (section !== 'orders') return
+    if (section !== 'orders' || loading) return
     let active = true
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return
+    let inFlight = false
+    const refreshVisibleOrders = () => {
+      if (!active || inFlight || document.visibilityState === 'hidden') return
+      inFlight = true
       void accountRequest<{ orders: Order[]; nextCursor: string | null }>('/orders')
         .then((result) => {
           if (!active) return
           setOrders((current) => {
             const latestIds = new Set(result.orders.map((order) => order._id))
-            return [...result.orders, ...current.filter((order) => !latestIds.has(order._id))]
+            const currentById = new Map(current.map((order) => [order._id, order]))
+            const latest = result.orders.map((order) => {
+              const local = currentById.get(order._id)
+              const localStatus = local?.paymentStatus
+              const paymentStatus =
+                (localStatus === 'succeeded' || localStatus === 'canceled') &&
+                ['unpaid', 'creating', 'pending'].includes(order.paymentStatus ?? '')
+                  ? localStatus
+                  : order.paymentStatus
+              return {
+                ...order,
+                paymentStatus,
+                canceledAt: local ? cancellationAfterUpdate(local, order) : order.canceledAt,
+              }
+            })
+            return [...latest, ...current.filter((order) => !latestIds.has(order._id))]
           })
         })
         .catch(() => undefined)
-    }, 20_000)
+        .finally(() => {
+          inFlight = false
+        })
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshVisibleOrders()
+    }
+    refreshVisibleOrders()
+    // Новые заказы обнаруживаем реже; этапы всех уже показанных обновляются отдельно.
+    const timer = window.setInterval(refreshVisibleOrders, 60_000)
+    window.addEventListener('focus', onVisible)
+    document.addEventListener('visibilitychange', onVisible)
     return () => {
       active = false
       window.clearInterval(timer)
+      window.removeEventListener('focus', onVisible)
+      document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [section, accountRequest])
+  }, [section, accountRequest, loading])
+
+  useEffect(() => {
+    if (section !== 'orders' || loading || !loadedOrderIds) return
+    let active = true
+    let inFlight = false
+    const ids = loadedOrderIds.split('|')
+    const refreshStatuses = async () => {
+      if (!active || inFlight || document.visibilityState === 'hidden') return
+      inFlight = true
+      try {
+        const batches = Array.from({ length: Math.ceil(ids.length / 200) }, (_, index) =>
+          ids.slice(index * 200, (index + 1) * 200),
+        )
+        const results = await Promise.allSettled(
+          batches.map((batch) =>
+            accountRequest<{ statuses: OrderStatus[] }>('/orders/statuses', {
+              method: 'POST',
+              body: JSON.stringify({ ids: batch }),
+            }),
+          ),
+        )
+        if (!active) return
+        const updates = new Map(
+          results.flatMap((result) =>
+            result.status === 'fulfilled'
+              ? result.value.statuses.map((status) => [status._id, status] as const)
+              : [],
+          ),
+        )
+        if (!updates.size) return
+        setOrders((current) => {
+          let changed = false
+          const updated = current.map((order) => {
+            const status = updates.get(order._id)
+            if (!status) return order
+            const canceledAt = cancellationAfterUpdate(order, status)
+            const paymentStatus =
+              (order.paymentStatus === 'succeeded' || order.paymentStatus === 'canceled') &&
+              ['unpaid', 'creating', 'pending'].includes(status.paymentStatus ?? '')
+                ? order.paymentStatus
+                : status.paymentStatus
+            if (
+              (order.canceledAt ?? null) === (canceledAt ?? null) &&
+              order.status === status.status &&
+              order.fulfillmentStatus === status.fulfillmentStatus &&
+              order.paymentStatus === paymentStatus &&
+              (order.completedAt ?? null) === (status.completedAt ?? null) &&
+              (order.fulfilledAt ?? null) === (status.fulfilledAt ?? null)
+            )
+              return order
+            changed = true
+            return { ...order, ...status, paymentStatus, canceledAt }
+          })
+          return changed ? updated : current
+        })
+      } finally {
+        inFlight = false
+      }
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refreshStatuses()
+    }
+    void refreshStatuses()
+    const timer = window.setInterval(() => void refreshStatuses(), 5_000)
+    window.addEventListener('focus', onVisible)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+      window.removeEventListener('focus', onVisible)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [section, accountRequest, loading, loadedOrderIds])
+
+  useEffect(() => {
+    if (section !== 'orders' || !pendingPaymentIds) return
+    let active = true
+    let inFlight = false
+    const ids = pendingPaymentIds.split('|')
+    const checkPayments = async () => {
+      if (!active || inFlight || document.visibilityState === 'hidden') return
+      inFlight = true
+      try {
+        await Promise.allSettled(
+          ids.map(async (id) => {
+            const result = await accountRequest<{
+              status: Order['paymentStatus']
+              canceledAt?: string
+              paymentCapturedAt?: string
+            }>(`/orders/${encodeURIComponent(id)}/payment`)
+            if (!active || !result.status) return
+            setOrders((current) =>
+              current.map((order) =>
+                order._id === id
+                  ? {
+                      ...order,
+                      paymentStatus: result.status,
+                      canceledAt: cancellationAfterUpdate(order, {
+                        ...result,
+                        paymentStatus: result.status,
+                      }),
+                      paymentCapturedAt: result.paymentCapturedAt ?? order.paymentCapturedAt,
+                    }
+                  : order,
+              ),
+            )
+          }),
+        )
+      } finally {
+        inFlight = false
+      }
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void checkPayments()
+    }
+    void checkPayments()
+    const timer = window.setInterval(() => void checkPayments(), 4_000)
+    window.addEventListener('focus', onVisible)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+      window.removeEventListener('focus', onVisible)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [section, accountRequest, pendingPaymentIds])
 
   async function loadMoreOrders() {
     if (!ordersNextCursor || ordersLoadingMore) return
@@ -614,16 +887,63 @@ export function AccountScreen({
 
   async function refreshPayment(id: string) {
     try {
-      const result = await accountRequest<{ status: Order['paymentStatus'] }>(
-        `/orders/${encodeURIComponent(id)}/payment`,
-      )
+      const result = await accountRequest<{
+        status: Order['paymentStatus']
+        canceledAt?: string
+        paymentCapturedAt?: string
+      }>(`/orders/${encodeURIComponent(id)}/payment`)
       setOrders((current) =>
         current.map((order) =>
-          order._id === id ? { ...order, paymentStatus: result.status } : order,
+          order._id === id
+            ? {
+                ...order,
+                paymentStatus: result.status,
+                canceledAt: cancellationAfterUpdate(order, {
+                  ...result,
+                  paymentStatus: result.status,
+                }),
+                paymentCapturedAt: result.paymentCapturedAt ?? order.paymentCapturedAt,
+              }
+            : order,
         ),
       )
     } catch (failure) {
       setNotice(failure instanceof Error ? failure.message : 'Не удалось проверить оплату')
+    }
+  }
+
+  async function cancelBirthdayOrder(id: string) {
+    const current = orders.find((order) => order._id === id)
+    if (
+      current?.paymentStatus !== 'pending' &&
+      !window.confirm('Отменить заказ? Скидка снова станет доступна.')
+    )
+      return
+    try {
+      const result = await accountRequest<{
+        status: Order['paymentStatus']
+        canceledAt?: string
+        paymentCapturedAt?: string
+      }>(`/orders/${encodeURIComponent(id)}/cancel`, { method: 'POST' })
+      setOrders((current) =>
+        current.map((order) =>
+          order._id === id
+            ? {
+                ...order,
+                paymentStatus: result.status,
+                canceledAt: cancellationAfterUpdate(order, {
+                  ...result,
+                  paymentStatus: result.status,
+                }),
+                paymentCapturedAt: result.paymentCapturedAt ?? order.paymentCapturedAt,
+              }
+            : order,
+        ),
+      )
+      window.dispatchEvent(new Event(BIRTHDAY_CLAIM_RELEASED_EVENT))
+      setNotice('Заказ отменён. Скидка снова доступна.')
+    } catch (failure) {
+      setNotice(failure instanceof Error ? failure.message : 'Не удалось отменить заказ')
     }
   }
 
@@ -716,6 +1036,7 @@ export function AccountScreen({
       })
       onUpdateUser({ ...user, name: profile.data.name })
       setSavedEmail(profile.data.email)
+      if (birthday) setSavedBirthday(birthday)
       setNotice('Личные данные сохранены')
       setErrors({})
     } catch (failure) {
@@ -772,7 +1093,7 @@ export function AccountScreen({
               {user.name.trim().charAt(0).toUpperCase() || 'Г'}
             </span>
             <div>
-              <strong>{user.name}</strong>
+              <strong>{user.name.trim() || 'Гость'}</strong>
               <span>{user.phone}</span>
             </div>
           </div>
@@ -872,7 +1193,7 @@ export function AccountScreen({
                     onRepeat={repeatOrder}
                     paymentEnabled={testPaymentEnabled}
                     onPay={(id) => void payOrder(id)}
-                    onRefreshPayment={(id) => void refreshPayment(id)}
+                    onCancel={(id) => void cancelBirthdayOrder(id)}
                     onCompleteFree={(id) => void completeFreeOrder(id)}
                   />
                 ))
@@ -903,7 +1224,11 @@ export function AccountScreen({
                                 <span className={styles.historyDate}>
                                   {done.getDate()} {monthsGenitive[done.getMonth()]}
                                 </span>
-                                <span className={styles.historySummary}>{orderSummary(order)}</span>
+                                <span className={styles.historySummary}>
+                                  {orderSummary(order)}
+                                  {(order.canceledAt || order.paymentStatus === 'canceled') &&
+                                    ' · Отменён'}
+                                </span>
                               </span>
                               <span className={styles.historyTotal}>
                                 {(order.quote.totalKopecks / 100).toLocaleString('ru-RU')} ₽
@@ -927,6 +1252,7 @@ export function AccountScreen({
                 <>
                   {/* Сторожок: следующая страница заказов подгружается сама при прокрутке */}
                   <div ref={ordersLoadMoreRef} aria-hidden="true" />
+                  {ordersLoadingMore && <Spinner label="Загружаем ещё заказы…" size={24} />}
                   <button
                     type="button"
                     className={styles.loadMore}
@@ -1077,10 +1403,24 @@ export function AccountScreen({
                       aria-describedby={errors.day ? 'profile-birthdate-error' : undefined}
                     >
                       <legend>Дата рождения</legend>
+                      <div className={styles.birthDateHint}>
+                        <span className={styles.birthDateHintIcon} aria-hidden="true">
+                          ✦
+                        </span>
+                        <div>
+                          <strong>Скидка ко дню рождения</strong>
+                          <p>
+                            Укажите дату рождения, чтобы получить скидку за 3 дня до праздника и 3
+                            дня после.
+                          </p>
+                          <span>Дата сохраняется один раз — изменить её потом нельзя.</span>
+                        </div>
+                      </div>
                       <label>
                         <span className={styles.visuallyHidden}>День</span>
                         <select
                           value={day}
+                          disabled={Boolean(savedBirthday)}
                           onChange={(event) => {
                             setDay(event.target.value)
                             clearError('day')
@@ -1098,6 +1438,7 @@ export function AccountScreen({
                         <span className={styles.visuallyHidden}>Месяц</span>
                         <select
                           value={month}
+                          disabled={Boolean(savedBirthday)}
                           onChange={(event) => {
                             setMonth(event.target.value)
                             clearError('day')
@@ -1115,13 +1456,17 @@ export function AccountScreen({
                         <span className={styles.visuallyHidden}>Год</span>
                         <select
                           value={year}
+                          disabled={Boolean(savedBirthday)}
                           onChange={(event) => {
                             setYear(event.target.value)
                             clearError('day')
                           }}
                         >
                           <option value="">Год</option>
-                          {Array.from({ length: 91 }, (_, index) => 2010 - index).map((item) => (
+                          {Array.from(
+                            { length: currentBirthYear - 1899 },
+                            (_, index) => currentBirthYear - index,
+                          ).map((item) => (
                             <option key={item} value={item}>
                               {item}
                             </option>

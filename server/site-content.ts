@@ -12,6 +12,7 @@ export async function getSiteContent(db: Db): Promise<SiteContent> {
   const merged = { ...defaultSiteContent, ...content } as SiteContent
   return {
     ...merged,
+    mapBackupEmbedUrl: merged.mapBackupEmbedUrl ?? '',
     phone: merged.phone === '+7 123 456-78-90' ? '' : merged.phone,
     homeAboutText:
       merged.homeAboutText ===
@@ -36,6 +37,27 @@ export async function getSiteContent(db: Db): Promise<SiteContent> {
     promotions: merged.promotions.map((promotion) =>
       promotion.id === 'bonus' && promotion.title === '5% бонусами'
         ? defaultSiteContent.promotions.find((item) => item.id === 'bonus')!
+        : promotion.id === 'birthday'
+          ? {
+              ...promotion,
+              discountPercent: promotion.discountPercent ?? 10,
+              enabled: promotion.enabled ?? true,
+              subtitle: /^Скидка \d+(?:[.,]\d+)?% в день рождения$/.test(promotion.subtitle)
+                ? `Скидка ${promotion.discountPercent ?? 10}% в день рождения`
+                : promotion.subtitle,
+              title: /^−\d+(?:[.,]\d+)?%$/.test(promotion.title)
+                ? `−${promotion.discountPercent ?? 10}%`
+                : promotion.title,
+              conditions: promotion.conditions === defaultSiteContent.promotions.find((item) => item.id === 'birthday')?.conditions ||
+                promotion.conditions === 'Действует по паспорту при получении. В день рождения и три дня после. Скидки и бонусы не суммируются.'
+                ? defaultSiteContent.promotions.find((item) => item.id === 'birthday')!.conditions
+                : promotion.conditions,
+              href: promotion.href === '/menu/combo' ? '/account/profile' : promotion.href,
+              action: promotion.action === 'В меню' ? 'Указать дату рождения' : promotion.action,
+              description: promotion.description === 'Поздравляем вкусно: скидка на весь заказ в ваш праздник.'
+                ? defaultSiteContent.promotions.find((item) => item.id === 'birthday')!.description
+                : promotion.description,
+            }
         : promotion,
     ),
   }
@@ -68,6 +90,11 @@ export async function getPublicSiteContent(
           ? activeIds.has(promotionId)
           : !allIds.has(promotionId) || activeIds.has(promotionId))
       )
+    }).map((slide) => {
+      const birthday = promotions.find((promotion) => promotion.id === 'birthday')
+      return slide.id === 'birthday' && birthday && /^Скидка \d+(?:[.,]\d+)?% в день рождения$/.test(slide.title)
+        ? { ...slide, title: `Скидка ${birthday.discountPercent ?? 10}% в день рождения` }
+        : slide
     }),
   }
 }

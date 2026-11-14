@@ -11,7 +11,7 @@
 .sectionHeading h2,
 .about h2,
 .bonus h2 {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-family-ruble), Georgia, 'Times New Roman', serif;
   font-weight: 400;
 }
 .sectionHeading h2 {
@@ -105,7 +105,7 @@
 .sauceText h3 {
   margin: 0 0 3px;
   color: #662d32;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-family-ruble), Georgia, 'Times New Roman', serif;
   font-size: 16px;
   font-weight: 400;
   overflow-wrap: anywhere;
@@ -139,8 +139,7 @@
   border-radius: 50%;
   background: var(--color-brand-red);
   color: #fff;
-  font:
-    700 23px/1 Arial,
+  font: 700 23px/1 var(--font-family-ruble), Arial,
     sans-serif;
   cursor: pointer;
   transition: background-color 0.3s ease;
@@ -296,7 +295,7 @@
 }
 .bonusSteps strong {
   color: var(--color-gold-light);
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-family-ruble), Georgia, 'Times New Roman', serif;
   font-size: 35px;
   font-weight: 400;
   line-height: 1;

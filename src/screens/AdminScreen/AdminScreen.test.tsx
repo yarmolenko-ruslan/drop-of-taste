@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, test, vi } from 'vitest'
@@ -61,4 +61,43 @@ test('сохранение в админке сразу обновляет са�
   await user.click(screen.getAllByRole('button', { name: 'Сохранить сайт' })[0]!)
   await waitFor(() => expect(patches).toHaveLength(2))
   expect(patches[1]).toEqual({ brandName: 'Третье имя' })
+})
+
+test('меню разделов сворачивается при нехватке места и раскрывается после расширения окна', async () => {
+  request.mockImplementation(async (path: string) => {
+    if (path === '/admin/session') return { authenticated: true }
+    if (path === '/admin/dashboard')
+      return { content: defaultSiteContent, categories: [], products: [], iikoConfigured: false }
+    if (path === '/admin/orders?stage=new&limit=50') return { orders: [], nextBefore: null }
+    throw new Error(`Неожиданный запрос: ${path}`)
+  })
+  const user = userEvent.setup()
+  render(
+    <SiteContentProvider>
+      <MemoryRouter>
+        <AdminScreen />
+      </MemoryRouter>
+    </SiteContentProvider>,
+  )
+  const nav = await screen.findByRole('navigation', { name: 'Разделы панели' })
+  const list = nav.querySelector('[id="admin-section-list"]') as HTMLDivElement
+  Object.defineProperty(nav, 'clientWidth', { configurable: true, writable: true, value: 500 })
+  Object.defineProperty(list, 'scrollWidth', { configurable: true, value: 1200 })
+  fireEvent.resize(window)
+
+  const toggle = await within(nav).findByRole('button', { name: 'Разделы' })
+  expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await user.click(toggle)
+  expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  await user.click(within(nav).getByRole('button', { name: 'Сайт и баннеры' }))
+  expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  expect(await screen.findByRole('textbox', { name: 'Название кафе' })).toBeInTheDocument()
+
+  Object.defineProperty(nav, 'clientWidth', { configurable: true, writable: true, value: 1400 })
+  fireEvent.resize(window)
+  await waitFor(() => expect(within(nav).queryByRole('button', { name: 'Разделы' })).toBeNull())
+  expect(within(nav).getByRole('button', { name: 'Сайт и баннеры' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
 })

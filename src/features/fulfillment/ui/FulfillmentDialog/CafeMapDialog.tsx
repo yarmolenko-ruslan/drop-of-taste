@@ -1,6 +1,7 @@
 import { Dialog } from '../../../../shared/ui/Dialog/Dialog'
 import styles from './FulfillmentDialog.module.css'
 import { useSiteContent } from '../../../site-content/SiteContentProvider'
+import { MapFrame } from '../../../../shared/ui/MapFrame/MapFrame'
 
 export function CafeMapDialog({ onClose }: { onClose: () => void }) {
   const content = useSiteContent()
@@ -26,13 +27,13 @@ export function CafeMapDialog({ onClose }: { onClose: () => void }) {
             Маршрут до кафе
           </button>
         </div>
-        <iframe
+        <MapFrame
+          key={`${content.mapEmbedUrl}:${content.mapBackupEmbedUrl}`}
           className={styles.map}
           src={content.mapEmbedUrl}
-          title={`Кафе «${content.siteTitle}» на Яндекс Карте: ${content.address}`}
-          loading="lazy"
-          allowFullScreen
-          referrerPolicy="no-referrer"
+          backupSrc={content.mapBackupEmbedUrl}
+          title={`Кафе «${content.siteTitle}» на карте: ${content.address}`}
+          routeUrl={content.mapRouteUrl}
         />
       </div>
     </Dialog>

@@ -1,6 +1,6 @@
 .header {
   width: 100%;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-family-ruble), Arial, Helvetica, sans-serif;
 }
 .container {
   width: min(100% - 48px, var(--content-max-width));
@@ -38,7 +38,7 @@
 }
 .brandName {
   color: #ffd16e;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-family-ruble), Georgia, 'Times New Roman', serif;
   font-size: 25px;
   line-height: 1.05;
   max-width: 100%;
@@ -51,7 +51,7 @@
   gap: 3px;
   margin-top: 5px;
   color: #b2d66a;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-family-ruble), Georgia, 'Times New Roman', serif;
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
@@ -284,12 +284,88 @@
   background: #fffefa;
   border-bottom: 1px solid #eadbc8;
 }
+.scroller {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.scrollWindow {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.scrollWindow::before,
+.scrollWindow::after {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  pointer-events: none;
+  content: '';
+}
+.scrollWindow::before {
+  left: 0;
+  background: linear-gradient(to right, #fffefa, transparent);
+  opacity: 0;
+}
+.scrollWindow::after {
+  right: 0;
+  background: linear-gradient(to left, #fffefa, transparent);
+  opacity: 0;
+}
+.scrollWindow.hasLeft::before,
+.scrollWindow.hasRight::after {
+  opacity: 1;
+}
+.scrollViewport {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+  cursor: grab;
+}
+.scrollViewport::-webkit-scrollbar {
+  display: none;
+}
+.scrollViewport.dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+.scrollArrow {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-brand-red);
+  font: inherit;
+  font-size: 29px;
+  line-height: 1;
+  cursor: pointer;
+}
+.scrollArrow:hover:not(:disabled) {
+  background: #f8ead7;
+}
+.scrollArrow:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+.scrollArrow:focus-visible {
+  outline: 3px solid var(--color-gold-light);
+  outline-offset: 2px;
+}
 .categoryList {
   min-height: 64px;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  justify-content: center;
+  width: max-content;
+  margin-inline: auto;
   gap: 8px;
   padding-block: 12px;
 }
@@ -391,20 +467,15 @@
 .compactNav {
   flex: 1 1 auto;
   min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.compactNav::-webkit-scrollbar {
-  display: none;
 }
 .compactCategories {
   display: flex;
   align-items: center;
   gap: 8px;
   width: max-content;
+  margin-inline: auto;
   padding-block: 4px;
 }
-/* Пилюли компактного хедера — те же, что в полосе категорий, но меньше */
 .compactCategories .category {
   min-height: 34px;
   padding: 0 13px;
@@ -469,8 +540,7 @@ dialog.menuDialog > div {
   align-items: center;
   gap: 8px;
   color: var(--color-burgundy);
-  font:
-    700 18px Georgia,
+  font: 700 18px var(--font-family-ruble), Georgia,
     'Times New Roman',
     serif;
   text-decoration: none;
@@ -684,23 +754,16 @@ dialog.menuDialog > div {
     height: 44px;
     background: #f4f0eb;
   }
-  .categoryList {
-    flex-wrap: nowrap;
-    justify-content: flex-start;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .categoryList::-webkit-scrollbar {
-    display: none;
-  }
   .category {
     flex: none;
   }
-  .compactNav {
-    display: none;
-  }
   .compactMenu {
     display: flex;
+  }
+}
+@media (max-width: 1000px) {
+  .compactNav {
+    display: none;
   }
 }
 @media (max-width: 768px) {
@@ -708,8 +771,7 @@ dialog.menuDialog > div {
     width: min(100% - 32px, var(--content-max-width));
   }
   .phoneBlock,
-  .address,
-  .categoryBar {
+  .address {
     display: none;
   }
   .mainContent {
@@ -769,6 +831,21 @@ dialog.menuDialog > div {
   }
   .search {
     height: 42px;
+  }
+  .compactContent {
+    gap: 8px;
+  }
+  .compactActions {
+    gap: 6px;
+  }
+}
+@media (max-width: 767px) {
+  .scrollArrow {
+    display: none;
+  }
+  .categoryList {
+    min-height: 56px;
+    padding-block: 8px;
   }
 }
 

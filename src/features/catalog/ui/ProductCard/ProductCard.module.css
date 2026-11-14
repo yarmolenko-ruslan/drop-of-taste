@@ -106,7 +106,7 @@
 .name {
   margin: 0 0 6px;
   color: #5b292c;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-family-ruble), Georgia, 'Times New Roman', serif;
   font-size: 20px;
   font-weight: 400;
   line-height: 1.15;

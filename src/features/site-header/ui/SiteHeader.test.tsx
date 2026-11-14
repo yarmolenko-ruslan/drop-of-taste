@@ -131,12 +131,89 @@ test('компактный хедер содержит логотип, кате�
   scrollWindowTo(200)
   await waitFor(() => expect(compact).toHaveAttribute('aria-hidden', 'false'))
 
-  expect(compact.querySelectorAll('a[href^="#"], a[href^="/#"]').length).toBeGreaterThan(0)
   expect(compact).toHaveTextContent('Акции')
   expect(compact).toHaveTextContent('Комбо')
   expect(compact).toHaveAccessibleName()
   expect(screen.getAllByRole('button', { name: 'Руслан' }).length).toBe(2)
   expect(screen.getAllByRole('button', { name: /Корзина, 0 поз\./ }).length).toBe(2)
+})
+
+test('стрелки обеих полос прокручивают категории на один пункт и отключаются на краях', () => {
+  render(
+    <MemoryRouter>
+      <SiteHeader />
+    </MemoryRouter>,
+  )
+
+  const navs = screen.getAllByRole('navigation', { name: 'Категории меню', hidden: true })
+  for (const nav of navs) {
+    const viewport = nav.querySelector('[class*="scrollViewport"]') as HTMLDivElement
+    const links = Array.from(viewport.querySelectorAll('a'))
+    Object.defineProperties(viewport, {
+      clientWidth: { configurable: true, value: 180 },
+      scrollWidth: { configurable: true, value: 600 },
+      scrollLeft: { configurable: true, writable: true, value: 0 },
+    })
+    links.slice(0, 3).forEach((link, index) => {
+      Object.defineProperty(link, 'offsetLeft', { configurable: true, value: index * 120 })
+    })
+    const scrollTo = vi.fn()
+    viewport.scrollTo = scrollTo
+    fireEvent.scroll(viewport)
+
+    const left = within(nav).getByRole('button', {
+      name: 'Прокрутить категории влево',
+      hidden: true,
+    })
+    const right = within(nav).getByRole('button', {
+      name: 'Прокрутить категории вправо',
+      hidden: true,
+    })
+    expect(left).toBeDisabled()
+    expect(right).toBeEnabled()
+    fireEvent.click(right)
+    expect(scrollTo).toHaveBeenCalledWith({ left: 120, behavior: 'smooth' })
+
+    viewport.scrollLeft = 120
+    fireEvent.scroll(viewport)
+    fireEvent.click(right)
+    expect(scrollTo).toHaveBeenLastCalledWith({ left: 240, behavior: 'smooth' })
+    fireEvent.click(left)
+    expect(scrollTo).toHaveBeenLastCalledWith({ left: 0, behavior: 'smooth' })
+
+    viewport.scrollLeft = 420
+    fireEvent.scroll(viewport)
+    expect(right).toBeDisabled()
+  }
+})
+
+test('перетаскивание мышью прокручивает список без перехода по ссылке', () => {
+  function Path() {
+    return <span data-testid="path">{useLocation().pathname}</span>
+  }
+  render(
+    <MemoryRouter>
+      <SiteHeader />
+      <Path />
+    </MemoryRouter>,
+  )
+  const nav = screen.getByRole('navigation', { name: 'Категории меню' })
+  const viewport = nav.querySelector('[class*="scrollViewport"]') as HTMLDivElement
+  const link = within(nav).getByRole('link', { name: 'Акции' })
+  viewport.scrollLeft = 100
+  viewport.setPointerCapture = vi.fn()
+  viewport.hasPointerCapture = vi.fn(() => true)
+  viewport.releasePointerCapture = vi.fn()
+
+  fireEvent.pointerDown(link, { pointerType: 'mouse', button: 0, clientX: 200, pointerId: 1 })
+  fireEvent.pointerMove(viewport, { pointerType: 'mouse', clientX: 170, pointerId: 1 })
+  expect(viewport.scrollLeft).toBe(130)
+  fireEvent.pointerUp(viewport, { pointerType: 'mouse', clientX: 170, pointerId: 1 })
+  expect(viewport.releasePointerCapture).toHaveBeenCalledWith(1)
+  fireEvent.click(link)
+  expect(screen.getByTestId('path').textContent).toBe('/')
+  fireEvent.click(link)
+  expect(screen.getByTestId('path')).toHaveTextContent('/promotions')
 })
 
 test('бургер открывает меню с разделами сайта и закрывается после выбора', () => {

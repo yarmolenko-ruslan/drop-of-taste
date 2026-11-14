@@ -125,7 +125,7 @@
   max-width: calc(100% - 48px);
   margin: 0 0 11px;
   color: #4c151e;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-family-ruble), Georgia, 'Times New Roman', serif;
   font-size: clamp(32px, 3vw, 49px);
   font-weight: 400;
   line-height: 1.07;
@@ -223,8 +223,7 @@
   border-radius: 50%;
   background: transparent;
   color: var(--color-brand-red);
-  font:
-    700 20px/1 Arial,
+  font: 700 20px/1 var(--font-family-ruble), Arial,
     sans-serif;
   cursor: pointer;
 }
@@ -265,8 +264,7 @@
   border-radius: 50%;
   background: #fff;
   color: var(--color-brand-red);
-  font:
-    700 26px/1 Arial,
+  font: 700 26px/1 var(--font-family-ruble), Arial,
     sans-serif;
   cursor: pointer;
 }
@@ -284,7 +282,7 @@
   gap: 10px;
   flex: 1;
   min-height: 48px;
-  padding: 0 20px;
+  padding: 8px 20px;
   border: 0;
   border-radius: 999px;
   background: var(--color-brand-red);
@@ -300,6 +298,20 @@
   white-space: nowrap;
 }
 
+.addButtonPrice {
+  display: grid;
+  gap: 1px;
+  flex: none;
+  text-align: right;
+}
+
+.addButtonPrice small {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  opacity: 0.85;
+}
+
 .addButton:hover {
   background: #800b1b;
 }
@@ -309,7 +321,7 @@
   outline-offset: 2px;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .dialog {
     width: min(calc(100vw - 32px), 600px);
     max-height: 85dvh;
@@ -370,11 +382,13 @@
   }
 
   .addButton {
-    font-size: 12px;
+    min-width: 0;
+    padding-inline: 16px;
+    font-size: 13px;
   }
 }
 
-@media (max-width: 400px) {
+@media (max-width: 600px) {
   .footer {
     flex-direction: column;
     align-items: stretch;
@@ -387,9 +401,8 @@
 
   .addButton {
     width: 100%;
-    min-height: 44px;
-    padding-inline: 18px;
-    font-size: 13px;
+    min-height: 52px;
+    font-size: 14px;
   }
 }
 

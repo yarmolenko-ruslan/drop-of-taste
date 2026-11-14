@@ -27,10 +27,7 @@ export function ProductDialog({ item: inputItem, onClose }: ProductDialogProps) 
   const addToCart = useCartStore((state) => state.add)
   const [extras, setExtras] = useState<Record<string, number>>({})
   const [quantity, setQuantity] = useState(1)
-  const price =
-    item.priceRub === null
-      ? 'Цена уточняется'
-      : `${(item.priceRub * quantity).toLocaleString('ru-RU')} ₽`
+  const price = item.priceRub === null ? 'Цена уточняется' : `${item.priceRub.toLocaleString('ru-RU')} ₽`
   const titleId = `dialog-title-${item.id}`
 
   function changeExtra(name: string, difference: number) {
@@ -44,7 +41,11 @@ export function ProductDialog({ item: inputItem, onClose }: ProductDialogProps) 
           {item.image ? (
             <>
               <img className={styles.imageBackdrop} src={item.image} alt="" aria-hidden="true" />
-              <img className={styles.productImage} src={item.image} alt={item.imageAlt ?? item.name} />
+              <img
+                className={styles.productImage}
+                src={item.image}
+                alt={item.imageAlt ?? item.name}
+              />
             </>
           ) : (
             <div className={styles.sauceVisual} aria-label={`Соус «${item.name}»`}>
@@ -141,8 +142,11 @@ export function ProductDialog({ item: inputItem, onClose }: ProductDialogProps) 
                 onClose()
               }}
             >
-              {live?.available === false ? 'Нет в наличии' : 'Добавить в корзину'}{' '}
-              <strong>{price}</strong>
+              <span>{live?.available === false ? 'Нет в наличии' : 'Добавить в корзину'}</span>
+              <span className={styles.addButtonPrice}>
+                <strong>{price}</strong>
+                {item.priceRub !== null && <small>за порцию</small>}
+              </span>
             </button>
           </div>
         </div>

@@ -53,6 +53,7 @@ const promotionSchema = z
       .max(100)
       .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-7)
       .optional(),
+    enabled: z.boolean().optional(),
   })
   .refine(
     (promotion) =>
@@ -80,6 +81,10 @@ const contentSchema = z.object({
   address: text(300),
   hours: text(100),
   mapEmbedUrl: z.url().refine((value) => value.startsWith('https://')),
+  mapBackupEmbedUrl: z.union([
+    z.literal(''),
+    z.url().refine((value) => value.startsWith('https://')),
+  ]),
   mapRouteUrl: z.url().refine((value) => value.startsWith('https://')),
   footerDescription: text(500),
   legalDetails: text(500),
@@ -361,6 +366,7 @@ export async function registerAdminRoutes(
     payment?: { status: string }
     fulfillmentStatus?: (typeof orderStages)[number] | null
     requiresPayment?: boolean
+    canceledAt?: Date
     fulfilledAt?: Date
     status?: string
     createdAt: Date
@@ -432,6 +438,7 @@ export async function registerAdminRoutes(
     const page = await orders
       .find({
         ...filter,
+        canceledAt: { $exists: false },
         $nor: [
           { requiresPayment: true, 'payment.status': { $ne: 'succeeded' } },
           { 'payment.status': { $in: ['creating', 'error', 'pending', 'canceled'] } },
@@ -476,6 +483,7 @@ export async function registerAdminRoutes(
     const result = await orders.findOneAndUpdate(
       {
         _id: id,
+        canceledAt: { $exists: false },
         $nor: [
           { requiresPayment: true, 'payment.status': { $ne: 'succeeded' } },
           { 'payment.status': { $in: ['creating', 'error', 'pending', 'canceled'] } },

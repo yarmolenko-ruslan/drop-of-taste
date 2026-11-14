@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 import styles from './AboutScreen.module.css'
 import { useSiteContent } from '../../features/site-content/SiteContentProvider'
+import { MapFrame } from '../../shared/ui/MapFrame/MapFrame'
 
 export function AboutScreen() {
   const content = useSiteContent()
@@ -56,13 +57,13 @@ export function AboutScreen() {
           </div>
           <address>{content.address}</address>
         </div>
-        <iframe
+        <MapFrame
+          key={`${content.mapEmbedUrl}:${content.mapBackupEmbedUrl}`}
           className={styles.map}
           src={content.mapEmbedUrl}
-          title={`Кафе «${content.siteTitle}» на Яндекс Карте: ${content.address}`}
-          loading="lazy"
-          allowFullScreen
-          referrerPolicy="no-referrer"
+          backupSrc={content.mapBackupEmbedUrl}
+          title={`Кафе «${content.siteTitle}» на карте: ${content.address}`}
+          routeUrl={content.mapRouteUrl}
         />
       </section>
     </main>

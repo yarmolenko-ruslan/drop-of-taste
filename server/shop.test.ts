@@ -88,6 +88,7 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
       deliveryKopecks: 0,
       totalKopecks: 32400,
       eligible: true,
+      adjustments: [{ label: 'Скидка за самовывоз (10%)', amountKopecks: -3600 }],
     })
     await db.collection<BonusCode>('bonus_codes').insertMany([
       {
@@ -126,6 +127,7 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
       discountKopecks: 0,
       promoDiscountKopecks: 7200,
       totalKopecks: 28800,
+      adjustments: [{ label: 'Бонус-код PERCENT10', amountKopecks: -7200 }],
     })
     const rubQuote = await app.inject({
       method: 'POST',
@@ -133,7 +135,11 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
       headers: { origin },
       payload: { lines: lines(1), fulfillment: pickup, promoCode: 'RUB100' },
     })
-    expect(rubQuote.json()).toMatchObject({ promoDiscountKopecks: 10000, totalKopecks: 26000 })
+    expect(rubQuote.json()).toMatchObject({
+      promoDiscountKopecks: 10000,
+      totalKopecks: 26000,
+      adjustments: [{ label: 'Бонус-код RUB100', amountKopecks: -10000 }],
+    })
     const comboQuote = await app.inject({
       method: 'POST',
       url: '/api/checkout/quote',
@@ -383,6 +389,16 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
       email: 'test@example.ru',
       birthday: '1992-02-29',
     })
+    const attemptedBirthdayChange = await app.inject({
+      method: 'PUT', url: '/api/profile', headers: { origin, cookie },
+      payload: {
+        name: 'Руслан', email: 'test@example.ru', birthday: '1992-03-01',
+        notifications: { push: false, email: true, sms: false },
+      },
+    })
+    expect(attemptedBirthdayChange.statusCode).toBe(409)
+    expect(attemptedBirthdayChange.json().error.code).toBe('BIRTHDAY_LOCKED')
+    expect((await app.inject({ method: 'GET', url: '/api/profile', headers: { cookie } })).json().profile.birthday).toBe('1992-02-29')
     const emailWithoutAddress = await app.inject({
       method: 'PUT',
       url: '/api/profile',

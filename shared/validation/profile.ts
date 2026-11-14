@@ -15,6 +15,14 @@ export const emailSchema = z
 /** Имя и необязательная почта личного кабинета. */
 export const profileSchema = z.object({ name: nameSchema, email: emailSchema })
 
+export function krasnoyarskToday(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Krasnoyarsk', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now)
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
+
 /** Дата рождения: либо все селекты пустые, либо указана полная существующая дата. */
 export const birthDateSchema = z
   .object({ day: z.string(), month: z.string(), year: z.string() })
@@ -34,7 +42,8 @@ export const birthDateSchema = z
       date.getFullYear() === Number(year) &&
       date.getMonth() === Number(month) - 1 &&
       date.getDate() === Number(day)
-    if (!isRealDate) {
+    const serialized = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+    if (!isRealDate || Number(year) < 1900 || serialized > krasnoyarskToday()) {
       context.addIssue({ code: 'custom', path: ['day'], message: 'Проверьте дату рождения' })
     }
   })
@@ -49,5 +58,6 @@ export const birthdayStringSchema = z.string().regex(/^(|\d{4}-\d{2}-\d{2})$/)
 export function isRealBirthday(value: string): boolean {
   if (!value) return true
   const date = new Date(`${value}T00:00:00Z`)
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value &&
+    Number(value.slice(0, 4)) >= 1900 && value <= krasnoyarskToday()
 }

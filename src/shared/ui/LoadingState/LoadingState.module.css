@@ -1,0 +1,16 @@
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 120px;
+  padding: 20px;
+  color: var(--color-text, #493c35);
+  text-align: center;
+}
+.compact {
+  min-height: 0;
+  justify-content: flex-start;
+  padding: 10px 0;
+  font-size: 14px;
+}

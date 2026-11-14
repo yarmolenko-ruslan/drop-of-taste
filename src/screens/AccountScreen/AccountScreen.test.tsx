@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -18,8 +18,10 @@ const { calls, state, catalogState } = vi.hoisted(() => ({
     },
     addresses: [] as { id: string; mode: 'delivery'; label: string; details: unknown }[],
     orders: [] as unknown[],
+    allOrderStatuses: null as unknown[] | null,
     ordersNextCursor: null as string | null,
     paymentEnabled: false,
+    paymentCheckResponse: null as Promise<{ status: string }> | null,
     moreOrdersResponse: null as Promise<{ orders: unknown[]; nextCursor: string | null }> | null,
     failOrders: false,
     notificationSaves: [] as Array<() => void>,
@@ -59,6 +61,28 @@ vi.mock('../../features/auth/api/authApi', () => ({
     if (path === '/orders') {
       if (state.failOrders) throw new Error('Заказы недоступны')
       return { orders: [...state.orders], nextCursor: state.ordersNextCursor }
+    }
+    if (path === '/orders/statuses' && method === 'POST')
+      return {
+        statuses: ((state.allOrderStatuses ?? state.orders) as { _id: string }[])
+          .filter((order) => (body.ids as string[]).includes(order._id))
+          .map((order) => ({
+            ...order,
+            fulfillmentStatus:
+              (order as { fulfillmentStatus?: string }).fulfillmentStatus ??
+              ((order as { status?: string }).status === 'completed' ? 'completed' : 'new'),
+            paymentStatus: (order as { paymentStatus?: string }).paymentStatus ?? 'unpaid',
+          })),
+      }
+    if (path.endsWith('/payment') && method === 'GET')
+      return state.paymentCheckResponse ?? { status: 'pending' }
+    if (path.endsWith('/cancel') && method === 'POST') {
+      const order = (state.orders as { _id: string; paymentStatus?: string }[]).find((item) =>
+        path.includes(item._id),
+      )
+      if (order?.paymentStatus === 'pending')
+        throw new Error('Платёж ещё ожидает завершения. Скидка пока зарезервирована.')
+      return { status: 'canceled' }
     }
     if (path.startsWith('/orders/') && method === 'POST') {
       const id = path.split('/')[2]!
@@ -113,8 +137,10 @@ beforeEach(() => {
   }
   state.addresses = []
   state.orders = []
+  state.allOrderStatuses = null
   state.ordersNextCursor = null
   state.paymentEnabled = false
+  state.paymentCheckResponse = null
   state.moreOrdersResponse = null
   state.failOrders = false
   state.notificationSaves = []
@@ -157,6 +183,34 @@ test('выход требует подтверждения и может быт�
   await user.click(screen.getByRole('button', { name: 'Выйти' }))
   await user.click(screen.getByRole('button', { name: 'Да, выйти' }))
   expect(view.onLogout).toHaveBeenCalledOnce()
+})
+
+test('сохранённая дата рождения отображается без возможности редактирования', async () => {
+  state.profile.birthday = '1992-02-29'
+  try {
+    renderAccount('profile')
+    const fields = await screen.findAllByRole('combobox')
+    expect(fields.slice(0, 3)).toHaveLength(3)
+    fields.slice(0, 3).forEach((field) => expect(field).toBeDisabled())
+    expect(
+      screen.getByText(/дата сохраняется один раз — изменить её потом нельзя/i),
+    ).toBeInTheDocument()
+  } finally {
+    state.profile.birthday = ''
+  }
+})
+
+test('до заполнения имени показывает «Гость» над телефоном', async () => {
+  const originalName = userData.name
+  try {
+    userData.name = '   '
+    state.profile.name = ''
+    renderAccount('profile')
+    expect(await screen.findByText('Гость')).toBeInTheDocument()
+    expect(screen.getByText(userData.phone)).toBeInTheDocument()
+  } finally {
+    userData.name = originalName
+  }
 })
 
 test('ошибка загрузки заказов не выглядит как пустая история', async () => {
@@ -383,6 +437,38 @@ test('заказ на 0 ₽ показывает бонус-код и завер
   )
 })
 
+test('ожидающий платёж оставляет скидку зарезервированной до подтверждённой отмены', async () => {
+  state.paymentEnabled = true
+  state.orders = [
+    {
+      _id: 'birthday-pending-1',
+      createdAt: new Date().toISOString(),
+      status: 'test',
+      paymentStatus: 'pending',
+      input: { birthdayDiscount: true, fulfillment: { mode: 'pickup', label: 'Кафе' } },
+      quote: {
+        lines: [],
+        discountKopecks: 0,
+        birthdayDiscountKopecks: 3600,
+        deliveryKopecks: 0,
+        totalKopecks: 32400,
+      },
+    },
+  ]
+  renderAccount('orders')
+  const button = await screen.findByRole('button', { name: 'Проверить отмену оплаты' })
+  await userEvent.setup().click(button)
+  expect(
+    await screen.findByText('Платёж ещё ожидает завершения. Скидка пока зарезервирована.'),
+  ).toBeInTheDocument()
+  expect(calls).toContainEqual(
+    expect.objectContaining({
+      path: '/orders/birthday-pending-1/cancel',
+      method: 'POST',
+    }),
+  )
+})
+
 test.each(['pending', 'succeeded', 'canceled'] as const)(
   'этапы приготовления сохраняются при статусе оплаты $paymentStatus',
   async (paymentStatus) => {
@@ -412,6 +498,96 @@ test.each(['pending', 'succeeded', 'canceled'] as const)(
     expect(screen.queryByRole('button', { name: /Отметить выполненным/ })).not.toBeInTheDocument()
   },
 )
+
+test('статус оплаты обновляется автоматически после подтверждения сервером', async () => {
+  let confirmPayment!: (value: { status: string }) => void
+  state.paymentCheckResponse = new Promise((resolve) => {
+    confirmPayment = resolve
+  })
+  state.paymentEnabled = true
+  state.orders = [
+    {
+      _id: 'paid-order-123',
+      createdAt: '2026-11-04T12:02:00.000Z',
+      status: 'test',
+      paymentStatus: 'pending',
+      input: { fulfillment: { mode: 'pickup', label: 'Кафе' } },
+      quote: { lines: [], discountKopecks: 0, deliveryKopecks: 0, totalKopecks: 32400 },
+    },
+  ]
+  renderAccount('orders')
+  expect(await screen.findByText('Ожидаем подтверждения')).toBeInTheDocument()
+  await waitFor(() =>
+    expect(calls.some((call) => call.path === '/orders/paid-order-123/payment')).toBe(true),
+  )
+  expect(screen.queryByRole('button', { name: 'Проверить оплату' })).not.toBeInTheDocument()
+  await act(async () => confirmPayment({ status: 'succeeded' }))
+  expect(await screen.findByText('Оплачено онлайн')).toBeInTheDocument()
+  expect(screen.queryByText('Ожидает оплаты')).not.toBeInTheDocument()
+})
+
+test('этап заказа, изменённый в админке, обновляется при возвращении на вкладку', async () => {
+  const order = {
+    _id: 'stage-order-123',
+    createdAt: '2026-11-04T12:02:00.000Z',
+    status: 'test',
+    paymentStatus: 'succeeded',
+    fulfillmentStatus: 'new',
+    input: { fulfillment: { mode: 'pickup', label: 'Кафе' } },
+    quote: { lines: [], discountKopecks: 0, deliveryKopecks: 0, totalKopecks: 32400 },
+  }
+  state.orders = [order]
+  renderAccount('orders')
+  expect(await screen.findByText('Заказ №STAGE-')).toBeInTheDocument()
+  expect(screen.getAllByText('Приготовление')).toHaveLength(1)
+
+  state.orders = [{ ...order, fulfillmentStatus: 'preparing' }]
+  fireEvent.focus(window)
+  await waitFor(() => expect(screen.getAllByText('Приготовление')).toHaveLength(2))
+  expect(calls.filter((call) => call.path === '/orders').length).toBeGreaterThan(1)
+})
+
+test('обновляет этап заказа из подгруженной страницы через ответ статусов', async () => {
+  const makeOrder = (id: string, fulfillmentStatus: string) => ({
+    _id: id,
+    createdAt: '2026-11-04T12:02:00.000Z',
+    status: 'test',
+    paymentStatus: 'succeeded',
+    fulfillmentStatus,
+    input: { fulfillment: { mode: 'pickup', label: 'Кафе' } },
+    quote: { lines: [], discountKopecks: 0, deliveryKopecks: 0, totalKopecks: 32400 },
+  })
+  const first = makeOrder('first-order', 'new')
+  const older = makeOrder('older-order', 'new')
+  state.orders = [first]
+  state.ordersNextCursor = 'next-page'
+  state.moreOrdersResponse = Promise.resolve({ orders: [older], nextCursor: null })
+  state.allOrderStatuses = [first, older]
+  renderAccount('orders')
+
+  await userEvent.setup().click(await screen.findByRole('button', { name: 'Загрузить ещё заказы' }))
+  expect(await screen.findByText('Заказ №OLDER-')).toBeInTheDocument()
+  const requestsBefore = calls.filter((call) => call.path === '/orders').length
+  state.allOrderStatuses = [first, makeOrder('older-order', 'preparing')]
+  fireEvent.focus(window)
+  await waitFor(() =>
+    expect(
+      screen
+        .getByText('Заказ №OLDER-')
+        .closest('article')
+        ?.querySelector('li[aria-current="step"]'),
+    ).toHaveTextContent('Приготовление'),
+  )
+  expect(
+    calls.some(
+      (call) =>
+        call.path === '/orders/statuses' &&
+        Array.isArray((call.body as { ids: string[] }).ids) &&
+        (call.body as { ids: string[] }).ids.includes('older-order'),
+    ),
+  ).toBe(true)
+  expect(calls.filter((call) => call.path === '/orders').length).toBe(requestsBefore + 1)
+})
 
 test('завершённый заказ находится в истории и раскрывается', async () => {
   const user = userEvent.setup()
@@ -610,4 +786,129 @@ test.each([
   const timeline = await screen.findByRole('list', { name: 'Этапы заказа' })
   expect(within(timeline).getAllByRole('listitem')).toHaveLength(4)
   expect(within(timeline).getByText(current).closest('li')).toHaveAttribute('aria-current', 'step')
+})
+
+test('подтверждённая оплата в кабинете очищает связанную неизменённую корзину', async () => {
+  const store = useCartStore.getState()
+  store.clear()
+  store.add(
+    { id: 'borscht', name: 'Борщ', priceRub: 360 },
+    {
+      variant: '',
+      removedIngredients: [],
+      extras: {},
+      quantity: 1,
+    },
+  )
+  store.rememberPayment('paid-order', userData.id)
+  state.orders = [
+    {
+      _id: 'paid-order',
+      status: 'completed',
+      paymentStatus: 'succeeded',
+      createdAt: '2026-11-04T12:00:00.000Z',
+      input: { fulfillment: { mode: 'pickup', label: 'Кафе' } },
+      quote: {
+        lines: [],
+        subtotalKopecks: 36000,
+        discountKopecks: 3600,
+        deliveryKopecks: 0,
+        totalKopecks: 32400,
+      },
+    },
+  ]
+  renderAccount('orders')
+  await waitFor(() => expect(useCartStore.getState().pendingPayment).toBeNull())
+  expect(useCartStore.getState().lines).toHaveLength(0)
+})
+
+test('неоплаченная карточка показывает убывающий таймер и после серверной отмены переходит в историю', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-11-14T12:00:00Z'))
+  state.paymentEnabled = true
+  const order = {
+    _id: 'expiry-order',
+    createdAt: '2026-11-14T12:00:00Z',
+    paymentExpiresAt: '2026-11-14T12:15:00Z',
+    status: 'test',
+    paymentStatus: 'unpaid',
+    input: { fulfillment: { mode: 'pickup', label: 'Кафе' } },
+    quote: { lines: [], totalKopecks: 32400, discountKopecks: 0, deliveryKopecks: 0 },
+  }
+  state.orders = [order]
+  renderAccount('orders')
+  expect(await screen.findByRole('timer')).toHaveTextContent('15:00')
+  vi.setSystemTime(new Date('2026-11-14T12:00:01Z'))
+  await waitFor(() => expect(screen.getByRole('timer')).toHaveTextContent('14:59'), {
+    timeout: 2000,
+  })
+  state.allOrderStatuses = [{ ...order, canceledAt: '2026-11-14T12:15:00Z' }]
+  fireEvent.focus(window)
+  expect(await screen.findByText('Нет активных заказов.')).toBeInTheDocument()
+  expect(screen.getByText(/· Отменён/)).toBeInTheDocument()
+  expect(screen.queryByRole('timer')).not.toBeInTheDocument()
+  vi.useRealTimers()
+})
+
+test('поздний успешный платёж с отменой в том же ответе не очищает корзину', async () => {
+  const store = useCartStore.getState()
+  store.clear()
+  store.add(
+    { id: 'borscht', name: 'Борщ', priceRub: 360 },
+    { variant: '', removedIngredients: [], extras: {}, quantity: 1 },
+  )
+  store.rememberPayment('late-order', 'u1')
+  state.paymentEnabled = true
+  const order = {
+    _id: 'late-order',
+    status: 'test',
+    paymentStatus: 'pending',
+    createdAt: new Date().toISOString(),
+    input: { fulfillment: { mode: 'pickup', label: 'Кафе' } },
+    quote: { lines: [], totalKopecks: 32400, discountKopecks: 0, deliveryKopecks: 0 },
+  }
+  state.orders = [order]
+  // Изоляция гонки: status-опрос пока видит старый pending, payment уже знает об отмене.
+  state.allOrderStatuses = [order]
+  state.paymentCheckResponse = Promise.resolve({
+    status: 'succeeded',
+    canceledAt: new Date().toISOString(),
+  } as { status: string })
+  renderAccount('orders')
+  expect(await screen.findByText('Нет активных заказов.')).toBeInTheDocument()
+  expect(useCartStore.getState().lines).toHaveLength(1)
+  expect(useCartStore.getState().pendingPayment).toBeNull()
+  store.clear()
+})
+
+test('устаревший опрос не снимает отмену; доказанная оплата вовремя восстанавливает заказ', async () => {
+  state.paymentEnabled = true
+  const order = {
+    _id: 'restored-order',
+    status: 'test',
+    paymentStatus: 'pending',
+    createdAt: '2026-11-14T12:00:00Z',
+    paymentExpiresAt: '2026-11-14T12:15:00Z',
+    canceledAt: '2026-11-14T12:15:00Z',
+    input: { fulfillment: { mode: 'pickup', label: 'Кафе' } },
+    quote: { lines: [], totalKopecks: 32400, discountKopecks: 0, deliveryKopecks: 0 },
+  }
+  state.orders = [order]
+  state.allOrderStatuses = [{ ...order, canceledAt: null }]
+  renderAccount('orders')
+  expect(await screen.findByText('Нет активных заказов.')).toBeInTheDocument()
+  fireEvent.focus(window)
+  await waitFor(() => expect(screen.getByText(/· Отменён/)).toBeInTheDocument())
+  state.orders = [
+    {
+      ...order,
+      canceledAt: null,
+      paymentStatus: 'succeeded',
+      paymentCapturedAt: '2026-11-14T12:14:59Z',
+    },
+  ]
+  state.allOrderStatuses = state.orders
+  fireEvent.focus(window)
+  expect(await screen.findByText('Оплачено онлайн')).toBeInTheDocument()
+  expect(screen.queryByText('Нет активных заказов.')).not.toBeInTheDocument()
 })

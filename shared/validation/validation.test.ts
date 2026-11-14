@@ -1,6 +1,6 @@
 import { addressDetailsSchema } from './address.ts'
 import { phoneSchema } from './phone.ts'
-import { birthDateSchema, birthdayStringSchema, isRealBirthday, profileSchema } from './profile.ts'
+import { birthDateSchema, birthdayStringSchema, isRealBirthday, krasnoyarskToday, profileSchema } from './profile.ts'
 
 test('phoneSchema нормализует форматированный номер и отклоняет некорректные записи', () => {
   expect(phoneSchema.safeParse('+7 (999) 123-45-67').data).toBe('+79991234567')
@@ -95,6 +95,7 @@ test('profileSchema обрезает пробелы у почты, но не п�
 })
 
 test('birthdayStringSchema и isRealBirthday проверяют сериализованную дату', () => {
+  expect(krasnoyarskToday(new Date('2026-11-13T17:00:00Z'))).toBe('2026-11-14')
   expect(birthdayStringSchema.safeParse('').success).toBe(true)
   expect(birthdayStringSchema.safeParse('1990-02-28').success).toBe(true)
   expect(birthdayStringSchema.safeParse('1990-2-8').success).toBe(false)
@@ -102,6 +103,8 @@ test('birthdayStringSchema и isRealBirthday проверяют сериализ
   expect(isRealBirthday('1900-02-29')).toBe(false)
   expect(isRealBirthday('2000-02-29')).toBe(true)
   expect(isRealBirthday('1990-13-01')).toBe(false)
+  expect(isRealBirthday('9999-11-14')).toBe(false)
+  expect(isRealBirthday('0000-01-01')).toBe(false)
 })
 
 test('birthDateSchema принимает пустую или реальную дату и отклоняет несуществующую', () => {
@@ -109,5 +112,6 @@ test('birthDateSchema принимает пустую или реальную д
   expect(birthDateSchema.safeParse({ day: '29', month: '2', year: '1992' }).success).toBe(true)
   expect(birthDateSchema.safeParse({ day: '31', month: '2', year: '1990' }).success).toBe(false)
   expect(birthDateSchema.safeParse({ day: '1', month: '', year: '1990' }).success).toBe(false)
-  expect(birthDateSchema.safeParse({ day: '31', month: '12', year: '999' }).success).toBe(true)
+  expect(birthDateSchema.safeParse({ day: '31', month: '12', year: '999' }).success).toBe(false)
+  expect(birthDateSchema.safeParse({ day: '1', month: '1', year: '9999' }).success).toBe(false)
 })

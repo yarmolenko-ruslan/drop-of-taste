@@ -1,0 +1,18 @@
+/* Use the reference glyph only for ₽; all other characters use the original fonts. */
+@font-face {
+  font-family: 'Ruble Glyph';
+  src: url('/fonts/raleway-regular.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+20BD;
+}
+
+@font-face {
+  font-family: 'Ruble Glyph';
+  src: url('/fonts/raleway-bold.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  unicode-range: U+20BD;
+}

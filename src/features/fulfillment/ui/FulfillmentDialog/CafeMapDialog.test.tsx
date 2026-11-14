@@ -18,9 +18,11 @@ test('показывает карту кафе и открывает маршр�
 
   expect(screen.getByRole('dialog', { name: 'Самовывоз из кафе' })).toBeInTheDocument()
   expect(screen.getByText(cafeAddress)).toBeInTheDocument()
-  expect(
-    screen.getByTitle(`Кафе «Капела вкуса» на Яндекс Карте: ${cafeAddress}`),
-  ).toBeInTheDocument()
+  const map = screen.getByTitle(`Кафе «Капела вкуса» на карте: ${cafeAddress}`)
+  expect(map).toBeInTheDocument()
+  expect(screen.getByRole('status')).toHaveTextContent('Загружаем карту…')
+  fireEvent.load(map)
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Маршрут до кафе' }))
   expect(open).toHaveBeenCalledWith(
     'https://yandex.ru/maps/?rtext=~56.049189,92.884165',

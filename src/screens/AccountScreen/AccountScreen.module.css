@@ -60,7 +60,7 @@
   border-radius: 50%;
   background: #f3e4ce;
   color: var(--color-brand-red);
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-family-ruble), Georgia, 'Times New Roman', serif;
   font-size: 25px;
 }
 
@@ -176,7 +176,7 @@
 .card h1,
 .card h2 {
   color: var(--color-burgundy);
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-family-ruble), Georgia, 'Times New Roman', serif;
   font-weight: 400;
 }
 
@@ -564,7 +564,9 @@ dialog.confirmDialog {
   margin: 0;
   padding-right: 44px;
   font:
-    700 26px/1.2 Georgia,
+    700 27px var(--font-family-ruble),
+    Georgia,
+    'Times New Roman',
     serif;
   color: var(--color-burgundy);
 }
@@ -573,7 +575,8 @@ dialog.confirmDialog {
   margin: 0;
   color: #806b62;
   font:
-    14px/1.5 Arial,
+    14px/1.5 var(--font-family-ruble),
+    Arial,
     sans-serif;
 }
 
@@ -590,7 +593,8 @@ dialog.confirmDialog {
   padding: 0 24px;
   border-radius: 999px;
   font:
-    700 14px Arial,
+    700 14px var(--font-family-ruble),
+    Arial,
     sans-serif;
   cursor: pointer;
 }
@@ -696,7 +700,8 @@ dialog.confirmDialog {
   margin: 0 44px 12px 0;
   color: var(--color-burgundy);
   font:
-    700 27px Georgia,
+    700 27px var(--font-family-ruble),
+    Georgia,
     'Times New Roman',
     serif;
 }
@@ -826,6 +831,46 @@ dialog.confirmDialog {
   color: #4d2528;
   font-size: 13px;
   font-weight: 700;
+}
+
+.birthDateHint {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 12px;
+  padding: 15px 17px;
+  border: 1px solid #ead6bb;
+  border-radius: 14px;
+  background: #fcf6ed;
+  color: #654e42;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.birthDateHintIcon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 10px;
+  background: #f1dfc3;
+  color: var(--color-brand-red);
+  font-size: 22px;
+}
+
+.birthDateHint strong {
+  display: block;
+  color: var(--color-burgundy);
+  font-size: 14px;
+}
+
+.birthDateHint p {
+  margin: 4px 0;
+}
+
+.birthDateHint div > span {
+  color: #806b62;
+  font-size: 12px;
 }
 
 .save {
@@ -1076,7 +1121,8 @@ dialog.confirmDialog {
   background: transparent;
   color: var(--color-brand-red);
   font:
-    700 14px Arial,
+    700 14px var(--font-family-ruble),
+    Arial,
     sans-serif;
   cursor: pointer;
 }
@@ -1131,4 +1177,18 @@ dialog.confirmDialog {
 .loadError button:hover {
   border-color: #e9cd8f;
   background: #e9cd8f;
+}
+
+.paymentCountdown {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--color-bg-soft, #fff4de);
+  color: var(--color-text, #302b25);
+  font-size: 14px;
+}
+
+.paymentCountdown strong {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }

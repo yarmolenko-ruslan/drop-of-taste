@@ -266,6 +266,15 @@ test('admin changes publish to the site; product and category deletion persists'
         intro: `${everyFieldEdited.legal.consent.intro} x`,
       },
     }
+    // Новое необязательное поле URL нельзя заполнять произвольной строкой «x».
+    const invalidBackupMap = await app.inject({
+      method: 'PUT',
+      url: '/api/admin/content',
+      headers: { origin, cookie },
+      payload: { ...everyFieldEdited, mapBackupEmbedUrl: 'x' },
+    })
+    expect(invalidBackupMap.statusCode).toBe(400)
+    everyFieldEdited.mapBackupEmbedUrl = 'https://www.openstreetmap.org/export/embed.html'
     const everyFieldUpdate = await app.inject({
       method: 'PUT',
       url: '/api/admin/content',

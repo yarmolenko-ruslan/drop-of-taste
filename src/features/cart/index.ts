@@ -1,7 +1,7 @@
 export {
   useCartStore,
+  syncCartAcrossTabs,
   cartCount,
-  cartTotal,
   formatCartPrice,
   addOneToCart,
 } from './model/cartStore'

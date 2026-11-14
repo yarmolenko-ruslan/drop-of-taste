@@ -102,7 +102,18 @@ export function registerProfileRoutes(
     }
     if (parsed.data.notifications.email && !parsed.data.email)
       return reply.code(400).send(err('EMAIL_REQUIRED', 'Укажите почту для уведомлений по email'))
-    await users.updateOne({ _id: account.id }, { $set: parsed.data })
+    // Условие в самом обновлении исключает гонку двух первых сохранений.
+    const result = await users.updateOne(
+      {
+        _id: account.id,
+        $or: parsed.data.birthday
+          ? [{ birthday: { $exists: false } }, { birthday: '' }, { birthday: parsed.data.birthday }]
+          : [{ birthday: { $exists: false } }, { birthday: '' }],
+      },
+      { $set: parsed.data },
+    )
+    if (!result.matchedCount)
+      return reply.code(409).send(err('BIRTHDAY_LOCKED', 'Дату рождения после сохранения изменить нельзя. Обновите страницу.'))
     return { profile: { ...parsed.data, phone: account.phone } }
   })
   app.put('/api/profile/notifications', async (request, reply) => {

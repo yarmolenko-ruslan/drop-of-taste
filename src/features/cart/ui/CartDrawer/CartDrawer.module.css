@@ -23,8 +23,7 @@
 }
 .header h2 {
   margin: 4px 0 0;
-  font:
-    36px/1.05 Georgia,
+  font: 36px/1.05 var(--font-family-ruble), Georgia,
     serif;
   color: var(--color-burgundy);
 }
@@ -33,8 +32,7 @@
   padding: 4px;
   background: none;
   color: #9b1223;
-  font:
-    600 13px Arial,
+  font: 600 13px var(--font-family-ruble), Arial,
     sans-serif;
   cursor: pointer;
 }
@@ -49,7 +47,7 @@
 .fulfillment,
 .promo,
 .recommendation,
-.summary {
+.priceBreakdown {
   background: #fffdfa;
   box-shadow: 0 8px 22px rgb(70 23 26 / 4%);
 }
@@ -59,8 +57,7 @@
 }
 .card h3 {
   margin: 0 0 15px;
-  font:
-    700 19px/1.25 Arial,
+  font: 700 19px/1.25 var(--font-family-ruble), Arial,
     sans-serif;
 }
 .lines {
@@ -99,22 +96,19 @@
 }
 .lineInfo h4 {
   margin: 0;
-  font:
-    700 14px/1.2 Arial,
+  font: 700 14px/1.2 var(--font-family-ruble), Arial,
     sans-serif;
   overflow-wrap: anywhere;
 }
 .lineInfo > span {
   color: #816962;
-  font:
-    12px/1.35 Arial,
+  font: 12px/1.35 var(--font-family-ruble), Arial,
     sans-serif;
   overflow-wrap: anywhere;
 }
 .lineInfo strong {
   margin-top: 3px;
-  font:
-    700 16px/1.1 Arial,
+  font: 700 16px/1.1 var(--font-family-ruble), Arial,
     sans-serif;
 }
 .counter {
@@ -133,16 +127,14 @@
   border-radius: 50%;
   background: #fffdfa;
   color: var(--color-accent);
-  font:
-    700 17px Arial,
+  font: 700 17px var(--font-family-ruble), Arial,
     sans-serif;
   cursor: pointer;
 }
 .counter span {
   min-width: 15px;
   text-align: center;
-  font:
-    700 13px Arial,
+  font: 700 13px var(--font-family-ruble), Arial,
     sans-serif;
 }
 .fulfillment {
@@ -168,8 +160,7 @@
   border-radius: 999px;
   background: transparent;
   color: var(--color-text);
-  font:
-    700 14px Arial,
+  font: 700 14px var(--font-family-ruble), Arial,
     sans-serif;
   cursor: pointer;
 }
@@ -215,8 +206,7 @@
 .promo label {
   display: block;
   margin-bottom: 8px;
-  font:
-    700 14px Arial,
+  font: 700 14px var(--font-family-ruble), Arial,
     sans-serif;
 }
 .promo > div {
@@ -233,8 +223,7 @@
   padding: 8px 10px;
   background: none;
   color: var(--color-text);
-  font:
-    13px Arial,
+  font: 13px var(--font-family-ruble), Arial,
     sans-serif;
 }
 .promo button {
@@ -250,13 +239,95 @@
   opacity: 0.5;
   cursor: default;
 }
+
+.birthdayOffer {
+  margin-top: 12px;
+  padding: 17px;
+  border: 1px solid #ead6bb;
+  border-radius: 18px;
+  background: #fffaf3;
+  box-shadow: 0 8px 22px rgb(70 23 26 / 4%);
+}
+
+.birthdayOfferControl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-burgundy);
+  cursor: pointer;
+}
+
+.birthdayOfferControl input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  margin: 0;
+  accent-color: var(--color-brand-red);
+  cursor: inherit;
+}
+
+.birthdayOfferControl input:focus-visible {
+  outline: 2px solid var(--color-brand-red);
+  outline-offset: 3px;
+}
+
+.birthdayOfferControl input:disabled {
+  cursor: default;
+}
+
+.birthdayOfferIcon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 9px;
+  background: #f3e4ce;
+  color: var(--color-brand-red);
+  font-size: 21px;
+}
+
+.birthdayOfferTitle {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.birthdayOfferBadge {
+  flex: none;
+  margin-left: auto;
+  padding: 5px 7px;
+  border-radius: 8px;
+  background: #f1dfc3;
+  color: var(--color-brand-red);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.birthdayOffer p {
+  margin: 10px 0 7px 30px;
+  color: #765e52;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.birthdayOffer a {
+  display: inline-block;
+  margin-left: 30px;
+  color: var(--color-brand-red);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-underline-offset: 3px;
+}
 .recommendations {
   margin-top: 22px;
 }
 .recommendations h3 {
   margin: 0 0 12px;
-  font:
-    26px/1.1 Georgia,
+  font: 26px/1.1 var(--font-family-ruble), Georgia,
     serif;
 }
 .recommendationList {
@@ -298,8 +369,7 @@
   gap: 4px;
 }
 .recommendation strong {
-  font:
-    700 12px/1.2 Arial,
+  font: 700 12px/1.2 var(--font-family-ruble), Arial,
     sans-serif;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -307,8 +377,7 @@
   overflow: hidden;
 }
 .recommendation span {
-  font:
-    700 12px Arial,
+  font: 700 12px var(--font-family-ruble), Arial,
     sans-serif;
 }
 .recommendation button {
@@ -318,29 +387,44 @@
   border-radius: 999px;
   background: white;
   color: var(--color-accent);
-  font:
-    700 11px Arial,
+  font: 700 11px var(--font-family-ruble), Arial,
     sans-serif;
   cursor: pointer;
 }
-.summary {
-  display: flex;
-  justify-content: space-between;
+.priceBreakdown {
+  display: grid;
+  gap: 10px;
   margin-top: 20px;
   padding: 18px 20px;
   border-radius: 16px;
-  font:
-    700 17px Arial,
-    sans-serif;
+  font: 14px/1.4 var(--font-family-ruble), Arial, sans-serif;
 }
-.summary strong {
+.priceRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
+  gap: 12px;
+}
+.priceRow > :last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+.priceTotal {
+  padding-top: 12px;
+  border-top: 1px solid #ead8bf;
+  font-size: 18px;
+}
+.priceTotal strong:last-child {
   color: var(--color-accent);
+}
+.priceBreakdown p,
+.priceBreakdown small {
+  margin: 0;
 }
 .notice {
   margin: 12px 3px;
   color: #755954;
-  font:
-    13px/1.4 Arial,
+  font: 13px/1.4 var(--font-family-ruble), Arial,
     sans-serif;
 }
 .footer {
@@ -361,8 +445,7 @@
   border-radius: 999px;
   background: var(--color-accent);
   color: white;
-  font:
-    700 14px Arial,
+  font: 700 14px var(--font-family-ruble), Arial,
     sans-serif;
   cursor: pointer;
 }
@@ -398,16 +481,14 @@
 }
 .empty h3 {
   margin: 0 0 8px;
-  font:
-    31px Georgia,
+  font: 31px var(--font-family-ruble), Georgia,
     serif;
 }
 .empty p {
   max-width: 260px;
   margin: 0 0 23px;
   color: #806863;
-  font:
-    14px/1.5 Arial,
+  font: 14px/1.5 var(--font-family-ruble), Arial,
     sans-serif;
 }
 .empty button {
@@ -416,8 +497,7 @@
   border-radius: 999px;
   background: var(--color-accent);
   color: white;
-  font:
-    700 13px Arial,
+  font: 700 13px var(--font-family-ruble), Arial,
     sans-serif;
   cursor: pointer;
 }
@@ -433,4 +513,13 @@
     grid-column: 2;
     justify-self: start;
   }
+}
+
+.priceLoader {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-inline-start: 8px;
+  vertical-align: middle;
+  line-height: 1;
 }

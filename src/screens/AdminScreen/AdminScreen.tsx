@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { apiRequest } from '../../features/auth/api/authApi'
 import type { SiteContent } from '../../../shared/site-content'
@@ -7,6 +7,7 @@ import type { BonusCode } from '../../../shared/bonus-code'
 import styles from './AdminScreen.module.css'
 import { publishSiteUpdate } from '../../shared/lib/siteUpdates'
 import { OrdersEditor, ClientsEditor } from './AdminOperations'
+import { LoadingState } from '../../shared/ui/LoadingState/LoadingState'
 
 type Category = { _id: string; title: string; subtitle: string; sortOrder: number }
 type Product = {
@@ -47,6 +48,103 @@ type Tab =
   | 'legal'
   | 'logs'
   | 'iiko'
+
+const adminSections: readonly (readonly [Tab, string])[] = [
+  ['orders', 'Заказы'],
+  ['clients', 'Клиенты'],
+  ['content', 'Сайт и баннеры'],
+  ['promotions', 'Акции'],
+  ['codes', 'Бонус-коды'],
+  ['categories', 'Разделы меню'],
+  ['products', 'Товары'],
+  ['legal', 'Документы'],
+  ['logs', 'Журнал'],
+  ['iiko', 'iiko'],
+]
+
+function AdminTabs({ tab, onSelect }: { tab: Tab; onSelect: (tab: Tab) => void }) {
+  const navRef = useRef<HTMLElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  const fullWidthRef = useRef(0)
+  const [collapsed, setCollapsed] = useState(false)
+  const [open, setOpen] = useState(false)
+
+  useLayoutEffect(() => {
+    const nav = navRef.current
+    const list = listRef.current
+    if (!nav || !list) return
+    const measure = () => {
+      if (!collapsed) fullWidthRef.current = list.scrollWidth
+      setCollapsed(fullWidthRef.current > nav.clientWidth)
+    }
+    measure()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(nav)
+    if (!collapsed) observer?.observe(list)
+    window.addEventListener('resize', measure)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [collapsed])
+
+  useEffect(() => {
+    if (!open) return
+    const close = (event: MouseEvent) => {
+      if (!navRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', close)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', close)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [open])
+
+  return (
+    <nav
+      ref={navRef}
+      className={`${styles.tabs} ${collapsed ? styles.tabsCollapsed : ''}`}
+      aria-label="Разделы панели"
+    >
+      {collapsed && (
+        <button
+          className={styles.tabsToggle}
+          type="button"
+          aria-expanded={open}
+          aria-controls="admin-section-list"
+          onClick={() => setOpen((current) => !current)}
+        >
+          <span aria-hidden="true">☰</span> Разделы
+        </button>
+      )}
+      <div
+        id="admin-section-list"
+        ref={listRef}
+        className={styles.tabList}
+        hidden={collapsed && !open}
+      >
+        {adminSections.map(([id, label]) => (
+          <button
+            type="button"
+            key={id}
+            className={tab === id ? styles.active : ''}
+            aria-current={tab === id ? 'page' : undefined}
+            onClick={() => {
+              onSelect(id)
+              setOpen(false)
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </nav>
+  )
+}
 
 const blankProduct = (categoryId: string): Product => ({
   _id: '',
@@ -291,6 +389,11 @@ function ContentEditor({
               label="Ссылка карты для сайта"
               value={content.mapEmbedUrl}
               onChange={(v) => set('mapEmbedUrl', v)}
+            />
+            <TextField
+              label="Резервная карта (ссылка для встраивания)"
+              value={content.mapBackupEmbedUrl}
+              onChange={(v) => set('mapBackupEmbedUrl', v)}
             />
             <TextField
               label="Ссылка для построения маршрута"
@@ -571,7 +674,7 @@ function ContentEditor({
           <h2>Акции на отдельной странице</h2>
           <p>
             Акции самовывоза меняют цену заказа по указанному ниже проценту. Остальные карточки
-            показывают условия; их скидки и подарки не применяются к онлайн-заказу автоматически.
+            показывают условия. Скидка ко дню рождения и скидка за самовывоз рассчитываются сервером при оформлении заказа.
           </p>
           {content.promotions.map((promotion, index) => (
             <div className={styles.panel} key={promotion.id}>
@@ -708,15 +811,27 @@ function ContentEditor({
                   </select>
                 </label>
               </div>
-              {promotion.category === 'pickup' && (
+          {(promotion.category === 'pickup' || promotion.id === 'birthday') && (
+            <label className={styles.field}>
+              <span>
+                <input
+                  type="checkbox"
+                  checked={promotion.enabled !== false}
+                  onChange={(event) => set('promotions', content.promotions.map((old, i) =>
+                    i === index ? { ...old, enabled: event.target.checked } : old))}
+                /> Акция включена
+              </span>
+            </label>
+          )}
+          {(promotion.category === 'pickup' || promotion.id === 'birthday') && (
                 <label className={styles.field}>
-                  <span>Скидка на блюда при самовывозе, %</span>
+                  <span>{promotion.id === 'birthday' ? 'Скидка ко дню рождения, %' : 'Скидка на блюда при самовывозе, %'}</span>
                   <input
                     type="number"
                     min="0"
                     max="100"
                     step="0.01"
-                    value={promotion.discountPercent ?? (promotion.id === 'pickup' ? 10 : 0)}
+                    value={promotion.discountPercent ?? (promotion.id === 'pickup' || promotion.id === 'birthday' ? 10 : 0)}
                     onChange={(event) =>
                       set(
                         'promotions',
@@ -734,10 +849,10 @@ function ContentEditor({
                       )
                     }
                   />
-                  <small>
+                  {promotion.id === 'pickup' && <small>
                     Комбо и наборы не участвуют. Если действует несколько акций самовывоза,
                     применяется наибольшая скидка. Проверьте текст условий после изменения процента.
-                  </small>
+                  </small>}
                 </label>
               )}
               <TextField
@@ -1380,6 +1495,7 @@ function IikoEditor({
 
 function BonusCodesEditor() {
   const [codes, setCodes] = useState<BonusCode[]>([])
+  const [loadingCodes, setLoadingCodes] = useState(true)
   const [draft, setDraft] = useState<BonusCode>({
     _id: '',
     kind: 'percent',
@@ -1392,13 +1508,19 @@ function BonusCodesEditor() {
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   async function refresh() {
-    const response = await apiRequest<{ codes: BonusCode[] }>('/admin/bonus-codes')
-    setCodes(response.codes)
+    setLoadingCodes(true)
+    try {
+      const response = await apiRequest<{ codes: BonusCode[] }>('/admin/bonus-codes')
+      setCodes(response.codes)
+    } finally {
+      setLoadingCodes(false)
+    }
   }
   useEffect(() => {
     apiRequest<{ codes: BonusCode[] }>('/admin/bonus-codes')
       .then((response) => setCodes(response.codes))
       .catch((error) => setMessage(errorMessage(error)))
+      .finally(() => setLoadingCodes(false))
   }, [])
   async function save(event: FormEvent) {
     event.preventDefault()
@@ -1468,6 +1590,7 @@ function BonusCodesEditor() {
         >
           + Новый код
         </button>
+        {loadingCodes && <LoadingState compact={codes.length > 0} label="Загружаем бонус-коды…" />}
         {codes.map((code) => (
           <button
             type="button"
@@ -1588,6 +1711,7 @@ const paymentStatusLabels: Record<string, string> = {
   pending: 'Ожидает оплаты',
   succeeded: 'Оплачено',
   canceled: 'Отменено',
+  order_canceled: 'Заказ отменён: истекло время оплаты',
   error: 'Ошибка',
 }
 const auditActionLabels: Record<string, string> = {
@@ -1610,19 +1734,24 @@ const logValue = (value: unknown) =>
   typeof value === 'string' ? value : (JSON.stringify(value) ?? '—')
 function LogsEditor() {
   const [logs, setLogs] = useState<{ changes: AuditEntry[]; payments: PaymentEntry[] } | null>(null)
+  const [loadingLogs, setLoadingLogs] = useState(true)
   const [message, setMessage] = useState('')
   async function refresh() {
+    setLoadingLogs(true)
     try {
       setLogs(await apiRequest('/admin/logs'))
       setMessage('')
     } catch (error) {
       setMessage(errorMessage(error))
+    } finally {
+      setLoadingLogs(false)
     }
   }
   useEffect(() => {
     apiRequest<{ changes: AuditEntry[]; payments: PaymentEntry[] }>('/admin/logs')
       .then((response) => setLogs(response))
       .catch((error) => setMessage(errorMessage(error)))
+      .finally(() => setLoadingLogs(false))
   }, [])
   return (
     <div className={styles.editor}>
@@ -1633,8 +1762,9 @@ function LogsEditor() {
         <span role="status">{message}</span>
       </div>
       <h2>Оплаты</h2>
+      {loadingLogs && <LoadingState compact={logs !== null} label="Загружаем журнал…" />}
       {!logs ? (
-        <p>Загрузка…</p>
+        !loadingLogs && <p>Журнал пока недоступен.</p>
       ) : logs.payments.length === 0 ? (
         <p>Платежей пока нет.</p>
       ) : (
@@ -1674,6 +1804,7 @@ function LogsEditor() {
 
 export function AdminScreen() {
   const [authenticated, setAuthenticated] = useState(false)
+  const [checkingSession, setCheckingSession] = useState(true)
   const [password, setPassword] = useState('')
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
   const [tab, setTab] = useState<Tab>('orders')
@@ -1695,6 +1826,7 @@ export function AdminScreen() {
         return refresh().catch((failure) => setError(errorMessage(failure)))
       })
       .catch(() => undefined)
+      .finally(() => setCheckingSession(false))
   }, [])
   async function login(event: FormEvent) {
     event.preventDefault()
@@ -1718,6 +1850,12 @@ export function AdminScreen() {
       setError(errorMessage(failure))
     }
   }
+  if (checkingSession)
+    return (
+      <main className={styles.login}>
+        <LoadingState label="Проверяем доступ к панели…" />
+      </main>
+    )
   if (!authenticated)
     return (
       <main className={styles.login}>
@@ -1761,83 +1899,61 @@ export function AdminScreen() {
           </button>
         </div>
       </div>
-      <nav className={styles.tabs} aria-label="Разделы панели">
-        {(
-          [
-            ['orders', 'Заказы'],
-            ['clients', 'Клиенты'],
-            ['content', 'Сайт и баннеры'],
-            ['promotions', 'Акции'],
-            ['codes', 'Бонус-коды'],
-            ['categories', 'Разделы меню'],
-            ['products', 'Товары'],
-            ['legal', 'Документы'],
-            ['logs', 'Журнал'],
-            ['iiko', 'iiko'],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            type="button"
-            key={id}
-            className={tab === id ? styles.active : ''}
-            onClick={() => setTab(id)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-      {error && dashboard && (
-        <p className={styles.error} role="alert">
-          {error}
-        </p>
-      )}
-      {!dashboard ? (
-        <div className={styles.editor}>
-          {error ? (
-            <>
-              <p className={styles.error} role="alert">
-                {error}
-              </p>
-              <button
-                type="button"
-                onClick={() => void refresh().catch((failure) => setError(errorMessage(failure)))}
-              >
-                Повторить загрузку
-              </button>
-            </>
-          ) : (
-            <p>Загрузка…</p>
-          )}
-        </div>
-      ) : (
-        <div key={tab}>
-          {tab === 'orders' ? (
-            <OrdersEditor />
-          ) : tab === 'clients' ? (
-            <ClientsEditor />
-          ) : tab === 'content' ? (
-            <ContentEditor initial={dashboard.content} onSaved={contentSaved} />
-          ) : tab === 'promotions' ? (
-            <ContentEditor
-              initial={dashboard.content}
-              onSaved={contentSaved}
-              section="promotions"
-            />
-          ) : tab === 'codes' ? (
-            <BonusCodesEditor />
-          ) : tab === 'categories' ? (
-            <CategoriesEditor data={dashboard} refresh={refresh} />
-          ) : tab === 'products' ? (
-            <ProductsEditor data={dashboard} refresh={refresh} />
-          ) : tab === 'legal' ? (
-            <LegalEditor initial={dashboard.content} onSaved={contentSaved} />
-          ) : tab === 'logs' ? (
-            <LogsEditor />
-          ) : (
-            <IikoEditor configured={dashboard.iikoConfigured} refresh={refresh} />
-          )}
-        </div>
-      )}
+      <AdminTabs tab={tab} onSelect={setTab} />
+      <div className={styles.workspaceContent}>
+        {error && dashboard && (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        )}
+        {!dashboard ? (
+          <div className={styles.editor}>
+            {error ? (
+              <>
+                <p className={styles.error} role="alert">
+                  {error}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void refresh().catch((failure) => setError(errorMessage(failure)))}
+                >
+                  Повторить загрузку
+                </button>
+              </>
+            ) : (
+              <LoadingState label="Загружаем панель администратора…" />
+            )}
+          </div>
+        ) : (
+          <div key={tab}>
+            {tab === 'orders' ? (
+              <OrdersEditor />
+            ) : tab === 'clients' ? (
+              <ClientsEditor />
+            ) : tab === 'content' ? (
+              <ContentEditor initial={dashboard.content} onSaved={contentSaved} />
+            ) : tab === 'promotions' ? (
+              <ContentEditor
+                initial={dashboard.content}
+                onSaved={contentSaved}
+                section="promotions"
+              />
+            ) : tab === 'codes' ? (
+              <BonusCodesEditor />
+            ) : tab === 'categories' ? (
+              <CategoriesEditor data={dashboard} refresh={refresh} />
+            ) : tab === 'products' ? (
+              <ProductsEditor data={dashboard} refresh={refresh} />
+            ) : tab === 'legal' ? (
+              <LegalEditor initial={dashboard.content} onSaved={contentSaved} />
+            ) : tab === 'logs' ? (
+              <LogsEditor />
+            ) : (
+              <IikoEditor configured={dashboard.iikoConfigured} refresh={refresh} />
+            )}
+          </div>
+        )}
+      </div>
     </main>
   )
 }

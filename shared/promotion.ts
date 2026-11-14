@@ -5,6 +5,7 @@ export function isPromotionActive(
   now = Date.now(),
 ): boolean {
   return (
+    promotion.enabled !== false &&
     (!promotion.startsAt || Date.parse(promotion.startsAt) <= now) &&
     (!promotion.endsAt || now < Date.parse(promotion.endsAt))
   )

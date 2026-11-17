@@ -1,7 +1,9 @@
 import { defaultLegalContent, type LegalContent } from './legal-content.ts'
 import { CONSENT_VERSION } from './validation/auth.ts'
+import { defaultSiteSettings, type SiteSettings } from './site-settings.ts'
 
 export type SiteContent = {
+  settings: SiteSettings
   brandName: string
   siteTitle: string
   browserTitle: string
@@ -39,7 +41,12 @@ export type SiteContent = {
   comboNote: string
   saucesSubtitle: string
   aboutHighlights: [string, string, string]
-  benefits: { icon: 'clock' | 'truck' | 'card' | 'pin'; title: string; detail: string }[]
+  benefits: {
+    icon: 'clock' | 'truck' | 'card' | 'pin'
+    title: string
+    detail: string
+    mode?: 'custom' | 'delivery' | 'pickup' | 'payment'
+  }[]
   promotions: {
     id: string
     category: 'delivery' | 'pickup' | 'cafe'
@@ -54,6 +61,7 @@ export type SiteContent = {
     endsAt?: string
     discountPercent?: number
     enabled?: boolean
+    syncDiscountText?: boolean
     theme: 'red' | 'cream' | 'burgundy' | 'gold' | 'green' | 'white'
   }[]
   heroSlides: {
@@ -64,10 +72,12 @@ export type SiteContent = {
     image: string
     imageAlt: string
     href?: string
+    showText?: boolean
   }[]
 }
 
 export const defaultSiteContent: SiteContent = {
+  settings: defaultSiteSettings,
   brandName: 'КАПЕЛА ВКУСА',
   siteTitle: 'Капела вкуса',
   browserTitle: 'Капела вкуса - кафе домашней кухни и доставкой по городу',
@@ -117,9 +127,9 @@ export const defaultSiteContent: SiteContent = {
   ],
   benefits: [
     { icon: 'clock', title: 'От 60 минут', detail: 'Привезём горячим' },
-    { icon: 'truck', title: 'Бесплатно от 1 500 ₽', detail: 'Условия в корзине' },
-    { icon: 'card', title: 'Оформление заказа', detail: 'За пару минут' },
-    { icon: 'pin', title: 'Самовывоз −10%', detail: 'Одно кафе в городе' },
+    { icon: 'truck', title: 'Бесплатно от 1 500 ₽', detail: 'Условия в корзине', mode: 'delivery' },
+    { icon: 'card', title: 'Оформление заказа', detail: 'За пару минут', mode: 'payment' },
+    { icon: 'pin', title: 'Самовывоз −10%', detail: 'Одно кафе в городе', mode: 'pickup' },
   ],
   promotions: [
     {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 const IO_AVAILABLE = typeof IntersectionObserver !== 'undefined'
 
@@ -31,7 +31,10 @@ export function useInfiniteItems<T>(items: readonly T[], batchSize = 8): Infinit
   // Список заметно укоротился (смена категории, фильтр): visibleCount ограничен total,
   // поэтому отдельный сброс не нужен — при возврате к длинному списку сторожок
   // догрузит остаток с того же места.
-  const showMore = () => setShownCount((current) => Math.min(current + batchSize, total))
+  const showMore = useCallback(
+    () => setShownCount((current) => Math.min(current + batchSize, total)),
+    [batchSize, total],
+  )
 
   useEffect(() => {
     if (!hasMore) return
@@ -45,9 +48,9 @@ export function useInfiniteItems<T>(items: readonly T[], batchSize = 8): Infinit
     )
     observer.observe(node)
     return () => observer.disconnect()
-    // showMore стабилен по смыслу; пересоздаём наблюдатель при смене состава
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasMore, total, batchSize])
+    // Повторное наблюдение получает актуальное пересечение, даже если после
+    // добавления карточек сторожок остался в пределах rootMargin.
+  }, [hasMore, visibleCount, showMore])
 
   return { visibleItems: items.slice(0, visibleCount), hasMore, sentinelRef, showMore }
 }

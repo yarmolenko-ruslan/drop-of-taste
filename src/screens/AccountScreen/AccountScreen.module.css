@@ -254,10 +254,6 @@
   list-style: none;
 }
 
-.orderStepsThree {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 .orderStep {
   position: relative;
   display: grid;
@@ -906,26 +902,6 @@ dialog.confirmDialog {
   font-size: 14px;
   text-decoration: underline;
   text-underline-offset: 3px;
-  cursor: pointer;
-}
-
-.deleteConfirmation {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 24px;
-  color: var(--color-brand-red);
-  font-size: 14px;
-}
-
-.deleteConfirmation button {
-  padding: 7px 12px;
-  border: 1px solid #dfc4a2;
-  border-radius: 9px;
-  background: #fffdfa;
-  color: var(--color-text);
-  font: inherit;
   cursor: pointer;
 }
 

@@ -7,7 +7,7 @@ import styles from './CatalogStatus.module.css'
 import type { CatalogProduct } from '../model/product'
 import type { DialogItem } from '../model/dialogContent'
 
-export type ApiCatalogItem = Omit<DialogItem, 'priceRub'> &
+type ApiCatalogItem = Omit<DialogItem, 'priceRub'> &
   CatalogProduct & {
     _id: string
     categoryId: string
@@ -45,7 +45,8 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     let active = true
-    apiRequest<CatalogData>('/catalog')
+    const controller = new AbortController()
+    apiRequest<CatalogData>('/catalog', { signal: controller.signal })
       .then((result) => {
         if (!active) return
         if (!Array.isArray(result.categories)) throw new Error('Меню пока недоступно')
@@ -60,6 +61,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       })
     return () => {
       active = false
+      controller.abort()
     }
   }, [attempt])
   // Индекс и значение контекста стабильны между рендерами: потребители
@@ -73,6 +75,21 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     [],
   )
   useEffect(() => subscribeSiteUpdate('catalog', retry), [retry])
+  useEffect(() => {
+    const refreshVisible = () => {
+      if (document.visibilityState === 'visible') retry()
+    }
+    const timer = window.setInterval(refreshVisible, 60_000)
+    window.addEventListener('online', refreshVisible)
+    window.addEventListener('focus', refreshVisible)
+    document.addEventListener('visibilitychange', refreshVisible)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('online', refreshVisible)
+      window.removeEventListener('focus', refreshVisible)
+      document.removeEventListener('visibilitychange', refreshVisible)
+    }
+  }, [retry])
   const value = useMemo(
     () => ({ data, itemsById, loading, error, retry }),
     [data, itemsById, loading, error, retry],

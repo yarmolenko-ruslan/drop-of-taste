@@ -223,7 +223,9 @@
   border-radius: 50%;
   background: transparent;
   color: var(--color-brand-red);
-  font: 700 20px/1 var(--font-family-ruble), Arial,
+  font:
+    700 20px/1 var(--font-family-ruble),
+    Arial,
     sans-serif;
   cursor: pointer;
 }
@@ -264,7 +266,9 @@
   border-radius: 50%;
   background: #fff;
   color: var(--color-brand-red);
-  font: 700 26px/1 var(--font-family-ruble), Arial,
+  font:
+    700 26px/1 var(--font-family-ruble),
+    Arial,
     sans-serif;
   cursor: pointer;
 }

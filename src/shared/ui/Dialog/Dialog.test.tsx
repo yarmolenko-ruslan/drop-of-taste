@@ -64,3 +64,32 @@ test('ставит фокус на закрытие и возвращает ег
   expect(opener).toHaveFocus()
   opener.remove()
 })
+
+test('смена обработчика сохраняет фокус и использует актуальное закрытие', () => {
+  const previous = vi.fn()
+  const current = vi.fn()
+  const contents = (
+    <>
+      <h2 id="stable-title">Адрес</h2>
+      <input aria-label="Улица" />
+    </>
+  )
+  const { rerender } = render(
+    <Dialog titleId="stable-title" onClose={previous}>
+      {contents}
+    </Dialog>,
+  )
+  const field = screen.getByRole('textbox')
+  field.focus()
+  rerender(
+    <Dialog titleId="stable-title" onClose={current}>
+      {contents}
+    </Dialog>,
+  )
+  expect(field).toHaveFocus()
+  const dialog = screen.getByRole('dialog')
+  fireEvent.mouseDown(dialog)
+  fireEvent.click(dialog)
+  expect(previous).not.toHaveBeenCalled()
+  expect(current).toHaveBeenCalledOnce()
+})

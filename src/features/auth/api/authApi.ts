@@ -44,6 +44,8 @@ export async function apiRequest<T>(
     const body = await response.json().catch(() => null)
     if (body?.error?.code === 'ACCOUNT_CHANGED')
       window.dispatchEvent(new Event('drop-of-taste:account-changed'))
+    if (body?.error?.code === 'ADMIN_UNAUTHORIZED')
+      window.dispatchEvent(new Event('drop-of-taste:admin-session-expired'))
     throw new ApiError(
       body?.error?.code ?? 'REQUEST_FAILED',
       body?.error?.message ?? 'Не удалось выполнить запрос',

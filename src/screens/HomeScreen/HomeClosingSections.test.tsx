@@ -3,8 +3,47 @@ import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
 import { useCartStore } from '../../features/cart'
 import { HomeClosingSections } from './HomeClosingSections'
+import { SiteContentProvider } from '../../features/site-content/SiteContentProvider'
+import { defaultSiteContent } from '../../../shared/site-content'
 
 afterEach(() => vi.unstubAllGlobals())
+
+test('настройки скрывают блоки и сохраняют авторские подписи без автоподмены', async () => {
+  const content = {
+    ...defaultSiteContent,
+    benefits: defaultSiteContent.benefits.map((item) => ({
+      ...item,
+      mode: 'custom',
+      title: 'Авторский заголовок',
+    })),
+    settings: {
+      ...defaultSiteContent.settings,
+      sections: {
+        ...defaultSiteContent.settings.sections,
+        account: false,
+        about: false,
+        sauces: false,
+      },
+    },
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (path: string) =>
+      Response.json(path.endsWith('/site-content') ? content : { testPaymentEnabled: true }),
+    ),
+  )
+  render(
+    <MemoryRouter>
+      <SiteContentProvider>
+        <HomeClosingSections />
+      </SiteContentProvider>
+    </MemoryRouter>,
+  )
+  expect(await screen.findAllByText('Авторский заголовок')).toHaveLength(4)
+  expect(screen.queryByRole('heading', { name: 'Всё для удобного заказа' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Соусы' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'О кафе' })).not.toBeInTheDocument()
+})
 
 test('при включённой тестовой оплате убирает устаревший текст, что оплата не принимается', async () => {
   vi.stubGlobal(

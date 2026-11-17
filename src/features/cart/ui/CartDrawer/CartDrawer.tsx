@@ -1,6 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Dialog } from '../../../../shared/ui/Dialog/Dialog'
-import { cartCount, formatCartPrice, useCartStore, type CartLine } from '../../index'
+import {
+  cartCount,
+  formatCartPrice,
+  useCartStore,
+  MAX_CART_QUANTITY,
+  type CartLine,
+} from '../../index'
 import styles from './CartDrawer.module.css'
 import { ApiError, apiRequest, type AuthUser } from '../../../auth/api/authApi'
 import type { FulfillmentSelection } from '../../../fulfillment/ui/FulfillmentDialog/FulfillmentDialog'
@@ -56,7 +62,7 @@ function orderInput(
   }
 }
 
-export type CartRecommendation = {
+type CartRecommendation = {
   id: string
   name: string
   image: string
@@ -114,6 +120,23 @@ export function CartDrawer({
   const birthdaySelectedForAccount =
     birthdaySelected && birthdayAccountId === accountId && birthdayAvailable
   const [notice, setNotice] = useState('')
+  const noticeRef = useRef<HTMLParagraphElement>(null)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const area = scrollAreaRef.current
+    const message = noticeRef.current
+    if (!isOpen || !notice || !area || !message) return
+    const bounds = area.getBoundingClientRect()
+    if (!bounds.height) return
+    const messageBounds = message.getBoundingClientRect()
+    const top = bounds.top + 12
+    const bottom = bounds.bottom - 12
+    if (messageBounds.height > bottom - top || messageBounds.top < top) {
+      area.scrollTop += messageBounds.top - top
+    } else if (messageBounds.bottom > bottom) {
+      area.scrollTop += messageBounds.bottom - bottom
+    }
+  }, [notice, isOpen])
   const [quote, setQuote] = useState<Quote | null>(null)
   const [quoteSignature, setQuoteSignature] = useState('')
   // Цены блюд не меняются при выборе скидки; итог принимаем только из нового расчёта.
@@ -171,6 +194,7 @@ export function CartDrawer({
     birthdaySelectedForAccount,
     accountId,
     siteContent.promotions,
+    siteContent.settings.delivery,
   ])
   const requestBody = hasUnpricedExtras
     ? null
@@ -524,7 +548,7 @@ export function CartDrawer({
           </div>
         ) : (
           <>
-            <div className={styles.scrollArea}>
+            <div className={styles.scrollArea} ref={scrollAreaRef}>
               <section className={styles.card} aria-label="Товары в корзине">
                 <h3>
                   {count}{' '}
@@ -580,7 +604,7 @@ export function CartDrawer({
                         <button
                           type="button"
                           aria-label={`Увеличить количество «${line.name}»`}
-                          disabled={line.quantity >= 99 || busy}
+                          disabled={line.quantity >= MAX_CART_QUANTITY || busy}
                           onClick={() => changeQuantity(line.key, 1)}
                         >
                           +
@@ -767,7 +791,7 @@ export function CartDrawer({
                 </div>
               )}
               {notice && (
-                <p className={styles.notice} role="status">
+                <p className={styles.notice} role="status" ref={noticeRef}>
                   {notice}
                 </p>
               )}

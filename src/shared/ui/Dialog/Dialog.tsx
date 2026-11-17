@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useEffectEvent, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import styles from './Dialog.module.css'
@@ -20,6 +20,7 @@ export function Dialog({
 }: DialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
+  const requestClose = useEffectEvent(onClose)
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -37,7 +38,7 @@ export function Dialog({
       pressedOnBackdrop = event.target === dialog
     }
     function handleBackdropClick(event: MouseEvent) {
-      if (event.target === dialog && pressedOnBackdrop) onClose()
+      if (event.target === dialog && pressedOnBackdrop) requestClose()
     }
     dialog.addEventListener('mousedown', handleMouseDown)
     dialog.addEventListener('click', handleBackdropClick)
@@ -49,7 +50,7 @@ export function Dialog({
       document.body.style.overflow = previousOverflow
       previousFocus?.focus()
     }
-  }, [onClose])
+  }, [])
 
   return createPortal(
     <dialog

@@ -77,7 +77,8 @@ function SauceCard({
       <div className={styles.sauceText}>
         <h3>{name}</h3>
         <p>
-          Вес и калорийность уточняются ·{' '}
+          {live?.amount != null ? `${live.amount} ${live.measure}` : 'Вес уточняется'} ·{' '}
+          {live?.calories != null ? `${live.calories} ккал` : 'Калорийность уточняется'} ·{' '}
           <strong>{priceRub === null ? 'Цена уточняется' : `${priceRub} ₽`}</strong>
         </p>
       </div>
@@ -87,7 +88,11 @@ function SauceCard({
           aria-label={`Добавить соус «${name}» в корзину`}
           className={styles.sauceAdd}
           disabled={live?.available === false}
-          onClick={() => addOneToCart({ ...(live ?? dialogItemFromSauce(name)), id, priceRub })}
+          onClick={() =>
+            live?.action === 'choose' && onSauceAction
+              ? onSauceAction(name)
+              : addOneToCart({ ...(live ?? dialogItemFromSauce(name)), id, priceRub })
+          }
         >
           +
         </button>
@@ -134,7 +139,7 @@ function Sauces({ onSauceAction }: { onSauceAction?: (name: string) => void }) {
           <p>{content.saucesSubtitle}</p>
         </div>
         <Link to="/menu/sauces">
-          Весь раздел <span aria-hidden="true">→</span>
+          {content.settings.labels.allCategory} <span aria-hidden="true">→</span>
         </Link>
       </div>
       <SauceGrid onSauceAction={onSauceAction} />
@@ -159,75 +164,80 @@ export function HomeClosingSections({
   }, [])
   return (
     <>
-      <Sauces onSauceAction={onSauceAction} />
-      <section className={styles.benefits} id="delivery" aria-label="Условия доставки и оплаты">
-        {content.benefits.map(({ icon, title, detail }) => (
-          <div className={styles.benefitCard} key={`${icon}-${title}`}>
-            <span className={`${styles.benefitIcon} ${icon === 'pin' ? styles.greenIcon : ''}`}>
-              <BenefitIcon name={icon} />
-            </span>
-            <div>
-              <strong>
-                {icon === 'card' && (title === 'Тестовый заказ' || title === 'Оформление заказа')
-                  ? testPaymentEnabled
-                    ? 'Онлайн-оплата'
-                    : 'Оформление заказа'
-                  : icon === 'pin' && title === 'Самовывоз −10%'
-                    ? pickupPercent > 0
-                      ? `Самовывоз −${pickupPercent}%`
-                      : 'Самовывоз'
-                    : title}
-              </strong>
-              <span>
-                {icon === 'card' &&
-                (detail === 'Оплата пока не принимается' || detail === 'За пару минут')
-                  ? testPaymentEnabled
-                    ? 'Банковской картой'
-                    : 'За пару минут'
-                  : icon === 'pin' && title === 'Самовывоз −10%' && pickupPercent === 0
-                    ? 'Заберите заказ в кафе'
-                    : detail === 'Тестовые условия'
-                      ? 'Условия в корзине'
-                      : detail}
+      {content.settings.sections.sauces && <Sauces onSauceAction={onSauceAction} />}
+      {content.settings.sections.benefits && (
+        <section className={styles.benefits} id="delivery" aria-label="Условия доставки и оплаты">
+          {content.benefits.map(({ icon, title, detail, mode }) => (
+            <div className={styles.benefitCard} key={`${icon}-${title}`}>
+              <span className={`${styles.benefitIcon} ${icon === 'pin' ? styles.greenIcon : ''}`}>
+                <BenefitIcon name={icon} />
               </span>
+              <div>
+                <strong>
+                  {mode === 'payment'
+                    ? testPaymentEnabled
+                      ? 'Онлайн-оплата'
+                      : 'Оформление заказа'
+                    : mode === 'pickup'
+                      ? pickupPercent > 0
+                        ? `Самовывоз −${pickupPercent}%`
+                        : 'Самовывоз'
+                      : mode === 'delivery'
+                        ? content.settings.delivery.freeFromKopecks === null
+                          ? `Доставка ${(content.settings.delivery.feeKopecks / 100).toLocaleString('ru-RU')} ₽`
+                          : `Бесплатно от ${(content.settings.delivery.freeFromKopecks / 100).toLocaleString('ru-RU')} ₽`
+                        : title}
+                </strong>
+                <span>
+                  {mode === 'payment'
+                    ? testPaymentEnabled
+                      ? 'Банковской картой'
+                      : 'За пару минут'
+                    : detail}
+                </span>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+      {content.settings.sections.account && (
+        <section className={styles.bonus} id="account-benefits" aria-labelledby="bonus-title">
+          <div className={styles.bonusCopy}>
+            <span className={styles.eyebrow}>{content.settings.labels.accountEyebrow}</span>
+            <h2 id="bonus-title">{content.bonusTitle}</h2>
+            <p>{content.bonusText}</p>
+            <div className={styles.bonusActions}>
+              <button type="button" className={styles.goldButton} onClick={onLogin}>
+                {content.settings.labels.accountButton}
+              </button>
+              <a href="#bonus-steps" className={styles.outlineButton}>
+                {content.settings.labels.accountHelp}
+              </a>
             </div>
           </div>
-        ))}
-      </section>
-      <section className={styles.bonus} id="account-benefits" aria-labelledby="bonus-title">
-        <div className={styles.bonusCopy}>
-          <span className={styles.eyebrow}>ЛИЧНЫЙ КАБИНЕТ</span>
-          <h2 id="bonus-title">{content.bonusTitle}</h2>
-          <p>{content.bonusText}</p>
-          <div className={styles.bonusActions}>
-            <button type="button" className={styles.goldButton} onClick={onLogin}>
-              Войти по номеру
-            </button>
-            <a href="#bonus-steps" className={styles.outlineButton}>
-              Как это работает
-            </a>
+          <ol className={styles.bonusSteps} id="bonus-steps">
+            {content.bonusSteps.map((step, index) => (
+              <li key={index}>
+                <strong>{index + 1}</strong>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+      {content.settings.sections.about && (
+        <section className={styles.about} id="about" aria-labelledby="about-title">
+          <img src={content.aboutImage} alt={content.aboutImageAlt} loading="lazy" />
+          <div className={styles.aboutCopy}>
+            <span className={styles.eyebrow}>{content.settings.labels.aboutEyebrow}</span>
+            <h2 id="about-title">{content.aboutLead}</h2>
+            <p>{content.homeAboutText}</p>
+            <Link to="/about" className={styles.aboutButton}>
+              {content.settings.labels.aboutButton}
+            </Link>
           </div>
-        </div>
-        <ol className={styles.bonusSteps} id="bonus-steps">
-          {content.bonusSteps.map((step, index) => (
-            <li key={index}>
-              <strong>{index + 1}</strong>
-              <span>{step}</span>
-            </li>
-          ))}
-        </ol>
-      </section>
-      <section className={styles.about} id="about" aria-labelledby="about-title">
-        <img src={content.aboutImage} alt={content.aboutImageAlt} loading="lazy" />
-        <div className={styles.aboutCopy}>
-          <span className={styles.eyebrow}>О НАС</span>
-          <h2 id="about-title">{content.aboutLead}</h2>
-          <p>{content.homeAboutText}</p>
-          <Link to="/about" className={styles.aboutButton}>
-            О кафе
-          </Link>
-        </div>
-      </section>
+        </section>
+      )}
     </>
   )
 }

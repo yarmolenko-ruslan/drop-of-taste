@@ -1,6 +1,12 @@
 import react from '@vitejs/plugin-react'
 import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
+import { fileURLToPath } from 'node:url'
+import { securityHeaders, contentSecurityPolicy } from './shared/http-security.ts'
+
+const clientFiles = ['index.html', 'src', 'shared', 'public', 'node_modules'].map((path) =>
+  fileURLToPath(new URL(path, import.meta.url)),
+)
 
 // https://vite.dev/config/
 export default defineConfig(({ mode, command }) => {
@@ -23,9 +29,16 @@ export default defineConfig(({ mode, command }) => {
     server: {
       port: sitePort,
       strictPort: true,
+      cors: false,
+      fs: { strict: true, allow: clientFiles },
+      headers: securityHeaders,
       proxy: {
         '/api': `http://127.0.0.1:${apiPort}`,
       },
+    },
+    preview: {
+      cors: false,
+      headers: { ...securityHeaders, 'Content-Security-Policy': contentSecurityPolicy },
     },
     css: {
       modules: {
@@ -33,6 +46,10 @@ export default defineConfig(({ mode, command }) => {
       },
     },
     test: {
+      // Интеграционные файлы поднимают отдельные MongoDB replica set.
+      // Ограничиваем одновременный запуск и учитываем время старта базы.
+      maxWorkers: 4,
+      testTimeout: 30_000,
       environment: 'jsdom',
       globals: true,
       setupFiles: ['./src/test/setup.ts'],

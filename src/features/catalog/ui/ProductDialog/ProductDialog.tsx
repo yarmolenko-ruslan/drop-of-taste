@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Dialog } from '../../../../shared/ui/Dialog/Dialog'
-import { useCartStore } from '../../../cart'
+import { MAX_CART_QUANTITY, useCartStore } from '../../../cart'
 import type { DialogItem } from '../../model/dialogContent'
 import type { ProductBadge } from '../../model/product'
 import styles from './ProductDialog.module.css'
-import { useCatalogItem } from '../../api/CatalogProvider'
+import { useCatalog } from '../../api/CatalogProvider'
 
 const badgeLabels: Record<ProductBadge, string> = {
   new: 'НОВИНКА',
@@ -20,18 +20,24 @@ type ProductDialogProps = {
 }
 
 export function ProductDialog({ item: inputItem, onClose }: ProductDialogProps) {
-  const live = useCatalogItem(inputItem.id)
+  const catalog = useCatalog()
+  const live = catalog?.itemsById.get(inputItem.id)
+  const unavailable = live?.available === false || Boolean(catalog && !live)
   const item = live
     ? { ...inputItem, ...live, id: live._id, priceRub: live.priceKopecks / 100 }
     : inputItem
   const addToCart = useCartStore((state) => state.add)
   const [extras, setExtras] = useState<Record<string, number>>({})
   const [quantity, setQuantity] = useState(1)
-  const price = item.priceRub === null ? 'Цена уточняется' : `${item.priceRub.toLocaleString('ru-RU')} ₽`
+  const price =
+    item.priceRub === null ? 'Цена уточняется' : `${item.priceRub.toLocaleString('ru-RU')} ₽`
   const titleId = `dialog-title-${item.id}`
 
   function changeExtra(name: string, difference: number) {
-    setExtras((current) => ({ ...current, [name]: Math.max(0, (current[name] ?? 0) + difference) }))
+    setExtras((current) => ({
+      ...current,
+      [name]: Math.min(MAX_CART_QUANTITY, Math.max(0, (current[name] ?? 0) + difference)),
+    }))
   }
 
   return (
@@ -68,8 +74,8 @@ export function ProductDialog({ item: inputItem, onClose }: ProductDialogProps) 
           <div className={styles.details}>
             <h2 id={titleId}>{item.name}</h2>
             <p className={styles.meta}>
-              {item.amount ? `${item.amount} ${item.measure}` : 'Вес уточняется'} ·{' '}
-              {item.calories ? `${item.calories} ккал` : 'Калорийность уточняется'}
+              {item.amount != null ? `${item.amount} ${item.measure}` : 'Вес уточняется'} ·{' '}
+              {item.calories != null ? `${item.calories} ккал` : 'Калорийность уточняется'}
             </p>
             <p className={styles.description}>{item.description}</p>
 
@@ -102,6 +108,7 @@ export function ProductDialog({ item: inputItem, onClose }: ProductDialogProps) 
                         <button
                           type="button"
                           aria-label={`Добавить добавку «${extra}»`}
+                          disabled={(extras[extra] ?? 0) >= MAX_CART_QUANTITY}
                           onClick={() => changeExtra(extra, 1)}
                         >
                           +
@@ -127,8 +134,8 @@ export function ProductDialog({ item: inputItem, onClose }: ProductDialogProps) 
               <button
                 type="button"
                 aria-label="Увеличить количество"
-                disabled={quantity >= 99}
-                onClick={() => setQuantity((value) => Math.min(99, value + 1))}
+                disabled={quantity >= MAX_CART_QUANTITY}
+                onClick={() => setQuantity((value) => Math.min(MAX_CART_QUANTITY, value + 1))}
               >
                 +
               </button>
@@ -136,13 +143,13 @@ export function ProductDialog({ item: inputItem, onClose }: ProductDialogProps) 
             <button
               className={styles.addButton}
               type="button"
-              disabled={live?.available === false}
+              disabled={unavailable}
               onClick={() => {
                 addToCart(item, { variant: '', removedIngredients: [], extras, quantity })
                 onClose()
               }}
             >
-              <span>{live?.available === false ? 'Нет в наличии' : 'Добавить в корзину'}</span>
+              <span>{unavailable ? 'Нет в наличии' : 'Добавить в корзину'}</span>
               <span className={styles.addButtonPrice}>
                 <strong>{price}</strong>
                 {item.priceRub !== null && <small>за порцию</small>}

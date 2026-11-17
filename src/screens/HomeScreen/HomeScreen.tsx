@@ -27,9 +27,11 @@ export function HomeScreen({ onLogin }: { onLogin?: () => void }) {
         {catalog?.data && !catalog.error && (
           <>
             {catalog.data.categories.length === 0 && <p role="status">Меню пока пусто.</p>}
-            <NewArrivals
-              onProductAction={(product) => setSelectedItem(dialogItemFromProduct(product))}
-            />
+            {content.settings.sections.newArrivals && (
+              <NewArrivals
+                onProductAction={(product) => setSelectedItem(dialogItemFromProduct(product))}
+              />
+            )}
             <HomeCatalog
               onProductAction={(product) => setSelectedItem(dialogItemFromProduct(product))}
               onComboAction={(combo) => setSelectedItem(dialogItemFromCombo(combo))}

@@ -139,7 +139,9 @@
   border-radius: 50%;
   background: var(--color-brand-red);
   color: #fff;
-  font: 700 23px/1 var(--font-family-ruble), Arial,
+  font:
+    700 23px/1 var(--font-family-ruble),
+    Arial,
     sans-serif;
   cursor: pointer;
   transition: background-color 0.3s ease;
@@ -402,6 +404,15 @@
   }
 }
 @media (max-width: 520px) {
+  .bonusActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .bonusActions > * {
+    min-width: 0;
+    padding-inline: 10px;
+    text-align: center;
+  }
   .sauceGrid,
   .benefits {
     grid-template-columns: 1fr;
@@ -432,5 +443,10 @@
   .bonusSteps span {
     margin-top: 0;
     font-size: 13px;
+  }
+}
+@media (max-width: 410px) {
+  .bonusActions {
+    grid-template-columns: 1fr;
   }
 }

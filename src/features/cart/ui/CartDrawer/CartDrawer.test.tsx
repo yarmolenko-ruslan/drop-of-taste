@@ -186,8 +186,21 @@ test('после сбоя платежа повторяет оплату тог�
     />,
   )
   const user = userEvent.setup()
+  const scrollArea = (await screen.findByRole('status', { name: 'Расчёт заказа' })).parentElement!
+  const originalBounds = HTMLElement.prototype.getBoundingClientRect
+  const boundsSpy = vi
+    .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    .mockImplementation(function (this: HTMLElement) {
+      if (this === scrollArea) return new DOMRect(0, 100, 400, 400)
+      if (this.tagName === 'P' && this.getAttribute('role') === 'status') {
+        return new DOMRect(0, 460 - scrollArea.scrollTop, 300, 80)
+      }
+      return originalBounds.call(this)
+    })
   await user.click(await screen.findByRole('button', { name: /Перейти к оплате/ }))
   await screen.findByText('Тестовая оплата недоступна')
+  expect(scrollArea.scrollTop).toBe(52)
+  boundsSpy.mockRestore()
   expect(useCartStore.getState().lines).toHaveLength(1)
   await user.click(screen.getByRole('button', { name: /Повторить переход к оплате/ }))
   await waitFor(() =>

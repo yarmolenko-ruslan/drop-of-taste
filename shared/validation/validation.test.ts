@@ -1,15 +1,21 @@
 import { addressDetailsSchema } from './address.ts'
-import { phoneSchema } from './phone.ts'
-import { birthDateSchema, birthdayStringSchema, isRealBirthday, krasnoyarskToday, profileSchema } from './profile.ts'
+import { normalizeRussianMobilePhone } from './phone.ts'
+import {
+  birthDateSchema,
+  birthdayStringSchema,
+  isRealBirthday,
+  krasnoyarskToday,
+  profileSchema,
+} from './profile.ts'
 
-test('phoneSchema нормализует форматированный номер и отклоняет некорректные записи', () => {
-  expect(phoneSchema.safeParse('+7 (999) 123-45-67').data).toBe('+79991234567')
-  expect(phoneSchema.safeParse('8 (999) 123-45-67').data).toBe('+79991234567')
-  expect(phoneSchema.safeParse('79991234567').data).toBe('+79991234567')
-  expect(phoneSchema.safeParse('7+9991234567').success).toBe(false)
-  expect(phoneSchema.safeParse('+7abc9991234567').success).toBe(false)
-  expect(phoneSchema.safeParse('123').success).toBe(false)
-  expect(phoneSchema.safeParse('+7 (999) 123-45-6').success).toBe(false)
+test('normalizeRussianMobilePhone нормализует форматированный номер и отклоняет некорректные записи', () => {
+  expect(normalizeRussianMobilePhone('+7 (999) 123-45-67')).toBe('+79991234567')
+  expect(normalizeRussianMobilePhone('8 (999) 123-45-67')).toBe('+79991234567')
+  expect(normalizeRussianMobilePhone('79991234567')).toBe('+79991234567')
+  expect(normalizeRussianMobilePhone('7+9991234567')).toBeNull()
+  expect(normalizeRussianMobilePhone('+7abc9991234567')).toBeNull()
+  expect(normalizeRussianMobilePhone('123')).toBeNull()
+  expect(normalizeRussianMobilePhone('+7 (999) 123-45-6')).toBeNull()
 })
 
 test('addressDetailsSchema требует подъезд, этаж и квартиру, пока не отмечен частный дом', () => {

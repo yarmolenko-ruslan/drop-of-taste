@@ -145,3 +145,28 @@
     height: 32px;
   }
 }
+
+.textOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 8% 12%;
+  background: linear-gradient(90deg, rgb(0 0 0 / 75%), rgb(0 0 0 / 5%));
+  color: #fff;
+  font-size: clamp(13px, 2vw, 24px);
+}
+.textOverlay strong {
+  max-width: 80%;
+  font-size: clamp(20px, 4vw, 58px);
+  line-height: 1.1;
+}
+.textBadge {
+  padding: 6px 12px;
+  border-radius: 99px;
+  background: var(--color-brand-red);
+  font-size: 12px;
+}

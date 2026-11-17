@@ -17,7 +17,10 @@ export const profileSchema = z.object({ name: nameSchema, email: emailSchema })
 
 export function krasnoyarskToday(now = new Date()): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Krasnoyarsk', year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone: 'Asia/Krasnoyarsk',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
   }).formatToParts(now)
   const part = (type: string) => parts.find((item) => item.type === type)?.value ?? ''
   return `${part('year')}-${part('month')}-${part('day')}`
@@ -48,9 +51,6 @@ export const birthDateSchema = z
     }
   })
 
-export type ProfileValues = z.infer<typeof profileSchema>
-export type BirthDateValues = z.infer<typeof birthDateSchema>
-
 /** Сериализованная дата рождения «YYYY-MM-DD» или пустая строка. */
 export const birthdayStringSchema = z.string().regex(/^(|\d{4}-\d{2}-\d{2})$/)
 
@@ -58,6 +58,10 @@ export const birthdayStringSchema = z.string().regex(/^(|\d{4}-\d{2}-\d{2})$/)
 export function isRealBirthday(value: string): boolean {
   if (!value) return true
   const date = new Date(`${value}T00:00:00Z`)
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value &&
-    Number(value.slice(0, 4)) >= 1900 && value <= krasnoyarskToday()
+  return (
+    !Number.isNaN(date.getTime()) &&
+    date.toISOString().slice(0, 10) === value &&
+    Number(value.slice(0, 4)) >= 1900 &&
+    value <= krasnoyarskToday()
+  )
 }

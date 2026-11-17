@@ -4,6 +4,63 @@ const product = { id: 'borscht', name: 'Борщ', image: '/products/borscht.jpg
 
 beforeEach(() => useCartStore.setState({ lines: [], isOpen: false }))
 
+test('ограничивает добавки до сохранения и сохраняет блюдо после восстановления', async () => {
+  useCartStore.getState().add(product, {
+    variant: '',
+    removedIngredients: [],
+    extras: { Сыр: 100 },
+    quantity: 1,
+  })
+  expect(useCartStore.getState().lines[0]?.extras).toEqual([{ name: 'Сыр', quantity: 99 }])
+  await useCartStore.persist.rehydrate()
+  expect(useCartStore.getState().lines).toHaveLength(1)
+})
+
+test('восстановление старых добавок объединяет совпавшие строки без повторяющихся ключей', async () => {
+  useCartStore.getState().add(product, {
+    variant: '',
+    removedIngredients: [],
+    extras: { Сыр: 99 },
+    quantity: 2,
+  })
+  const saved = JSON.parse(localStorage.getItem('drop-of-taste:cart')!)
+  saved.state.lines.push({
+    ...saved.state.lines[0],
+    key: 'legacy-overflow',
+    extras: [{ name: 'Сыр', quantity: 100 }],
+    quantity: 1,
+  })
+  localStorage.setItem('drop-of-taste:cart', JSON.stringify(saved))
+  await useCartStore.persist.rehydrate()
+  expect(useCartStore.getState().lines).toHaveLength(1)
+  expect(useCartStore.getState().lines[0]).toMatchObject({
+    quantity: 3,
+    extras: [{ name: 'Сыр', quantity: 99 }],
+  })
+})
+
+test('восстанавливает старые добавки сверх лимита без потери блюда и не очищает исправленную корзину старой оплатой', async () => {
+  const store = useCartStore.getState()
+  store.add(product, {
+    variant: 'Большая',
+    removedIngredients: ['Лук'],
+    extras: { Сыр: 1 },
+    quantity: 1,
+  })
+  store.rememberPayment('order', 'u1')
+  const saved = JSON.parse(localStorage.getItem('drop-of-taste:cart')!)
+  saved.state.lines[0].extras[0].quantity = 100
+  localStorage.setItem('drop-of-taste:cart', JSON.stringify(saved))
+  await useCartStore.persist.rehydrate()
+  expect(useCartStore.getState().lines[0]).toMatchObject({
+    variant: 'Большая',
+    removedIngredients: ['Лук'],
+    extras: [{ name: 'Сыр', quantity: 99 }],
+  })
+  store.finishPayment('order', 'u1')
+  expect(useCartStore.getState().lines).toHaveLength(1)
+})
+
 test('объединяет одинаковые порции и хранит разные варианты отдельно', () => {
   const add = useCartStore.getState().add
   const basic = { variant: 'Обычная', removedIngredients: [], extras: {}, quantity: 2 }

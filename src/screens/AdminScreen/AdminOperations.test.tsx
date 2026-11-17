@@ -5,6 +5,30 @@ import { OrdersEditor, ClientsEditor } from './AdminOperations'
 const request = vi.hoisted(() => vi.fn())
 vi.mock('../../features/auth/api/authApi', () => ({ apiRequest: request }))
 
+test('история клиента загружается страницами и отбрасывает повторы', async () => {
+  const client = { _id: 'paged', name: 'Ирина', phone: '+79991234567' }
+  const order = (id: string) => ({
+    _id: id,
+    accountId: client._id,
+    createdAt: '2026-11-15T12:00:00Z',
+    fulfillmentStatus: 'completed',
+    input: { fulfillment: { mode: 'pickup', label: 'Кафе' } },
+    quote: { lines: [], totalKopecks: 10000, deliveryKopecks: 0, discountKopecks: 0 },
+  })
+  request.mockImplementation(async (path: string) => {
+    if (path.includes('?before='))
+      return { orders: [order('first-order'), order('next-order')], nextBefore: null }
+    if (path === '/admin/clients/paged')
+      return { client, addresses: [], orders: [order('first-order')], nextBefore: 'cursor' }
+    return { clients: [client], nextBefore: null }
+  })
+  render(<ClientsEditor />)
+  fireEvent.click(await screen.findByRole('button', { name: /Ирина/ }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Показать ещё заказы' }))
+  expect(await screen.findByText('История заказов · 2')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Показать ещё заказы' })).not.toBeInTheDocument()
+})
+
 test('список заказов показывает загрузку до ответа и пустое состояние только после него', async () => {
   let resolveRequest!: (value: { orders: []; nextBefore: null }) => void
   request.mockImplementation(

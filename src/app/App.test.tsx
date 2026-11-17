@@ -2,8 +2,13 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useCartStore } from '../features/cart'
 import { App } from './App'
+import type { FulfillmentSelection } from '../features/fulfillment/ui/FulfillmentDialog/FulfillmentDialog'
 
-const { me, logout } = vi.hoisted(() => ({ me: vi.fn(), logout: vi.fn() }))
+const { me, logout, cartMounted } = vi.hoisted(() => ({
+  me: vi.fn(),
+  logout: vi.fn(),
+  cartMounted: vi.fn(),
+}))
 
 vi.mock('../features/auth/api/authApi', () => ({
   authApi: { me, logout },
@@ -22,12 +27,40 @@ vi.mock('../screens/HomeScreen/HomeScreen', () => ({
 vi.mock('../screens/AccountScreen/AccountScreen', async () => {
   const { useState } = await import('react')
   return {
-    AccountScreen: ({ user, onLogout }: { user: { name: string }; onLogout: () => void }) => {
+    AccountScreen: ({
+      user,
+      onLogout,
+      onAddressPicked,
+    }: {
+      user: { name: string }
+      onLogout: () => void
+      onAddressPicked?: (selection: FulfillmentSelection) => void
+    }) => {
       const [loadedName] = useState(user.name)
       return (
         <div>
           <span data-testid="loaded-account">{loadedName}</span>
           <button onClick={onLogout}>Выйти</button>
+          {onAddressPicked && (
+            <button
+              onClick={() =>
+                onAddressPicked({
+                  mode: 'delivery',
+                  label: 'Тестовая улица, 10',
+                  details: {
+                    street: 'Тестовая улица, 10',
+                    entrance: '1',
+                    floor: '2',
+                    flat: '3',
+                    comment: '',
+                    isHouse: false,
+                  },
+                })
+              }
+            >
+              Выбрать адрес для корзины
+            </button>
+          )}
         </div>
       )
     },
@@ -47,13 +80,50 @@ vi.mock('../features/auth/ui/AuthDialog/AuthDialog', () => ({
     </button>
   ),
 }))
-vi.mock('../features/cart/ui/CartDrawer/CartDrawer', () => ({
-  CartDrawer: ({ onRequireAuth }: { onRequireAuth: () => void }) => (
-    <button onClick={onRequireAuth}>Повторный вход</button>
-  ),
-}))
+vi.mock('../features/cart/ui/CartDrawer/CartDrawer', async () => {
+  const { useEffect } = await import('react')
+  return {
+    CartDrawer: ({
+      onRequireAuth,
+      isOpen,
+      fulfillment,
+      onGoToAddresses,
+    }: {
+      onRequireAuth: () => void
+      isOpen: boolean
+      fulfillment: FulfillmentSelection
+      onGoToAddresses: () => void
+    }) => {
+      useEffect(() => {
+        cartMounted()
+      }, [])
+      return isOpen ? (
+        <>
+          <button onClick={onRequireAuth}>Повторный вход</button>
+          <button onClick={onGoToAddresses}>Выбрать доставку</button>
+          <span data-testid="cart-fulfillment">
+            {fulfillment.mode}: {fulfillment.label}
+          </span>
+        </>
+      ) : null
+    },
+  }
+})
 
 const accountA = { id: 'a', phone: '+79991234567', name: 'Анна' }
+
+test('выбор адреса из корзины возвращает её в режим доставки с выбранным адресом', async () => {
+  me.mockResolvedValue({ user: accountA })
+  render(<App />)
+  await waitFor(() => expect(screen.getByTestId('account-label')).toHaveTextContent('Анна'))
+  act(() => useCartStore.getState().open())
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: 'Выбрать доставку' }))
+  await user.click(await screen.findByRole('button', { name: 'Выбрать адрес для корзины' }))
+  expect(await screen.findByTestId('cart-fulfillment')).toHaveTextContent(
+    'delivery: Тестовая улица, 10',
+  )
+})
 
 beforeEach(() => {
   vi.stubGlobal('scrollTo', vi.fn())
@@ -62,6 +132,7 @@ beforeEach(() => {
   useCartStore.setState({ lines: [], isOpen: false })
   me.mockReset()
   logout.mockReset()
+  cartMounted.mockClear()
 })
 
 test('late /auth/me response cannot replace a newer sign-in', async () => {
@@ -75,7 +146,7 @@ test('late /auth/me response cannot replace a newer sign-in', async () => {
   render(<App />)
   const user = userEvent.setup()
   await user.click(screen.getByRole('button', { name: 'Вход' }))
-  await user.click(screen.getByRole('button', { name: 'Подтвердить Б' }))
+  await user.click(await screen.findByRole('button', { name: 'Подтвердить Б' }))
   expect(screen.getByTestId('account-label')).toHaveTextContent('Борис')
   await act(async () => finishMe({ user: accountA }))
   await waitFor(() => expect(screen.getByTestId('account-label')).toHaveTextContent('Борис'))
@@ -92,9 +163,24 @@ test('changing account remounts private screen state', async () => {
   expect(await screen.findByTestId('loaded-account')).toHaveTextContent('Анна')
   act(() => useCartStore.setState({ isOpen: true }))
   const user = userEvent.setup()
-  await user.click(screen.getByRole('button', { name: 'Повторный вход' }))
-  await user.click(screen.getByRole('button', { name: 'Подтвердить Б' }))
+  await user.click(await screen.findByRole('button', { name: 'Повторный вход' }))
+  await user.click(await screen.findByRole('button', { name: 'Подтвердить Б' }))
   expect(await screen.findByTestId('loaded-account')).toHaveTextContent('Борис')
+})
+
+test('корзина загружается по первому открытию и сохраняет экземпляр после закрытия', async () => {
+  me.mockResolvedValue({ user: accountA })
+  render(<App />)
+  await waitFor(() => expect(screen.getByTestId('account-label')).toHaveTextContent('Анна'))
+  expect(cartMounted).not.toHaveBeenCalled()
+  act(() => useCartStore.getState().open())
+  expect(await screen.findByRole('button', { name: 'Повторный вход' })).toBeInTheDocument()
+  expect(cartMounted).toHaveBeenCalledOnce()
+  act(() => useCartStore.getState().close())
+  expect(screen.queryByRole('button', { name: 'Повторный вход' })).not.toBeInTheDocument()
+  act(() => useCartStore.getState().open())
+  expect(await screen.findByRole('button', { name: 'Повторный вход' })).toBeInTheDocument()
+  expect(cartMounted).toHaveBeenCalledOnce()
 })
 
 test('account change response clears old private state and loads the current account', async () => {

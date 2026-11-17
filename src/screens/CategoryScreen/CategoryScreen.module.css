@@ -11,8 +11,7 @@
   font-size: 14px;
 }
 
-.breadcrumbs a,
-.back {
+.breadcrumbs a {
   color: var(--color-brand-red);
 }
 
@@ -67,7 +66,9 @@
   border-radius: 999px;
   background: transparent;
   color: var(--color-brand-red);
-  font: 700 14px var(--font-family-ruble), Arial,
+  font:
+    700 14px var(--font-family-ruble),
+    Arial,
     sans-serif;
   cursor: pointer;
 }

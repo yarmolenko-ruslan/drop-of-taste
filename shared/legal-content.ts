@@ -1,4 +1,4 @@
-export type LegalPage = { title: string; intro: string; sections: [string, string][] }
+type LegalPage = { title: string; intro: string; sections: [string, string][] }
 export type LegalContent = { privacy: LegalPage; consent: LegalPage }
 
 export const defaultLegalContent: LegalContent = {

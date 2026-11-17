@@ -24,20 +24,26 @@
 }
 .eyebrow {
   color: #2e6a36;
-  font: 800 11px var(--font-family-ruble), Arial,
+  font:
+    800 11px var(--font-family-ruble),
+    Arial,
     sans-serif;
   letter-spacing: 0.16em;
 }
 .content h2 {
   margin: 10px 55px 25px 0;
-  font: 42px/1.1 var(--font-family-ruble), Georgia,
+  font:
+    42px/1.1 var(--font-family-ruble),
+    Georgia,
     serif;
   color: var(--color-burgundy);
 }
 .intro {
   margin: 0 0 25px;
   color: #806b62;
-  font: 14px/1.4 var(--font-family-ruble), Arial,
+  font:
+    14px/1.4 var(--font-family-ruble),
+    Arial,
     sans-serif;
 }
 .form {
@@ -48,7 +54,9 @@
   display: grid;
   gap: 7px;
   color: #4d2528;
-  font: 700 13px var(--font-family-ruble), Arial,
+  font:
+    700 13px var(--font-family-ruble),
+    Arial,
     sans-serif;
 }
 .form input,
@@ -61,7 +69,9 @@
   outline: 0;
   background: #fcf6ee;
   color: var(--color-text);
-  font: 14px var(--font-family-ruble), Arial,
+  font:
+    14px var(--font-family-ruble),
+    Arial,
     sans-serif;
 }
 .form input:focus,
@@ -101,7 +111,9 @@
 .error {
   margin: 0;
   color: var(--color-brand-red);
-  font: 400 12px/1.4 var(--font-family-ruble), Arial,
+  font:
+    400 12px/1.4 var(--font-family-ruble),
+    Arial,
     sans-serif;
 }
 .form input[aria-invalid='true'],
@@ -123,20 +135,26 @@
 }
 .pickupLabel {
   color: #8b673e;
-  font: 800 11px var(--font-family-ruble), Arial,
+  font:
+    800 11px var(--font-family-ruble),
+    Arial,
     sans-serif;
   letter-spacing: 0.14em;
 }
 .pickup address {
   color: var(--color-burgundy);
-  font: 700 22px/1.5 var(--font-family-ruble), Arial,
+  font:
+    700 22px/1.5 var(--font-family-ruble),
+    Arial,
     sans-serif;
   font-style: normal;
 }
 .pickup p {
   margin: 0;
   color: #806b62;
-  font: 14px/1.4 var(--font-family-ruble), Arial,
+  font:
+    14px/1.4 var(--font-family-ruble),
+    Arial,
     sans-serif;
 }
 .save {
@@ -146,7 +164,9 @@
   border-radius: 999px;
   background: var(--color-brand-red);
   color: white;
-  font: 700 14px var(--font-family-ruble), Arial,
+  font:
+    700 14px var(--font-family-ruble),
+    Arial,
     sans-serif;
   cursor: pointer;
 }

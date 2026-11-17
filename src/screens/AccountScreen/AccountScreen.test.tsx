@@ -697,28 +697,33 @@ test('выбранный адрес сохраняется на сервере �
   expect(await screen.findByRole('radio', { name: /ул\. Мира, д\. 10/ })).toBeChecked()
 })
 
-test('выбор адреса из сценария корзины вызывает возврат после успешного сохранения', async () => {
-  const user = userEvent.setup()
-  state.addresses = [
-    {
-      id: 'a1',
-      mode: 'delivery',
-      label: 'ул. Мира, 10, квартира 25',
-      details: {
-        street: 'ул. Мира, 10',
-        entrance: '',
-        floor: '',
-        flat: '25',
-        comment: '',
-        isHouse: true,
+test.each([false, true])(
+  'выбор адреса из корзины возвращает его данные, уже выбран: %s',
+  async (selected) => {
+    const user = userEvent.setup()
+    state.addresses = [
+      {
+        id: 'a1',
+        mode: 'delivery',
+        label: 'ул. Мира, 10, квартира 25',
+        details: {
+          street: 'ул. Мира, 10',
+          entrance: '',
+          floor: '',
+          flat: '25',
+          comment: '',
+          isHouse: true,
+        },
       },
-    },
-  ]
-  const onAddressPicked = vi.fn()
-  renderAccount('addresses', vi.fn(), onAddressPicked)
-  await user.click(await screen.findByRole('radio', { name: /ул\. Мира, д\. 10/ }))
-  await waitFor(() => expect(onAddressPicked).toHaveBeenCalledTimes(1))
-})
+    ]
+    if (selected) state.profile.selectedAddressId = 'a1'
+    const onAddressPicked = vi.fn()
+    renderAccount('addresses', vi.fn(), onAddressPicked)
+    await user.click(await screen.findByRole('radio', { name: /ул\. Мира, д\. 10/ }))
+    await waitFor(() => expect(onAddressPicked).toHaveBeenCalledTimes(1))
+    expect(onAddressPicked).toHaveBeenCalledWith(state.addresses[0])
+  },
+)
 
 test('выбор удалённого адреса не восстанавливается', async () => {
   state.profile.selectedAddressId = 'deleted-address'
@@ -729,7 +734,8 @@ test('выбор удалённого адреса не восстанавлив
 
 test('адрес добавляется и удаляется через API', async () => {
   const user = userEvent.setup()
-  renderAccount('addresses')
+  const onAddressPicked = vi.fn()
+  renderAccount('addresses', vi.fn(), onAddressPicked)
   await screen.findByRole('button', { name: 'Добавить новый адрес' })
   await user.click(screen.getByRole('button', { name: 'Добавить новый адрес' }))
   await user.type(screen.getByRole('textbox', { name: 'Улица и дом' }), 'ул. Мира, 10')
@@ -739,6 +745,7 @@ test('адрес добавляется и удаляется через API', a
   await user.click(screen.getByRole('button', { name: 'Сохранить выбор' }))
   await screen.findByText('ул. Мира, д. 10, под. 2, эт. 3, кв. 25')
   expect(calls.some((call) => call.path === '/addresses' && call.method === 'POST')).toBe(true)
+  await waitFor(() => expect(onAddressPicked).toHaveBeenCalledWith(state.addresses[0]))
   await user.click(screen.getByRole('button', { name: /Удалить адрес/ }))
   const dialog = await screen.findByRole('dialog', { name: 'Удалить адрес?' })
   expect(

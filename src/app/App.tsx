@@ -48,10 +48,22 @@ const NotFoundScreen = lazy(() =>
 import { SiteHeader } from '../features/site-header/ui/SiteHeader'
 import { SiteFooter } from '../features/site-footer/ui/SiteFooter'
 import { addOneToCart, syncCartAcrossTabs, useCartStore } from '../features/cart'
-import { CartDrawer } from '../features/cart/ui/CartDrawer/CartDrawer'
-import { AuthDialog } from '../features/auth/ui/AuthDialog/AuthDialog'
+const CartDrawer = lazy(() =>
+  import('../features/cart/ui/CartDrawer/CartDrawer').then((module) => ({
+    default: module.CartDrawer,
+  })),
+)
+const AuthDialog = lazy(() =>
+  import('../features/auth/ui/AuthDialog/AuthDialog').then((module) => ({
+    default: module.AuthDialog,
+  })),
+)
 import type { FulfillmentSelection } from '../features/fulfillment/ui/FulfillmentDialog/FulfillmentDialog'
-import { CafeMapDialog } from '../features/fulfillment/ui/FulfillmentDialog/CafeMapDialog'
+const CafeMapDialog = lazy(() =>
+  import('../features/fulfillment/ui/FulfillmentDialog/CafeMapDialog').then((module) => ({
+    default: module.CafeMapDialog,
+  })),
+)
 import { ApiError, apiRequest, authApi, type AuthUser } from '../features/auth/api/authApi'
 import { CatalogProvider, useCatalog } from '../features/catalog/api/CatalogProvider'
 import { SiteContentProvider, useSiteContent } from '../features/site-content/SiteContentProvider'
@@ -214,6 +226,10 @@ function AppContent() {
   const { pathname } = useLocation()
   const isAdmin = pathname === '/admin'
   const isCartOpen = useCartStore((state) => state.isOpen)
+  const [cartHasOpened, setCartHasOpened] = useState(isCartOpen)
+  // После первого открытия сохраняем экземпляр корзины: закрытие окна не
+  // должно терять ключ повторного оформления и состояние начатой оплаты.
+  if (isCartOpen && !cartHasOpened) setCartHasOpened(true)
   const closeCart = useCartStore((state) => state.close)
   const openCart = useCartStore((state) => state.open)
   const clearCart = useCartStore((state) => state.clear)
@@ -428,7 +444,8 @@ function AppContent() {
     navigate('/account/addresses')
   }
 
-  function returnToCartAfterPick() {
+  function returnToCartAfterPick(selection: FulfillmentSelection) {
+    setFulfillment(selection)
     setPickAddressForCart(false)
     navigate(-1)
     openCart()
@@ -489,7 +506,7 @@ function AppContent() {
       {!isAdmin && (
         <SiteHeader
           phoneNumber={siteContent.phone}
-          addressLabel="Кафе на карте"
+          addressLabel={siteContent.settings.labels.map}
           accountLabel={user ? user.name.split(' ')[0] || 'Кабинет' : undefined}
           onAddressClick={() => setCafeMapOpen(true)}
           onAccountClick={() => {
@@ -582,8 +599,8 @@ function AppContent() {
                     }
                     onAddressPicked={
                       pickAddressForCart
-                        ? () => {
-                            if (activeUserId.current === user.id) returnToCartAfterPick()
+                        ? (selection) => {
+                            if (activeUserId.current === user.id) returnToCartAfterPick(selection)
                           }
                         : undefined
                     }
@@ -599,54 +616,58 @@ function AppContent() {
       </RouteErrorBoundary>
       {!isAdmin && <SiteFooter />}
       {!isAdmin && <ScrollTopButton />}
-      {!isAdmin && (
-        <CartDrawer
-          isOpen={isCartOpen}
-          fulfillment={
-            fulfillment.mode === 'pickup' ? { mode: 'pickup', label: cafeAddress } : fulfillment
-          }
-          savedDelivery={
-            user && savedDelivery?.forUser === user.id ? savedDelivery.selection : null
-          }
-          user={user}
-          onRequireAuth={() => {
-            closeCart()
-            if (logoutPending) return
-            setAuthReturnToCart(true)
-            setAuthOpen(true)
-          }}
-          onFulfillmentChange={setFulfillment}
-          onGoToAddresses={goToAddressesFromCart}
-          recommendations={recommendations}
-          onAddRecommendation={addOneToCart}
-          onOrderCreated={() => setOrdersRevision((current) => current + 1)}
-        />
-      )}
-      {isCafeMapOpen && <CafeMapDialog onClose={() => setCafeMapOpen(false)} />}
-      {isAuthOpen && !logoutPending && (
-        <AuthDialog
-          onClose={() => {
-            setAuthOpen(false)
-            setAuthReturnToCart(false)
-          }}
-          onAuthenticate={(account) => {
-            if (logoutPending || hasPendingLogout() || authDialogEpoch !== sessionEpoch.current)
-              return
-            sessionEpoch.current += 1
-            activeUserId.current = account.id
-            const changedAccount = user && user.id !== account.id
-            if (changedAccount) clearPrivateState()
-            broadcastSessionChange()
-            setSessionNotice('')
-            setUser(account)
-            setAuthOpen(false)
-            if (authReturnToCart && !changedAccount) {
-              setAuthReturnToCart(false)
-              openCart()
-            } else navigate('/account/orders')
-          }}
-        />
-      )}
+      <RouteErrorBoundary>
+        <Suspense fallback={<Spinner label="Открываем окно…" />}>
+          {!isAdmin && cartHasOpened && (
+            <CartDrawer
+              isOpen={isCartOpen}
+              fulfillment={
+                fulfillment.mode === 'pickup' ? { mode: 'pickup', label: cafeAddress } : fulfillment
+              }
+              savedDelivery={
+                user && savedDelivery?.forUser === user.id ? savedDelivery.selection : null
+              }
+              user={user}
+              onRequireAuth={() => {
+                closeCart()
+                if (logoutPending) return
+                setAuthReturnToCart(true)
+                setAuthOpen(true)
+              }}
+              onFulfillmentChange={setFulfillment}
+              onGoToAddresses={goToAddressesFromCart}
+              recommendations={recommendations}
+              onAddRecommendation={addOneToCart}
+              onOrderCreated={() => setOrdersRevision((current) => current + 1)}
+            />
+          )}
+          {isCafeMapOpen && <CafeMapDialog onClose={() => setCafeMapOpen(false)} />}
+          {isAuthOpen && !logoutPending && (
+            <AuthDialog
+              onClose={() => {
+                setAuthOpen(false)
+                setAuthReturnToCart(false)
+              }}
+              onAuthenticate={(account) => {
+                if (logoutPending || hasPendingLogout() || authDialogEpoch !== sessionEpoch.current)
+                  return
+                sessionEpoch.current += 1
+                activeUserId.current = account.id
+                const changedAccount = user && user.id !== account.id
+                if (changedAccount) clearPrivateState()
+                broadcastSessionChange()
+                setSessionNotice('')
+                setUser(account)
+                setAuthOpen(false)
+                if (authReturnToCart && !changedAccount) {
+                  setAuthReturnToCart(false)
+                  openCart()
+                } else navigate('/account/orders')
+              }}
+            />
+          )}
+        </Suspense>
+      </RouteErrorBoundary>
     </>
   )
 }

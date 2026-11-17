@@ -1,8 +1,13 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 import { useCartStore } from '../../../cart'
 import type { DialogItem } from '../../model/dialogContent'
 import { ProductDialog } from './ProductDialog'
+import { CatalogProvider } from '../../api/CatalogProvider'
+import { publishSiteUpdate } from '../../../../shared/lib/siteUpdates'
+
+const request = vi.hoisted(() => vi.fn())
+vi.mock('../../../auth/api/authApi', () => ({ apiRequest: request }))
 
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = function () {
@@ -11,6 +16,39 @@ beforeAll(() => {
   HTMLDialogElement.prototype.close = function () {
     this.removeAttribute('open')
   }
+})
+
+test('удаление открытого блюда блокирует добавление в корзину', async () => {
+  useCartStore.getState().clear()
+  let products = [{ ...item, _id: item.id, available: true, priceKopecks: 36000 }]
+  request.mockImplementation(async () => ({
+    categories: [{ id: 'soups', title: 'Супы', subtitle: '', products }],
+    newArrivalIds: [],
+  }))
+  render(
+    <CatalogProvider>
+      <ProductDialog item={item} onClose={() => {}} />
+    </CatalogProvider>,
+  )
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: /Добавить в корзину/ })).toBeEnabled(),
+  )
+  products = []
+  act(() => publishSiteUpdate('catalog'))
+  await waitFor(() => expect(screen.getByRole('button', { name: /Нет в наличии/ })).toBeDisabled())
+  fireEvent.click(screen.getByRole('button', { name: /Нет в наличии/ }))
+  expect(useCartStore.getState().lines).toHaveLength(0)
+})
+
+test('количество добавок ограничено 99 и блюдо переживает восстановление', async () => {
+  useCartStore.getState().clear()
+  render(<ProductDialog item={item} onClose={() => {}} />)
+  const add = screen.getByRole('button', { name: 'Добавить добавку «Сметана»' })
+  for (let count = 0; count < 100; count++) fireEvent.click(add)
+  expect(add).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: /Добавить в корзину/ }))
+  await useCartStore.persist.rehydrate()
+  expect(useCartStore.getState().lines[0]?.extras).toEqual([{ name: 'Сметана', quantity: 99 }])
 })
 
 const item: DialogItem = {

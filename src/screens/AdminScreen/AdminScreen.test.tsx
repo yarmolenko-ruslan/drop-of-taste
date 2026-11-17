@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, test, vi } from 'vitest'
@@ -8,9 +8,13 @@ import {
   useSiteContent,
 } from '../../features/site-content/SiteContentProvider'
 import { AdminScreen } from './AdminScreen'
+import { ApiError } from '../../features/auth/api/authApi'
 
 const request = vi.hoisted(() => vi.fn())
-vi.mock('../../features/auth/api/authApi', () => ({ apiRequest: request }))
+vi.mock('../../features/auth/api/authApi', async (original) => ({
+  ...(await original<typeof import('../../features/auth/api/authApi')>()),
+  apiRequest: request,
+}))
 
 function SiteName() {
   return <output aria-label="Название на сайте">{useSiteContent().brandName}</output>
@@ -18,6 +22,90 @@ function SiteName() {
 
 beforeEach(() => {
   request.mockReset()
+  localStorage.clear()
+})
+
+test('an already expired session does not leave logout pending forever', async () => {
+  localStorage.setItem('drop-of-taste:admin-logout-pending', '1')
+  request.mockRejectedValue(new ApiError('ADMIN_UNAUTHORIZED', 'Session expired', 0, 401))
+  render(
+    <MemoryRouter>
+      <AdminScreen />
+    </MemoryRouter>,
+  )
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Войти' })).toBeEnabled())
+  expect(localStorage.getItem('drop-of-taste:admin-logout-pending')).toBeNull()
+})
+
+test('failed logout hides administrative data and retries revocation before restoring a session', async () => {
+  let online = false
+  request.mockImplementation(async (path: string) => {
+    if (path === '/admin/session') return { authenticated: true }
+    if (path === '/admin/dashboard')
+      return { content: defaultSiteContent, categories: [], products: [], iikoConfigured: false }
+    if (path.startsWith('/admin/orders?')) return { orders: [], nextBefore: null }
+    if (path === '/admin/logout') {
+      if (!online) throw new Error('offline')
+      return { authenticated: false }
+    }
+    throw new Error(`Unexpected ${path}`)
+  })
+  const user = userEvent.setup()
+  const view = render(
+    <MemoryRouter>
+      <AdminScreen />
+    </MemoryRouter>,
+  )
+  await user.click(await screen.findByRole('button', { name: 'Выйти' }))
+  expect(screen.queryByRole('navigation', { name: 'Разделы панели' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Войти' })).toBeDisabled()
+  view.unmount()
+  request.mockClear()
+  render(
+    <MemoryRouter>
+      <AdminScreen />
+    </MemoryRouter>,
+  )
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/admin/logout', { method: 'POST' }))
+  expect(request.mock.calls.some(([path]) => path === '/admin/session')).toBe(false)
+  expect(screen.queryByRole('navigation', { name: 'Разделы панели' })).not.toBeInTheDocument()
+  online = true
+  act(() => window.dispatchEvent(new Event('online')))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Войти' })).toBeEnabled())
+})
+
+test('a logout in another tab prevents a late initial dashboard from restoring access', async () => {
+  let resolveDashboard!: (data: unknown) => void
+  request.mockImplementation(async (path: string) => {
+    if (path === '/admin/session') return { authenticated: true }
+    if (path === '/admin/dashboard')
+      return new Promise((resolve) => {
+        resolveDashboard = resolve
+      })
+    if (path === '/admin/logout') return { authenticated: false }
+    throw new Error(`Unexpected ${path}`)
+  })
+  render(
+    <MemoryRouter>
+      <AdminScreen />
+    </MemoryRouter>,
+  )
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/admin/dashboard'))
+  act(() => {
+    localStorage.setItem('drop-of-taste:admin-logout-pending', '1')
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: 'drop-of-taste:admin-logout-pending', newValue: '1' }),
+    )
+  })
+  await act(async () =>
+    resolveDashboard({
+      content: defaultSiteContent,
+      categories: [],
+      products: [],
+      iikoConfigured: false,
+    }),
+  )
+  expect(screen.queryByRole('navigation', { name: 'Разделы панели' })).not.toBeInTheDocument()
 })
 
 test('сохранение в админке сразу обновляет сайт и повторное сохранение отправляет только новую правку', async () => {

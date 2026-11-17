@@ -16,7 +16,9 @@
 .heading {
   margin: 26px 0 0;
   color: #572328;
-  font: 400 clamp(40px, 5vw, 64px)/1.1 var(--font-family-ruble), Georgia,
+  font:
+    400 clamp(40px, 5vw, 64px)/1.1 var(--font-family-ruble),
+    Georgia,
     'Times New Roman',
     serif;
 }
@@ -82,7 +84,9 @@
   text-transform: uppercase;
 }
 .resultBody strong {
-  font: 700 21px/1.2 var(--font-family-ruble), Georgia,
+  font:
+    700 21px/1.2 var(--font-family-ruble),
+    Georgia,
     'Times New Roman',
     serif;
 }
@@ -94,7 +98,7 @@
 .price {
   margin-top: auto;
   padding-top: 8px;
-  font-size: 17px;
+  font-size: 24px;
   font-weight: 800;
 }
 @media (max-width: 1050px) {

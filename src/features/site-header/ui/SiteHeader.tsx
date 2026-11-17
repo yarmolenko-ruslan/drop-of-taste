@@ -37,11 +37,23 @@ export function SiteHeader({
     : null
   const liveCategories: readonly (readonly [string, string])[] = catalog
     ? [
-        ['Акции', 'promotions'],
-        ...(catalog.newArrivalIds.length > 0 ? [['Новинки', 'new'] as const] : []),
+        [content.settings.labels.promotions, 'promotions'],
+        ...(catalog.newArrivalIds.length > 0 && content.settings.sections.newArrivals
+          ? [[content.settings.labels.newArrivals, 'new'] as const]
+          : []),
         ...orderedCategories!.map((category) => [category.title, category.id] as const),
       ]
-    : categories
+    : categories.map(
+        ([label, id]) =>
+          [
+            id === 'promotions'
+              ? content.settings.labels.promotions
+              : id === 'new'
+                ? content.settings.labels.newArrivals
+                : label,
+            id,
+          ] as const,
+      )
   const dialNumber = phoneNumber?.replace(/[^+\d]/g, '')
   const { pathname, search } = useLocation()
   const navigate = useNavigate()
@@ -117,7 +129,12 @@ export function SiteHeader({
     return (
       <a
         className={className}
-        href={`${isHome ? '' : '/'}#${anchor}`}
+        href={
+          (anchor === 'combo' && !content.settings.sections.combo) ||
+          (anchor === 'sauces' && !content.settings.sections.sauces)
+            ? `/menu/${anchor}`
+            : `${isHome ? '' : '/'}#${anchor}`
+        }
         key={anchor}
         aria-current={isHome && active ? 'location' : undefined}
       >
@@ -184,7 +201,7 @@ export function SiteHeader({
             <button
               className={styles.address}
               type="button"
-              aria-label="Кафе на карте"
+              aria-label={content.settings.labels.map}
               onClick={onAddressClick}
             >
               <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -192,7 +209,7 @@ export function SiteHeader({
                 <circle cx="12" cy="10" r="2.5" />
               </svg>
               <span>
-                <strong>{addressLabel ?? 'Адрес кафе'}</strong>
+                <strong>{addressLabel ?? content.settings.labels.map}</strong>
               </span>
             </button>
 
@@ -216,7 +233,7 @@ export function SiteHeader({
                 type="search"
                 name="q"
                 aria-label="Искать блюда"
-                placeholder="Искать блюда"
+                placeholder={content.settings.labels.search}
                 defaultValue={
                   pathname === '/search' ? (new URLSearchParams(search).get('q') ?? '') : ''
                 }
@@ -235,7 +252,7 @@ export function SiteHeader({
             <button
               className={styles.login}
               type="button"
-              aria-label={accountLabel ?? 'Войти'}
+              aria-label={accountLabel ?? content.settings.labels.login}
               onClick={onAccountClick}
             >
               <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -309,7 +326,7 @@ export function SiteHeader({
             <button
               className={styles.login}
               type="button"
-              aria-label={accountLabel ?? 'Войти'}
+              aria-label={accountLabel ?? content.settings.labels.login}
               onClick={onAccountClick}
             >
               <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">

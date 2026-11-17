@@ -125,15 +125,10 @@
   text-underline-offset: 3px;
 }
 
-.legal,
 .error {
   margin: 18px 0 0;
   font-size: 12px;
   line-height: 1.5;
-}
-
-.legal {
-  color: #806b62;
 }
 
 .error {

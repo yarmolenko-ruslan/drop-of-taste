@@ -14,6 +14,19 @@ type Source = 'primary' | 'backup' | 'error'
 const LOAD_TIMEOUT_MS = 12000
 
 export function MapFrame({ src, backupSrc, title, routeUrl, className }: MapFrameProps) {
+  return (
+    <MapFrameContent
+      key={JSON.stringify([src, backupSrc])}
+      src={src}
+      backupSrc={backupSrc}
+      title={title}
+      routeUrl={routeUrl}
+      className={className}
+    />
+  )
+}
+
+function MapFrameContent({ src, backupSrc, title, routeUrl, className }: MapFrameProps) {
   const frameRef = useRef<HTMLDivElement>(null)
   const sourceRef = useRef<Source>('primary')
   const [started, setStarted] = useState(() => typeof IntersectionObserver === 'undefined')

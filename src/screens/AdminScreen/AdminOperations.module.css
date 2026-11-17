@@ -89,16 +89,6 @@
 .customer {
   font-size: 17px;
 }
-.link {
-  display: inline;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: #8f1723;
-  text-decoration: underline;
-  font: inherit;
-  cursor: pointer;
-}
 .card details {
   margin: 14px 0;
 }
@@ -204,6 +194,21 @@
 }
 .profile .card {
   margin-bottom: 12px;
+}
+@media (max-width: 765px) {
+  .filters {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .filters button {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+@media (width < 680px) {
+  .filters {
+    grid-template-columns: 1fr;
+  }
 }
 @media (max-width: 720px) {
   .clientLayout {

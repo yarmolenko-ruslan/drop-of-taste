@@ -21,10 +21,15 @@ test('показывает акции и фильтрует их по спосо
 test('открывает страницу акции с подробностями по ссылке с баннера', () => {
   render(
     <MemoryRouter initialEntries={['/promotions/birthday']}>
-      <Routes><Route path="/promotions/:promotionId" element={<PromotionsScreen />} /></Routes>
+      <Routes>
+        <Route path="/promotions/:promotionId" element={<PromotionsScreen />} />
+      </Routes>
     </MemoryRouter>,
   )
   expect(screen.getByRole('heading', { name: /день рождения/i })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'Условия акции' })).toBeInTheDocument()
-  expect(screen.getByRole('article').querySelector('img')).toHaveAttribute('src', '/banners/cafe-exterior.jpg')
+  expect(screen.getByRole('article').querySelector('img')).toHaveAttribute(
+    'src',
+    '/banners/cafe-exterior.jpg',
+  )
 })

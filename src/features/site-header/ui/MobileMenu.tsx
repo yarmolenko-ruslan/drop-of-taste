@@ -1,4 +1,5 @@
 import { Link } from 'react-router'
+import { useSiteContent } from '../../site-content/SiteContentProvider'
 import { Dialog } from '../../../shared/ui/Dialog/Dialog'
 import { categories } from './navigation'
 import { formatRussianPhone } from '../../../../shared/validation/phone'
@@ -25,6 +26,7 @@ export function MobileMenu({
   onAddressClick,
   onClose,
 }: MobileMenuProps) {
+  const content = useSiteContent()
   const dialNumber = phoneNumber?.replace(/[^+\d]/g, '')
 
   return (
@@ -47,7 +49,7 @@ export function MobileMenu({
             }}
           >
             <span>
-              <strong>Кафе на карте</strong>
+              <strong>{content.settings.labels.map}</strong>
               <small>{address}</small>
             </span>
             <span aria-hidden="true">›</span>
@@ -63,33 +65,47 @@ export function MobileMenu({
         <nav className={styles.menuNavigation} aria-label="Мобильное меню">
           <span className={styles.menuSectionTitle}>{brandName}</span>
           <Link to="/promotions" onClick={onClose}>
-            Акции
+            {content.settings.labels.promotions}
           </Link>
           <Link to="/about" onClick={onClose}>
-            О нас
+            {content.settings.labels.about}
           </Link>
-          <a href="/#delivery" onClick={onClose}>
-            Доставка и оплата
-          </a>
-          <a href="/#account-benefits" onClick={onClose}>
-            Личный кабинет
-          </a>
+          {content.settings.sections.benefits && (
+            <a href="/#delivery" onClick={onClose}>
+              {content.settings.labels.delivery}
+            </a>
+          )}
+          <Link
+            to={content.settings.sections.account ? '/#account-benefits' : '/account/orders'}
+            onClick={onClose}
+          >
+            {content.settings.labels.account}
+          </Link>
 
-          <span className={styles.menuSectionTitle}>МЕНЮ</span>
+          <span className={styles.menuSectionTitle}>{content.settings.labels.menu}</span>
           {liveCategories
             .filter(([, anchor]) => anchor !== 'promotions')
             .map(([label, anchor]) => (
-              <a href={`/#${anchor}`} key={anchor} onClick={onClose}>
+              <a
+                href={
+                  (anchor === 'combo' && !content.settings.sections.combo) ||
+                  (anchor === 'sauces' && !content.settings.sections.sauces)
+                    ? `/menu/${anchor}`
+                    : `/#${anchor}`
+                }
+                key={anchor}
+                onClick={onClose}
+              >
                 {label}
               </a>
             ))}
 
-          <span className={styles.menuSectionTitle}>ИНФОРМАЦИЯ</span>
+          <span className={styles.menuSectionTitle}>{content.settings.labels.information}</span>
           <Link to="/privacy" onClick={onClose}>
-            Политика конфиденциальности
+            {content.legal.privacy.title}
           </Link>
           <Link to="/data-consent" onClick={onClose}>
-            Согласие на обработку данных
+            {content.legal.consent.title}
           </Link>
         </nav>
       </div>

@@ -8,7 +8,8 @@ import styles from './HeroSlider.module.css'
 import { useSiteContent } from '../../features/site-content/SiteContentProvider'
 
 export function HeroSlider() {
-  const { heroSlides: slides, promotions } = useSiteContent()
+  const { heroSlides: slides, promotions, settings } = useSiteContent()
+  if (!settings.sections.hero || slides.length === 0) return null
   return (
     <section className={styles.slider} id="promotions" aria-label="Предложения кафе">
       {slides.length > 1 && <div className={styles.pagination} aria-label="Выбор слайда" />}
@@ -27,6 +28,7 @@ export function HeroSlider() {
         </>
       )}
       <Swiper
+        key={JSON.stringify(slides.map((slide) => slide.id))}
         className={styles.carousel}
         modules={[A11y, Autoplay, Navigation, Pagination]}
         slidesPerView={1}
@@ -71,6 +73,13 @@ export function HeroSlider() {
                   fetchPriority={index === 0 ? 'high' : undefined}
                   loading={index === 0 ? 'eager' : 'lazy'}
                 />
+                {slide.showText && (
+                  <span className={styles.textOverlay}>
+                    {slide.badge && <span className={styles.textBadge}>{slide.badge}</span>}
+                    <strong>{slide.title}</strong>
+                    {slide.description && <span>{slide.description}</span>}
+                  </span>
+                )}
               </Link>
             </div>
           </SwiperSlide>

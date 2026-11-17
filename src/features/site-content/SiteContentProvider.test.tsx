@@ -22,6 +22,52 @@ beforeEach(() => {
   request.mockReset()
 })
 
+test('настройки применяются к цветам, описанию страницы и значку вкладки', async () => {
+  const icon = document.createElement('link')
+  icon.rel = 'icon'
+  document.head.append(icon)
+  request.mockResolvedValue({
+    ...defaultSiteContent,
+    brandName: 'Проверка оформления',
+    settings: {
+      ...defaultSiteContent.settings,
+      seoDescription: 'Новое описание',
+      favicon: '/custom-icon.png',
+      appearance: { ...defaultSiteContent.settings.appearance, brand: '#123456' },
+    },
+  })
+  render(
+    <SiteContentProvider>
+      <Probe />
+    </SiteContentProvider>,
+  )
+  await screen.findByText(/Проверка оформления/)
+  expect(document.documentElement.style.getPropertyValue('--color-brand-red')).toBe('#123456')
+  expect(document.querySelector('meta[name="description"]')).toHaveAttribute(
+    'content',
+    'Новое описание',
+  )
+  expect(icon).toHaveAttribute('href', '/custom-icon.png')
+  icon.remove()
+})
+
+test('возвращение связи обновляет каталог даже без события сохранения', async () => {
+  let categoryTitle = 'Старое меню'
+  request.mockImplementation(async () => ({
+    categories: [{ id: 'food', title: categoryTitle, subtitle: '', products: [] }],
+    newArrivalIds: [],
+  }))
+  render(
+    <CatalogProvider>
+      <Probe />
+    </CatalogProvider>,
+  )
+  expect(await screen.findByText(/Старое меню/)).toBeInTheDocument()
+  categoryTitle = 'Новое меню'
+  act(() => window.dispatchEvent(new Event('online')))
+  expect(await screen.findByText(/Новое меню/)).toBeInTheDocument()
+})
+
 test('сохранение в админке сразу обновляет содержимое и каталог на открытом сайте', async () => {
   let brandName = 'Первое название'
   let categoryTitle = 'Первое меню'

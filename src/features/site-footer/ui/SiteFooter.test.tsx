@@ -1,3 +1,4 @@
+import { defaultSiteContent } from '../../../../shared/site-content'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { SiteFooter } from './SiteFooter'
@@ -15,9 +16,8 @@ test('ссылки покупателям ведут на существующи
     'href',
     '/privacy',
   )
-  expect(screen.getByRole('link', { name: 'Согласие на обработку данных' })).toHaveAttribute(
-    'href',
-    '/data-consent',
-  )
+  expect(
+    screen.getByRole('link', { name: defaultSiteContent.legal.consent.title }),
+  ).toHaveAttribute('href', '/data-consent')
   expect(screen.queryByText('Адреса кафе')).not.toBeInTheDocument()
 })

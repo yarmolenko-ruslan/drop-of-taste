@@ -255,10 +255,12 @@ export function ClientsEditor() {
     client: Client
     addresses: string[]
     orders: Order[]
+    nextBefore?: string | null
   } | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadingProfile, setLoadingProfile] = useState(false)
+  const [loadingHistory, setLoadingHistory] = useState(false)
   const requestSeq = useRef(0)
   const selectionSeq = useRef(0)
   const load = useCallback(
@@ -292,12 +294,16 @@ export function ClientsEditor() {
   }, [load])
   async function open(id: string) {
     const seq = ++selectionSeq.current
+    setLoadingHistory(false)
     setLoadingProfile(true)
     setSelected(null)
     try {
-      const result = await apiRequest<{ client: Client; addresses: string[]; orders: Order[] }>(
-        `/admin/clients/${id}`,
-      )
+      const result = await apiRequest<{
+        client: Client
+        addresses: string[]
+        orders: Order[]
+        nextBefore?: string | null
+      }>(`/admin/clients/${id}`)
       if (seq !== selectionSeq.current) return
       setSelected(result)
       setError('')
@@ -306,6 +312,33 @@ export function ClientsEditor() {
       setError(failure instanceof Error ? failure.message : 'Не удалось открыть клиента')
     } finally {
       if (seq === selectionSeq.current) setLoadingProfile(false)
+    }
+  }
+  async function loadHistory() {
+    if (!selected?.nextBefore || loadingHistory) return
+    const profile = selected
+    const seq = selectionSeq.current
+    setLoadingHistory(true)
+    try {
+      const result = await apiRequest<{ orders: Order[]; nextBefore: string | null }>(
+        `/admin/clients/${encodeURIComponent(profile.client._id)}?before=${encodeURIComponent(profile.nextBefore!)}`,
+      )
+      if (seq !== selectionSeq.current) return
+      setSelected((current) => {
+        if (!current || current.client._id !== profile.client._id) return current
+        const known = new Set(current.orders.map((order) => order._id))
+        return {
+          ...current,
+          nextBefore: result.nextBefore,
+          orders: [...current.orders, ...result.orders.filter((order) => !known.has(order._id))],
+        }
+      })
+      setError('')
+    } catch (failure) {
+      if (seq === selectionSeq.current)
+        setError(failure instanceof Error ? failure.message : 'Не удалось загрузить заказы клиента')
+    } finally {
+      if (seq === selectionSeq.current) setLoadingHistory(false)
     }
   }
   return (
@@ -404,6 +437,11 @@ export function ClientsEditor() {
                 selected.orders.map((order) => <OrderCard key={order._id} order={order} />)
               ) : (
                 <p>Заказов пока нет.</p>
+              )}
+              {selected.nextBefore && (
+                <button type="button" disabled={loadingHistory} onClick={() => void loadHistory()}>
+                  {loadingHistory ? 'Загружаем…' : 'Показать ещё заказы'}
+                </button>
               )}
             </>
           ) : (

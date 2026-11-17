@@ -351,6 +351,13 @@ code {
     grid-template-columns: 1fr;
   }
 }
+@media (max-width: 768px) {
+  .topActions {
+    flex-direction: column;
+    width: 100%;
+    margin-top: 16px;
+  }
+}
 @media (max-width: 600px) {
   .root,
   .login {
@@ -365,7 +372,11 @@ code {
   .loginCard {
     padding: 20px;
   }
-  .topActions {
-    margin-top: 16px;
-  }
+}
+
+.editorFields {
+  display: contents;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }

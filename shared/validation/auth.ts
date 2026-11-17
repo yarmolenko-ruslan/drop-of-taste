@@ -11,6 +11,3 @@ export const requestCodeBodySchema = z.object({ phone: z.string().min(10).max(32
 export const verifyCodeBodySchema = z
   .object({ phone: z.string().min(10).max(32), code: otpCodeSchema, consent: z.literal(true) })
   .strict()
-
-export type RequestCodeBody = z.infer<typeof requestCodeBodySchema>
-export type VerifyCodeBody = z.infer<typeof verifyCodeBodySchema>

@@ -100,7 +100,7 @@
   flex: 1;
   flex-direction: column;
   min-width: 0;
-  padding: 17px 17px 16px;
+  padding: 17px 17px 27px;
 }
 
 .name {
@@ -140,9 +140,19 @@
 
 .price {
   color: #47252a;
-  font-size: 18px;
+  font-size: 24px;
   line-height: 1;
   white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .footer {
+    padding-inline: 30px;
+  }
+  .actionWrap {
+    flex: none;
+    margin-left: auto;
+  }
 }
 
 @media (max-width: 480px) {
@@ -160,7 +170,7 @@
     font-size: 9px;
   }
   .body {
-    padding: 12px;
+    padding: 12px 12px 22px;
   }
   .name {
     font-size: 16px;
@@ -172,16 +182,9 @@
     font-size: 12px;
   }
   .footer {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
     padding-top: 10px;
   }
   .price {
-    font-size: 16px;
     white-space: normal;
-  }
-  .actionWrap {
-    text-align: center;
   }
 }

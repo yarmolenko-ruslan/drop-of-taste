@@ -4,6 +4,18 @@ import { MapFrame } from './MapFrame'
 
 afterEach(() => vi.useRealTimers())
 
+test('изменение адреса карты сбрасывает ошибку старого источника', () => {
+  vi.useFakeTimers()
+  const { rerender } = render(
+    <MapFrame src="https://example.com/old" title="Карта" routeUrl="https://example.com/" />,
+  )
+  act(() => vi.advanceTimersByTime(12000))
+  expect(screen.getByRole('alert')).toBeInTheDocument()
+  rerender(<MapFrame src="https://example.com/new" title="Карта" routeUrl="https://example.com/" />)
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(screen.getByTitle('Карта')).toHaveAttribute('src', 'https://example.com/new')
+})
+
 test('при долгой загрузке основной карты переключается на резервную, затем показывает ошибку', () => {
   vi.useFakeTimers()
   render(

@@ -1,8 +1,9 @@
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify'
 import { requestCodeBodySchema, verifyCodeBodySchema } from '../shared/validation/auth.ts'
-import { SESSION_TTL_SECONDS, type AuthService } from './auth/service.ts'
-import { readSessionToken, sessionCookieName } from './auth/session-cookie.ts'
-import { createOriginChecker } from './origins.ts'
+import { SESSION_TTL_SECONDS, type AuthService } from './modules/auth/service.ts'
+import { readSessionToken, sessionCookieName } from './modules/auth/session-cookie.ts'
+import { createOriginChecker } from './http/origins.ts'
+import { securityHeaders } from '../shared/http-security.ts'
 
 function sessionCookie(name: string, token: string, secure: boolean, maxAge: number): string {
   return `${name}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? '; Secure' : ''}`
@@ -43,7 +44,8 @@ export function createApp(
   })
 
   app.addHook('onRequest', async (request, reply) => {
-    if (!request.url.startsWith('/api/auth/')) return
+    for (const [name, value] of Object.entries(securityHeaders)) reply.header(name, value)
+    if (!request.routeOptions.url?.startsWith('/api/auth/')) return
     reply.header('Cache-Control', 'no-store')
     if (request.method !== 'POST') return
     if (!isOriginAllowed(request.headers.origin)) {

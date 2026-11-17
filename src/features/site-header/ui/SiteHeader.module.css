@@ -540,7 +540,9 @@ dialog.menuDialog > div {
   align-items: center;
   gap: 8px;
   color: var(--color-burgundy);
-  font: 700 18px var(--font-family-ruble), Georgia,
+  font:
+    700 18px var(--font-family-ruble),
+    Georgia,
     'Times New Roman',
     serif;
   text-decoration: none;

@@ -1,16 +1,16 @@
 import { MongoClient } from 'mongodb'
 import { randomBytes } from 'node:crypto'
 import { createApp } from './app.ts'
-import { createMongoAuthStore, ensureAuthIndexes } from './auth/mongo-store.ts'
-import { createAuthService } from './auth/service.ts'
-import { getCatalog, seedCatalog } from './catalog/mongo-catalog.ts'
-import { ensureShopIndexes, registerShopRoutes } from './shop.ts'
-import { registerProfileRoutes } from './profile.ts'
-import { registerAdminRoutes } from './admin.ts'
-import { getPublicSiteContent, getSiteContent } from './site-content.ts'
-import { registerIikoRoutes } from './iiko.ts'
-import { registerSiteUpdateRoutes } from './site-updates.ts'
-import { createYooGateway } from './yookassa.ts'
+import { createMongoAuthStore, ensureAuthIndexes } from './modules/auth/mongo-store.ts'
+import { createAuthService } from './modules/auth/service.ts'
+import { getCatalog, seedCatalog } from './modules/catalog/mongo-catalog.ts'
+import { ensureShopIndexes, registerShopRoutes } from './modules/orders/routes.ts'
+import { registerProfileRoutes } from './modules/profile/routes.ts'
+import { registerAdminRoutes } from './modules/admin/routes.ts'
+import { getPublicSiteContent, getSiteContent } from './modules/content/service.ts'
+import { registerIikoRoutes } from './integrations/iiko/iiko.ts'
+import { registerSiteUpdateRoutes } from './modules/content/updates.ts'
+import { createYooGateway } from './modules/payments/yookassa.ts'
 
 if (process.env.NODE_ENV === 'production') {
   throw new Error('Production requires a real SMS sender and deployment configuration')
@@ -66,7 +66,7 @@ const paymentGateway =
 registerShopRoutes(app, db, mongo, auth, [origin, alternateOrigin], false, paymentGateway)
 registerProfileRoutes(app, db, mongo, auth, [origin, alternateOrigin])
 const adminPassword = process.env.ADMIN_PASSWORD ?? randomBytes(18).toString('base64url')
-await registerAdminRoutes(app, db, [origin, alternateOrigin], adminPassword)
+await registerAdminRoutes(app, db, [origin, alternateOrigin], adminPassword, mongo)
 registerIikoRoutes(app, db, mongo)
 registerSiteUpdateRoutes(app)
 app.addHook('onClose', async () => mongo.close())

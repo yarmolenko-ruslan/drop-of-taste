@@ -45,12 +45,14 @@ function ComboCard({
           </strong>
           <span className={styles.comboActionWrap}>
             <CatalogActionButton
+              onChoose={onAction ? () => onAction(combo) : undefined}
               item={{
                 id: combo.id,
                 name: combo.name,
                 image: combo.image,
                 priceRub,
                 available: live?.available,
+                action: live?.action,
               }}
             />
           </span>
@@ -75,6 +77,7 @@ function CategorySection({
   category: HomeCategory
   onProductAction?: (product: CatalogProduct) => void
 }) {
+  const content = useSiteContent()
   return (
     <section className={styles.category} id={category.id} aria-labelledby={`${category.id}-title`}>
       <div className={styles.categoryHeadingRow}>
@@ -85,7 +88,7 @@ function CategorySection({
           <p className={styles.subtitle}>{category.subtitle}</p>
         </div>
         <Link className={styles.allLink} to={`/menu/${category.id}`}>
-          Весь раздел <span aria-hidden="true">→</span>
+          {content.settings.labels.allCategory} <span aria-hidden="true">→</span>
         </Link>
       </div>
       <div className={styles.productGrid}>
@@ -122,7 +125,7 @@ export function HomeCatalog({
     : homeCategories
   return (
     <div className={styles.catalog}>
-      {combos.length > 0 && (
+      {content.settings.sections.combo && combos.length > 0 && (
         <section id="combo" aria-labelledby="combos-title">
           <h2 className={styles.heading} id="combos-title">
             {content.comboTitle}

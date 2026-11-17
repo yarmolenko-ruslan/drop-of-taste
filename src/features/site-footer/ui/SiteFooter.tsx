@@ -39,49 +39,67 @@ export function SiteFooter() {
             </Link>
             <p>{content.footerDescription}</p>
             <div className={styles.socials} aria-label="Социальные сети">
-              <a href={content.vkUrl} target="_blank" rel="noreferrer">
-                VK
-              </a>
-              <a href={content.telegramUrl} target="_blank" rel="noreferrer">
-                TG
-              </a>
+              {content.vkUrl && (
+                <a href={content.vkUrl} target="_blank" rel="noreferrer">
+                  VK
+                </a>
+              )}
+              {content.telegramUrl && (
+                <a href={content.telegramUrl} target="_blank" rel="noreferrer">
+                  TG
+                </a>
+              )}
             </div>
           </div>
           <nav aria-label="Меню в подвале">
-            <h2>МЕНЮ</h2>
+            <h2>{content.settings.labels.menu}</h2>
             <ul>
               {menuLinksLive.map(([label, id]) => (
                 <li key={id}>
-                  <a href={`/#${id}`}>{label}</a>
+                  <a
+                    href={
+                      id === 'sauces' && !content.settings.sections.sauces
+                        ? `/menu/${id}`
+                        : `/#${id}`
+                    }
+                  >
+                    {label}
+                  </a>
                 </li>
               ))}
             </ul>
           </nav>
           <nav aria-label="Покупателям">
-            <h2>ПОКУПАТЕЛЯМ</h2>
+            <h2>{content.settings.labels.customers}</h2>
             <ul>
               <li>
-                <Link to="/promotions">Акции</Link>
+                <Link to="/promotions">{content.settings.labels.promotions}</Link>
               </li>
               <li>
-                <a href="/#account-benefits">Личный кабинет</a>
+                <Link
+                  to={content.settings.sections.account ? '/#account-benefits' : '/account/orders'}
+                >
+                  {content.settings.labels.account}
+                </Link>
               </li>
               <li>
-                <a href="/#delivery">Доставка и оплата</a>
+                {content.settings.sections.benefits && (
+                  <a href="/#delivery">{content.settings.labels.delivery}</a>
+                )}
               </li>
               <li>
-                <Link to="/about">О нас</Link>
+                <Link to="/about">{content.settings.labels.about}</Link>
               </li>
               <li>
-                <Link to="/privacy">Политика конфиденциальности</Link>
+                <Link to="/privacy">{content.legal.privacy.title}</Link>
               </li>
               <li>
-                <Link to="/data-consent">Согласие на обработку данных</Link>
+                <Link to="/data-consent">{content.legal.consent.title}</Link>
               </li>
             </ul>
           </nav>
           <div className={styles.contactColumn}>
-            <h2>КОНТАКТЫ</h2>
+            <h2>{content.settings.labels.contacts}</h2>
             {dialNumber && (
               <a className={styles.phone} href={`tel:${dialNumber}`}>
                 {formatRussianPhone(content.phone)}

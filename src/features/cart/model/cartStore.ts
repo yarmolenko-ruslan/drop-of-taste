@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { z } from 'zod'
+
+export const MAX_CART_QUANTITY = 99
 type CartProduct = {
   id: string
   name: string
@@ -66,9 +68,18 @@ const savedLineSchema = z.object({
   variant: z.string().max(500),
   removedIngredients: z.array(z.string()).max(100),
   extras: z
-    .array(z.object({ name: z.string(), quantity: z.number().int().min(1).max(99) }))
+    .array(
+      z.object({
+        name: z.string(),
+        quantity: z
+          .number()
+          .int()
+          .min(1)
+          .transform((value) => Math.min(MAX_CART_QUANTITY, value)),
+      }),
+    )
     .max(100),
-  quantity: z.number().int().min(1).max(99),
+  quantity: z.number().int().min(1).max(MAX_CART_QUANTITY),
   unitPriceRub: z.number().nonnegative().nullable(),
 })
 const pendingPaymentSchema = z.object({
@@ -111,12 +122,15 @@ export const useCartStore = create<CartState>()(
       add: (item, options) =>
         set((state) => {
           const extras = Object.entries(options.extras)
-            .filter(([, quantity]) => quantity > 0)
-            .map(([name, quantity]) => ({ name, quantity }))
+            .filter(([, quantity]) => Number.isFinite(quantity) && quantity >= 1)
+            .map(([name, quantity]) => ({
+              name,
+              quantity: Math.min(MAX_CART_QUANTITY, Math.trunc(quantity)),
+            }))
             .sort((a, b) => a.name.localeCompare(b.name))
           const removedIngredients = [...options.removedIngredients].sort()
           const key = JSON.stringify([item.id, options.variant, removedIngredients, extras])
-          const quantity = Math.min(99, Math.max(1, Math.trunc(options.quantity)))
+          const quantity = Math.min(MAX_CART_QUANTITY, Math.max(1, Math.trunc(options.quantity)))
           const existing = state.lines.find((line) => line.key === key)
 
           if (existing) {
@@ -124,7 +138,7 @@ export const useCartStore = create<CartState>()(
               revision: crypto.randomUUID(),
               lines: state.lines.map((line) =>
                 line.key === key
-                  ? { ...line, quantity: Math.min(99, line.quantity + quantity) }
+                  ? { ...line, quantity: Math.min(MAX_CART_QUANTITY, line.quantity + quantity) }
                   : line,
               ),
             }
@@ -154,7 +168,7 @@ export const useCartStore = create<CartState>()(
           lines: state.lines
             .map((line) =>
               line.key === key
-                ? { ...line, quantity: Math.min(99, line.quantity + difference) }
+                ? { ...line, quantity: Math.min(MAX_CART_QUANTITY, line.quantity + difference) }
                 : line,
             )
             .filter((line) => line.quantity > 0),
@@ -214,15 +228,47 @@ export const useCartStore = create<CartState>()(
           pendingPayment?: unknown
         } | null
         if (!Array.isArray(data?.lines)) return current
-        const lines = data.lines.flatMap((line) => {
+        let repaired = false
+        let lines = data.lines.flatMap((line) => {
           const parsed = savedLineSchema.safeParse(line)
-          return parsed.success ? [parsed.data] : []
+          if (!parsed.success) return []
+          if (JSON.stringify(parsed.data.extras) !== JSON.stringify((line as CartLine).extras)) {
+            repaired = true
+            const saved = parsed.data
+            saved.key = JSON.stringify([
+              saved.productId,
+              saved.variant,
+              saved.removedIngredients,
+              saved.extras,
+            ])
+          }
+          return [parsed.data]
         })
+        if (repaired) {
+          const byKey = new Map<string, (typeof lines)[number]>()
+          for (const line of lines) {
+            const existing = byKey.get(line.key)
+            byKey.set(
+              line.key,
+              existing
+                ? {
+                    ...existing,
+                    quantity: Math.min(MAX_CART_QUANTITY, existing.quantity + line.quantity),
+                  }
+                : line,
+            )
+          }
+          lines = [...byKey.values()]
+        }
         const payment = pendingPaymentSchema.safeParse(data.pendingPayment)
         return {
           ...current,
           lines,
-          revision: typeof data.revision === 'string' ? data.revision : current.revision,
+          revision: repaired
+            ? crypto.randomUUID()
+            : typeof data.revision === 'string'
+              ? data.revision
+              : current.revision,
           pendingPayment: payment.success ? payment.data : null,
         }
       },

@@ -1,4 +1,4 @@
-import { addOneToCart, useCartStore } from '../../../cart'
+import { addOneToCart, useCartStore, MAX_CART_QUANTITY } from '../../../cart'
 import styles from './CatalogActionButton.module.css'
 
 type CatalogActionButtonProps = {
@@ -39,7 +39,7 @@ export function CatalogActionButton({ item, onChoose }: CatalogActionButtonProps
         <button
           type="button"
           aria-label={`Добавить «${item.name}» в корзину`}
-          disabled={line.quantity >= 99 || item.available === false}
+          disabled={line.quantity >= MAX_CART_QUANTITY || item.available === false}
           onClick={() => changeQuantity(line.key, 1)}
         >
           +

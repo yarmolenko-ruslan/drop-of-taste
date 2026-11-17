@@ -5,6 +5,7 @@ import { newArrivals } from '../../model/newArrivals'
 import type { CatalogProduct } from '../../model/product'
 import { ProductCard } from '../ProductCard/ProductCard'
 import styles from './NewArrivals.module.css'
+import { useSiteContent } from '../../../site-content/SiteContentProvider'
 import { useCatalog } from '../../api/CatalogProvider'
 
 export function NewArrivals({
@@ -12,20 +13,21 @@ export function NewArrivals({
 }: {
   onProductAction?: (product: CatalogProduct) => void
 }) {
-  const catalog = useCatalog()?.data
+  const { settings } = useSiteContent()
+  const catalogState = useCatalog()
+  const catalog = catalogState?.data
   const products = catalog
-    ? catalog.newArrivalIds.flatMap((id) =>
-        catalog.categories
-          .flatMap((category) => category.products)
-          .filter((product) => product._id === id),
-      )
+    ? catalog.newArrivalIds.flatMap((id) => {
+        const product = catalogState.itemsById.get(id)
+        return product ? [product] : []
+      })
     : newArrivals
   if (products.length === 0) return null
   return (
     <section className={styles.section} id="new" aria-labelledby="new-arrivals-title">
       <div className={styles.headingRow}>
         <h2 className={styles.heading} id="new-arrivals-title">
-          Новинки
+          {settings.labels.newArrivals}
         </h2>
         <div className={styles.controls}>
           <button className={styles.previous} type="button" aria-label="Предыдущие новинки">
@@ -43,7 +45,7 @@ export function NewArrivals({
       <Swiper
         className={styles.carousel}
         modules={[A11y, Navigation]}
-        slidesPerView={2}
+        slidesPerView={1}
         spaceBetween={16}
         speed={550}
         grabCursor
@@ -51,6 +53,7 @@ export function NewArrivals({
         focusableElements="input, select, option, textarea, video, label"
         navigation={{ prevEl: `.${styles.previous}`, nextEl: `.${styles.next}` }}
         breakpoints={{
+          521: { slidesPerView: 2, spaceBetween: 16 },
           768: { slidesPerView: 3, spaceBetween: 16 },
           1000: { slidesPerView: 4, spaceBetween: 20 },
         }}

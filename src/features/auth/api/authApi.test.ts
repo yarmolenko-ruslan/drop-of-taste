@@ -2,6 +2,19 @@ import { apiRequest } from './authApi'
 
 afterEach(() => vi.unstubAllGlobals())
 
+test('сообщает панели об истечении административной сессии', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json({ error: { code: 'ADMIN_UNAUTHORIZED', message: 'Войдите' } }, { status: 401 }),
+    ),
+  )
+  const expire = vi.fn()
+  window.addEventListener('drop-of-taste:admin-session-expired', expire, { once: true })
+  await expect(apiRequest('/admin/content')).rejects.toMatchObject({ code: 'ADMIN_UNAUTHORIZED' })
+  expect(expire).toHaveBeenCalledOnce()
+})
+
 test('передаёт идентификатор аккаунта и сообщает о смене сессии', async () => {
   const fetchMock = vi
     .fn()

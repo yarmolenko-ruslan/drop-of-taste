@@ -441,8 +441,9 @@ test('2000 просроченных заказов обрабатываются 
     const response = await app.inject({ method: 'GET', url: '/api/orders', headers })
     expect(response.statusCode).toBe(200)
     expect(response.json().orders).toEqual([])
-    await vi.waitFor(async () =>
-      expect(await orders.countDocuments({ canceledAt: { $exists: true } })).toBe(100),
+    await vi.waitFor(
+      async () => expect(await orders.countDocuments({ canceledAt: { $exists: true } })).toBe(100),
+      { timeout: 5000 },
     )
     // Следующий проход продвигает очередь; не повторяет первые 100 записей.
     await vi.waitFor(

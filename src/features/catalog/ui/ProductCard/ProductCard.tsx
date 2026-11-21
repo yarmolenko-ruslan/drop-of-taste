@@ -42,8 +42,12 @@ export function ProductCard({ product, onAction }: ProductCardProps) {
       <div className={styles.body}>
         <h3 className={styles.name}>{shown.name}</h3>
         <p className={styles.meta}>
-          {shown.amount != null ? `${shown.amount} ${shown.measure}` : 'Вес уточняется'} ·{' '}
-          {shown.calories != null ? `${shown.calories} ккал` : 'Калорийность уточняется'}
+          {shown.amount != null
+            ? `${shown.amount} ${shown.measure}`
+            : shown.measure === 'мл'
+              ? 'Объём уточняется'
+              : 'Вес уточняется'}{' '}
+          · {shown.calories != null ? `${shown.calories} ккал` : 'Калорийность уточняется'}
         </p>
         <p className={styles.details}>{shown.details}</p>
         <div className={styles.footer}>

@@ -1,13 +1,18 @@
 import { z } from 'zod'
 
-/** Шестизначный одноразовый код подтверждения. */
-export const otpCodeSchema = z.string().regex(/^\d{6}$/)
-export const OTP_CODE_TTL_SECONDS = 5 * 60
+export const CALL_CHECK_TTL_SECONDS = 5 * 60
+export const CALL_STATUS_POLL_SECONDS = 3
 export const CONSENT_VERSION = '2026-11-06'
-
-/** Общая форма телефона в теле запроса: строка разумной длины, нормализацию делает сервис. */
-export const requestCodeBodySchema = z.object({ phone: z.string().min(10).max(32) }).strict()
-
-export const verifyCodeBodySchema = z
-  .object({ phone: z.string().min(10).max(32), code: otpCodeSchema, consent: z.literal(true) })
+export const attemptTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/)
+export const startCallBodySchema = z
+  .object({
+    phone: z.string().min(10).max(32),
+    consent: z.literal(true),
+  })
+  .strict()
+export const checkCallBodySchema = z
+  .object({
+    attemptToken: attemptTokenSchema,
+    consent: z.literal(true),
+  })
   .strict()

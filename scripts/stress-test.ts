@@ -16,8 +16,11 @@ import { ensureShopIndexes, registerShopRoutes } from '../server/modules/orders/
 import { getPublicSiteContent } from '../server/modules/content/service.ts'
 import { registerSiteUpdateRoutes } from '../server/modules/content/updates.ts'
 import type { YooPayment } from '../server/modules/payments/yookassa.ts'
+import { restrictStressFetch } from './stress-network.ts'
 
 // No .env, existing MongoDB, real SMS, payment or iiko services are used.
+const networkGuard = restrictStressFetch()
+let simulatedRegistrations = 0
 const origin = 'http://localhost:5175'
 const origins = [origin, 'http://127.0.0.1:5175']
 const replica = await MongoMemoryReplSet.create({
@@ -33,10 +36,15 @@ await ensureShopIndexes(db)
 await seedCatalog(db)
 const auth = createAuthService({
   store: createMongoAuthStore(mongo, db),
-  secret: randomUUID(),
-  developmentCode: '123456',
-  exposeDevelopmentCode: true,
-  sender: { send: async () => {} },
+  provider: {
+    async start() {
+      simulatedRegistrations++
+      return { checkId: randomUUID(), callPhone: '+78005008275' }
+    },
+    async status() {
+      return 'verified'
+    },
+  },
 })
 const app = createApp(auth, { origins, secureCookies: false })
 app.get('/api/catalog', async (_request, reply) => {
@@ -71,6 +79,7 @@ registerShopRoutes(app, db, mongo, auth, origins, false, {
 await registerAdminRoutes(app, db, origins, 'audit-admin-password', mongo)
 registerSiteUpdateRoutes(app)
 await app.listen({ host: '127.0.0.1', port: 0 })
+networkGuard.allowLocalOrigin(app.listeningOrigin!)
 
 if (process.argv.includes('--serve')) {
   const { createServer } = await import('vite')
@@ -83,7 +92,9 @@ if (process.argv.includes('--serve')) {
     },
   })
   await vite.listen()
-  console.log('Isolated audit app: http://127.0.0.1:5175; OTP: 123456; admin: audit-admin-password')
+  console.log(
+    'Isolated audit app: http://127.0.0.1:5175; test call verification: automatic (fake provider); admin: audit-admin-password',
+  )
   let closing = false
   const close = async () => {
     if (closing) return
@@ -92,6 +103,7 @@ if (process.argv.includes('--serve')) {
     await app.close()
     await mongo.close()
     await replica.stop()
+    networkGuard.restore()
   }
   process.once('SIGINT', () => void close())
   process.once('SIGTERM', () => void close())
@@ -117,10 +129,14 @@ if (process.argv.includes('--serve')) {
       return { data: (text ? JSON.parse(text) : undefined) as T, response }
     }
     async function login(phone: string) {
-      await call('/auth/request-code', { method: 'POST', body: JSON.stringify({ phone }) }, 202)
-      const result = await call<{ user: { id: string } }>('/auth/verify-code', {
+      const started = await call<{ attemptToken: string }>(
+        '/auth/call/start',
+        { method: 'POST', body: JSON.stringify({ phone, consent: true }) },
+        202,
+      )
+      const result = await call<{ user: { id: string } }>('/auth/call/status', {
         method: 'POST',
-        body: JSON.stringify({ phone, code: '123456', consent: true }),
+        body: JSON.stringify({ attemptToken: started.data.attemptToken, consent: true }),
       })
       return {
         cookie: result.response.headers.get('set-cookie')!.split(';')[0]!,
@@ -328,8 +344,10 @@ if (process.argv.includes('--serve')) {
       node: process.version,
       completedRequests: completed,
       externalProviderCalls: 0,
+      blockedExternalRequests: networkGuard.blockedRequests,
+      simulatedRegistrations,
       functionalChecks:
-        'OTP/session, profile, address CRUD/ownership, selected-address cleanup, server price, 50 concurrent idempotent orders, payment, admin order stages, foreign-order denial',
+        'callcheck/session, profile, address CRUD/ownership, selected-address cleanup, server price, 50 concurrent idempotent orders, payment, admin order stages, foreign-order denial',
       baseline,
       rounds,
       final,
@@ -338,6 +356,11 @@ if (process.argv.includes('--serve')) {
       gcAvailable: Boolean(global.gc),
     }
     console.log(JSON.stringify(report, null, 2))
+    assert.equal(
+      networkGuard.blockedRequests,
+      0,
+      'An external provider was incorrectly used in the stress test',
+    )
     assert(
       final.heapMiB - baseline.heapMiB < 32,
       'Retained heap grew by over 32 MiB; inspect a heap profile',
@@ -349,5 +372,6 @@ if (process.argv.includes('--serve')) {
     await app.close()
     await mongo.close()
     await replica.stop()
+    networkGuard.restore()
   }
 }

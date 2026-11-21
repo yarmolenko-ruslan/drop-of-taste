@@ -93,9 +93,12 @@ function storePendingLogout(pending: boolean) {
   }
 }
 
-function broadcastSessionChange() {
+function broadcastSessionChange(accountId: string | null = null, cartCleared = false) {
   try {
-    localStorage.setItem(sessionChangeKey, crypto.randomUUID())
+    localStorage.setItem(
+      sessionChangeKey,
+      JSON.stringify({ id: crypto.randomUUID(), accountId, cartCleared }),
+    )
   } catch {
     // Session state in this tab remains correct without cross-tab storage.
   }
@@ -302,17 +305,20 @@ function AppContent() {
     }
   }, [user, isCartOpen, cafeAddress])
 
-  const clearPrivateState = useCallback(() => {
-    closeCart()
-    clearCart()
-    setFulfillment({ mode: 'pickup', label: cafeAddress })
-    setSavedDelivery(null)
-    setPickAddressForCart(false)
-    setAuthReturnToCart(false)
-    setAuthOpen(false)
-    setCafeMapOpen(false)
-    setOrdersRevision(0)
-  }, [clearCart, closeCart, cafeAddress])
+  const clearPrivateState = useCallback(
+    (clearBasket = true) => {
+      closeCart()
+      if (clearBasket) clearCart()
+      setFulfillment({ mode: 'pickup', label: cafeAddress })
+      setSavedDelivery(null)
+      setPickAddressForCart(false)
+      setAuthReturnToCart(false)
+      setAuthOpen(false)
+      setCafeMapOpen(false)
+      setOrdersRevision(0)
+    },
+    [clearCart, closeCart, cafeAddress],
+  )
 
   const revokeSession = useCallback(async () => {
     if (logoutInFlight.current) return
@@ -341,8 +347,18 @@ function AppContent() {
   useEffect(() => {
     function onStorage(event: StorageEvent) {
       if (event.key !== pendingLogoutKey && event.key !== sessionChangeKey) return
+      const previousAccountId = activeUserId.current
+      const cartRevision = useCartStore.getState().revision
+      let incoming: { accountId?: string; cartCleared?: boolean } | null = null
+      try {
+        incoming = JSON.parse(event.newValue ?? 'null')
+      } catch {
+        /* Сообщения прежних вкладок. */
+      }
       sessionEpoch.current += 1
-      clearPrivateState()
+      // Вход гостя или обновление сессии того же пользователя не удаляют общую
+      // корзину. Приватные экраны скрываем до проверки нового аккаунта.
+      clearPrivateState(event.key === pendingLogoutKey && event.newValue === '1')
       activeUserId.current = undefined
       setUser(undefined)
       navigate('/')
@@ -356,6 +372,13 @@ function AppContent() {
         .me()
         .then(({ user: account }) => {
           if (epoch === sessionEpoch.current) {
+            if (
+              previousAccountId &&
+              previousAccountId !== account.id &&
+              !(incoming?.accountId === account.id && incoming.cartCleared === true) &&
+              useCartStore.getState().revision === cartRevision
+            )
+              clearCart()
             activeUserId.current = account.id
             setUser(account)
           }
@@ -364,7 +387,7 @@ function AppContent() {
     }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
-  }, [clearPrivateState, navigate])
+  }, [clearPrivateState, clearCart, navigate])
 
   useEffect(() => {
     function onAccountChanged() {
@@ -656,7 +679,7 @@ function AppContent() {
                 activeUserId.current = account.id
                 const changedAccount = user && user.id !== account.id
                 if (changedAccount) clearPrivateState()
-                broadcastSessionChange()
+                broadcastSessionChange(account.id, Boolean(changedAccount))
                 setSessionNotice('')
                 setUser(account)
                 setAuthOpen(false)

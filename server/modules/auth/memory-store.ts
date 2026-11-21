@@ -1,5 +1,12 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto'
-import type { Account, AuthStore, ReserveCodeResult, VerifyCodeResult } from './types.ts'
+import { CALL_STATUS_POLL_SECONDS } from '../../../shared/validation/auth.ts'
+import type {
+  Account,
+  AuthStore,
+  ReserveCallResult,
+  CompleteCallResult,
+  CallRecord,
+} from './types.ts'
 import {
   DAY_MS,
   GLOBAL_DAILY_LIMIT,
@@ -11,21 +18,14 @@ import {
 } from './limits.ts'
 
 type Challenge = {
-  active?: {
-    digest: string
-    expiresAt: number
-    attempts: number
-  }
+  active?: CallRecord
   pending?: {
     reservationId: string
-    digest: string
     expiresAt: number
     ip: string
     reservedAt: number
   }
 }
-
-const MAX_CODE_ATTEMPTS = 5
 
 function sameDigest(left: string, right: string): boolean {
   const a = Buffer.from(left, 'hex')
@@ -33,8 +33,7 @@ function sameDigest(left: string, right: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
-// Local-development implementation only. Rate limits and challenges must be
-// persisted and updated atomically before any production SMS can be sent.
+// In-memory store for isolated tests. The application uses MongoDB for persistent limits.
 export function createMemoryAuthStore(): AuthStore {
   const challenges = new Map<string, Challenge>()
   const phoneRequests = new Map<string, number[]>()
@@ -77,14 +76,7 @@ export function createMemoryAuthStore(): AuthStore {
   }
 
   return {
-    async reserveCode({
-      reservationId,
-      phone,
-      ip,
-      digest,
-      now,
-      expiresAt,
-    }): Promise<ReserveCodeResult> {
+    async reserveCall({ reservationId, phone, ip, now, expiresAt }): Promise<ReserveCallResult> {
       prune(now)
       const existing = challenges.get(phone)
       const phoneTimes = recent(phoneRequests, phone, now)
@@ -107,7 +99,7 @@ export function createMemoryAuthStore(): AuthStore {
 
       challenges.set(phone, {
         active: existing?.active,
-        pending: { reservationId, digest, expiresAt, ip, reservedAt: now },
+        pending: { reservationId, expiresAt, ip, reservedAt: now },
       })
       phoneRequests.set(phone, [...phoneTimes, now])
       phoneDayRequests.set(phone, [...phoneDayTimes, now])
@@ -115,7 +107,7 @@ export function createMemoryAuthStore(): AuthStore {
       allRequests.push(now)
       return { status: 'reserved' }
     },
-    async confirmCode(phone, reservationId, now) {
+    async confirmCall(phone, reservationId, now, call) {
       const challenge = challenges.get(phone)
       const pending = challenge?.pending
       if (!challenge || !pending || pending.reservationId !== reservationId) return false
@@ -124,51 +116,66 @@ export function createMemoryAuthStore(): AuthStore {
         if (!challenge.active) challenges.delete(phone)
         return false
       }
-      challenge.active = { digest: pending.digest, expiresAt: pending.expiresAt, attempts: 0 }
+      challenge.active = call
       return true
     },
-    async cancelCode(phone, reservationId) {
+    async cancelCall(phone, reservationId, releaseLimits) {
       const challenge = challenges.get(phone)
       if (!challenge || challenge.pending?.reservationId !== reservationId) return
       const pending = challenge.pending
-      // SMS не ушёл — откатываем лимиты резервирования, чтобы сбой доставки
-      // не сжигал бюджеты номера, IP и всего сервиса.
-      phoneRequests.set(phone, withoutOne(phoneRequests.get(phone) ?? [], pending.reservedAt))
-      phoneDayRequests.set(phone, withoutOne(phoneDayRequests.get(phone) ?? [], pending.reservedAt))
-      ipRequests.set(pending.ip, withoutOne(ipRequests.get(pending.ip) ?? [], pending.reservedAt))
-      const globalIndex = allRequests.indexOf(pending.reservedAt)
-      if (globalIndex !== -1) allRequests.splice(globalIndex, 1)
+      // Refund only when the provider explicitly rejected the call.
+      if (releaseLimits) {
+        phoneRequests.set(phone, withoutOne(phoneRequests.get(phone) ?? [], pending.reservedAt))
+        phoneDayRequests.set(
+          phone,
+          withoutOne(phoneDayRequests.get(phone) ?? [], pending.reservedAt),
+        )
+        ipRequests.set(pending.ip, withoutOne(ipRequests.get(pending.ip) ?? [], pending.reservedAt))
+        const globalIndex = allRequests.indexOf(pending.reservedAt)
+        if (globalIndex !== -1) allRequests.splice(globalIndex, 1)
+      }
       challenge.pending = undefined
       if (!challenge.active) challenges.delete(phone)
     },
-    async verifyCode(phone, digest, now): Promise<VerifyCodeResult> {
+    async acquireCall(digest, now) {
+      for (const [phone, challenge] of challenges) {
+        const active = challenge.active
+        if (!active || !sameDigest(active.digest, digest)) continue
+        if (active.expiresAt <= now) return { status: 'expired' }
+        if ((active.nextCheckAt ?? 0) > now)
+          return {
+            status: 'waiting',
+            pollAfterSeconds: Math.ceil((active.nextCheckAt! - now) / 1000),
+          }
+        active.nextCheckAt = now + CALL_STATUS_POLL_SECONDS * 1000
+        return { status: 'ready', phone, checkId: active.checkId, expiresAt: active.expiresAt }
+      }
+      return { status: 'expired' }
+    },
+    async completeCall({
+      phone,
+      digest,
+      checkId,
+      now,
+      sessionDigest,
+      sessionExpiresAt,
+    }): Promise<CompleteCallResult> {
       const challenge = challenges.get(phone)
       const active = challenge?.active
-      if (!active) return 'invalid'
-      if (active.expiresAt <= now) {
-        challenge.active = undefined
-        if (!challenge.pending) challenges.delete(phone)
-        return 'expired'
-      }
-      if (active.attempts >= MAX_CODE_ATTEMPTS) return 'limited'
-      if (!sameDigest(active.digest, digest)) {
-        active.attempts += 1
-        return active.attempts >= MAX_CODE_ATTEMPTS ? 'limited' : 'invalid'
-      }
-      if (challenge.pending) challenge.active = undefined
-      else challenges.delete(phone)
-      return 'verified'
-    },
-    async getOrCreateAccount(phone) {
-      const existing = accountsByPhone.get(phone)
-      if (existing) return existing
-      const account = { id: randomUUID(), phone, name: '' }
+      if (
+        !active ||
+        active.expiresAt <= now ||
+        active.checkId !== checkId ||
+        !sameDigest(active.digest, digest)
+      )
+        return { status: 'expired' }
+      const account = accountsByPhone.get(phone) ?? { id: randomUUID(), phone, name: '' }
       accountsByPhone.set(phone, account)
       accountsById.set(account.id, account)
-      return account
-    },
-    async createSession(digest, accountId, expiresAt) {
-      sessions.set(digest, { accountId, expiresAt })
+      sessions.set(sessionDigest, { accountId: account.id, expiresAt: sessionExpiresAt })
+      if (challenge.pending) challenge.active = undefined
+      else challenges.delete(phone)
+      return { status: 'verified', account }
     },
     async findSession(digest, now) {
       const session = sessions.get(digest)

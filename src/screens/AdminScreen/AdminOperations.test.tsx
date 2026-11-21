@@ -6,6 +6,133 @@ import { OrdersEditor, ClientsEditor } from './AdminOperations'
 const request = vi.hoisted(() => vi.fn())
 vi.mock('../../features/auth/api/authApi', () => ({ apiRequest: request }))
 
+test('заказ на нулевую сумму не помечается как неоплаченный', async () => {
+  request.mockResolvedValue({
+    orders: [
+      {
+        _id: 'free-order',
+        accountId: 'customer',
+        createdAt: '2026-11-21T10:00:00Z',
+        fulfillmentStatus: 'new',
+        input: { fulfillment: { mode: 'pickup', label: 'Кафе' } },
+        quote: { lines: [], totalKopecks: 0, discountKopecks: 0, deliveryKopecks: 0 },
+      },
+    ],
+    nextBefore: null,
+  })
+  render(<OrdersEditor />)
+  expect(await screen.findByText('Не требуется — заказ на 0 ₽')).toBeInTheDocument()
+  expect(screen.queryByText('Не оплачено')).not.toBeInTheDocument()
+})
+
+test.each(['pickup', 'delivery'] as const)(
+  'действия администратора согласованы со способом получения: %s',
+  async (mode) => {
+    const order = {
+      _id: 'ready-order',
+      accountId: 'customer',
+      createdAt: '2026-11-21T10:00:00Z',
+      fulfillmentStatus: 'preparing',
+      input: { fulfillment: { mode, label: 'Кафе' } },
+      quote: { lines: [], totalKopecks: 10000, discountKopecks: 0, deliveryKopecks: 0 },
+    }
+    request.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') {
+        order.fulfillmentStatus = JSON.parse(String(init.body)).stage
+        return { order: { ...order } }
+      }
+      const requestedStage = new URLSearchParams(path.split('?')[1]).get('stage')
+      return {
+        orders: order.fulfillmentStatus === requestedStage ? [{ ...order }] : [],
+        nextBefore: null,
+      }
+    })
+    render(<OrdersEditor />)
+    fireEvent.click(screen.getByRole('tab', { name: 'В работе' }))
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: mode === 'pickup' ? /Заказ готов/ : /Передать в доставку/,
+      }),
+    )
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        '/admin/orders/ready-order/stage',
+        expect.objectContaining({ body: JSON.stringify({ stage: 'delivering' }) }),
+      ),
+    )
+    fireEvent.click(screen.getByRole('tab', { name: /В доставке/ }))
+    const card = (await screen.findByText('№READY-OR')).closest('article')!
+    expect(within(card).getByText('Этап:').parentElement).toHaveTextContent(
+      mode === 'pickup' ? 'Можно забирать' : 'В доставке',
+    )
+    fireEvent.click(
+      within(card).getByRole('button', {
+        name: mode === 'pickup' ? /Выдать заказ/ : /Завершить заказ/,
+      }),
+    )
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        '/admin/orders/ready-order/stage',
+        expect.objectContaining({ body: JSON.stringify({ stage: 'completed' }) }),
+      ),
+    )
+  },
+)
+
+test.each([
+  {
+    adjustments: [{ label: 'Скидка ко дню рождения (15%)', amountKopecks: -1500 }],
+    birthdayDiscountKopecks: 1500,
+    expected: 'Скидка ко дню рождения (15%): −15 ₽',
+  },
+  {
+    adjustments: [{ label: 'Бонус-код SALE', amountKopecks: -1500 }],
+    promoDiscountKopecks: 1500,
+    promoCode: 'SALE',
+    expected: 'Бонус-код SALE: −15 ₽',
+  },
+  {
+    adjustments: [{ label: 'Скидка за самовывоз (15%)', amountKopecks: -1500 }],
+    discountKopecks: 1500,
+    expected: 'Скидка за самовывоз (15%): −15 ₽',
+  },
+  {
+    adjustments: [{ label: 'Акция выходного дня', amountKopecks: -1500 }],
+    expected: 'Акция выходного дня: −15 ₽',
+  },
+  { birthdayDiscountKopecks: 1500, expected: 'Скидка ко дню рождения: −15 ₽' },
+  { promoDiscountKopecks: 1500, promoCode: 'SALE', expected: 'Бонус-код SALE: −15 ₽' },
+  { discountKopecks: 1500, expected: 'Скидка за самовывоз: −15 ₽' },
+  { adjustments: [], birthdayDiscountKopecks: 1500, expected: 'Скидка ко дню рождения: −15 ₽' },
+  {
+    adjustments: [],
+    promoDiscountKopecks: 1500,
+    promoCode: 'SALE',
+    expected: 'Бонус-код SALE: −15 ₽',
+  },
+  { adjustments: [], discountKopecks: 1500, expected: 'Скидка за самовывоз: −15 ₽' },
+])('история клиента показывает причину скидки: $expected', async ({ expected, ...discount }) => {
+  const client = { _id: 'discount-client', name: 'Ирина', phone: '+79991234567' }
+  const order = {
+    _id: 'discount-order',
+    accountId: client._id,
+    createdAt: '2026-11-21T10:00:00Z',
+    fulfillmentStatus: 'completed',
+    input: { fulfillment: { mode: 'pickup', label: 'Кафе' } },
+    quote: { lines: [], totalKopecks: 8500, deliveryKopecks: 0, discountKopecks: 0, ...discount },
+  }
+  request.mockImplementation(async (path: string) =>
+    path === '/admin/clients/discount-client'
+      ? { client, addresses: [], orders: [order] }
+      : { clients: [client], nextBefore: null },
+  )
+  render(<ClientsEditor />)
+  fireEvent.click(await screen.findByRole('button', { name: /Ирина/ }))
+  fireEvent.click(await screen.findByText('№DISCOUNT'))
+  expect(await screen.findByText(expected)).toBeInTheDocument()
+  expect(screen.getAllByText(/−15 ₽/)).toHaveLength(1)
+})
+
 test('история клиента загружается страницами и отбрасывает повторы', async () => {
   const client = { _id: 'paged', name: 'Ирина', phone: '+79991234567' }
   const order = (id: string) => ({
@@ -25,6 +152,7 @@ test('история клиента загружается страницами 
   })
   render(<ClientsEditor />)
   fireEvent.click(await screen.findByRole('button', { name: /Ирина/ }))
+  expect(await screen.findByText('История заказов · 1+')).toBeInTheDocument()
   fireEvent.click(await screen.findByRole('button', { name: 'Показать ещё заказы' }))
   expect(await screen.findByText('История заказов · 2')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Показать ещё заказы' })).not.toBeInTheDocument()

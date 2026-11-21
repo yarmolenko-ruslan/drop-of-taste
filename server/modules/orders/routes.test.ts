@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createTestCallProvider } from '../../tests/fixtures/call-provider.ts'
 import { randomUUID } from 'node:crypto'
 import type { BonusCode } from '../../../shared/bonus-code.ts'
 import { defaultSiteContent, type SiteContent } from '../../../shared/site-content.ts'
@@ -40,9 +41,7 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
   const app = createApp(
     createAuthService({
       store: createMongoAuthStore(mongo, db),
-      sender: { async send() {} },
-      secret: 'test-secret',
-      developmentCode: '123456',
+      provider: createTestCallProvider(),
     }),
     { origins: [origin], secureCookies: true },
   )
@@ -52,25 +51,23 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
     await ensureShopIndexes(db)
     const auth = createAuthService({
       store: createMongoAuthStore(mongo, db),
-      sender: { async send() {} },
-      secret: 'test-secret',
-      developmentCode: '123456',
+      provider: createTestCallProvider(),
     })
     registerShopRoutes(app, db, mongo, auth, [origin], true)
     registerProfileRoutes(app, db, mongo, auth, [origin], true)
     const phone = '+79991234567'
     const request = await app.inject({
       method: 'POST',
-      url: '/api/auth/request-code',
+      url: '/api/auth/call/start',
       headers: { origin },
-      payload: { phone },
+      payload: { phone, consent: true },
     })
     expect(request.statusCode).toBe(202)
     const verified = await app.inject({
       method: 'POST',
-      url: '/api/auth/verify-code',
+      url: '/api/auth/call/status',
       headers: { origin },
-      payload: { phone, code: '123456', consent: true },
+      payload: { attemptToken: request.json().attemptToken, consent: true },
     })
     expect(verified.statusCode).toBe(200)
     const cookie = verified.headers['set-cookie']!.toString().split(';')[0]
@@ -485,21 +482,18 @@ test('MongoDB сохраняет профиль и тестовый заказ; 
     expect(staleDelivery.statusCode).toBe(409)
     expect(staleDelivery.json().error.code).toBe('ADDRESS_CHANGED')
     const otherPhone = '+79991234568'
-    expect(
-      (
-        await app.inject({
-          method: 'POST',
-          url: '/api/auth/request-code',
-          headers: { origin },
-          payload: { phone: otherPhone },
-        })
-      ).statusCode,
-    ).toBe(202)
+    const otherStart = await app.inject({
+      method: 'POST',
+      url: '/api/auth/call/start',
+      headers: { origin },
+      payload: { phone: otherPhone, consent: true },
+    })
+    expect(otherStart.statusCode).toBe(202)
     const otherLogin = await app.inject({
       method: 'POST',
-      url: '/api/auth/verify-code',
+      url: '/api/auth/call/status',
       headers: { origin },
-      payload: { phone: otherPhone, code: '123456', consent: true },
+      payload: { attemptToken: otherStart.json().attemptToken, consent: true },
     })
     const otherCookie = otherLogin.headers['set-cookie']!.toString().split(';')[0]
     const staleAccountHeader = {
@@ -695,9 +689,7 @@ test('MongoDB отдаёт историю заказов страницами п
   const app = createApp(
     createAuthService({
       store: createMongoAuthStore(mongo, db),
-      sender: { async send() {} },
-      secret: 'test-secret',
-      developmentCode: '123456',
+      provider: createTestCallProvider(),
     }),
     { origins: [origin], secureCookies: true },
   )
@@ -707,25 +699,23 @@ test('MongoDB отдаёт историю заказов страницами п
     await ensureShopIndexes(db)
     const auth = createAuthService({
       store: createMongoAuthStore(mongo, db),
-      sender: { async send() {} },
-      secret: 'test-secret',
-      developmentCode: '123456',
+      provider: createTestCallProvider(),
     })
     registerShopRoutes(app, db, mongo, auth, [origin], true)
     registerProfileRoutes(app, db, mongo, auth, [origin], true)
 
     const phone = '+79991234567'
-    await app.inject({
+    const callStart2 = await app.inject({
       method: 'POST',
-      url: '/api/auth/request-code',
+      url: '/api/auth/call/start',
       headers: { origin },
-      payload: { phone },
+      payload: { phone, consent: true },
     })
     const verified = await app.inject({
       method: 'POST',
-      url: '/api/auth/verify-code',
+      url: '/api/auth/call/status',
       headers: { origin },
-      payload: { phone, code: '123456', consent: true },
+      payload: { attemptToken: callStart2.json().attemptToken, consent: true },
     })
     const cookie = verified.headers['set-cookie']!.toString().split(';')[0]!
     const accountId = verified.json().user.id as string

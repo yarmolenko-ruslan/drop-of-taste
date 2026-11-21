@@ -54,9 +54,9 @@ export function ProductDialog({ item: inputItem, onClose }: ProductDialogProps) 
               />
             </>
           ) : (
-            <div className={styles.sauceVisual} aria-label={`Соус «${item.name}»`}>
+            <div className={styles.sauceVisual} aria-label={`Фото товара «${item.name}» пока нет`}>
               <span aria-hidden="true">◉</span>
-              <span>СОУС К БЛЮДУ</span>
+              <span>Фото пока нет</span>
             </div>
           )}
           {item.badges.length > 0 && (
@@ -68,14 +68,20 @@ export function ProductDialog({ item: inputItem, onClose }: ProductDialogProps) 
               ))}
             </div>
           )}
-          <div className={styles.nutrition}>Пищевая ценность уточняется</div>
+          <div className={styles.nutrition}>
+            {item.calories != null ? `${item.calories} ккал` : 'Калорийность уточняется'}
+          </div>
         </div>
         <div className={styles.right}>
           <div className={styles.details}>
             <h2 id={titleId}>{item.name}</h2>
             <p className={styles.meta}>
-              {item.amount != null ? `${item.amount} ${item.measure}` : 'Вес уточняется'} ·{' '}
-              {item.calories != null ? `${item.calories} ккал` : 'Калорийность уточняется'}
+              {item.amount != null
+                ? `${item.amount} ${item.measure}`
+                : item.measure === 'мл'
+                  ? 'Объём уточняется'
+                  : 'Вес уточняется'}{' '}
+              · {item.calories != null ? `${item.calories} ккал` : 'Калорийность уточняется'}
             </p>
             <p className={styles.description}>{item.description}</p>
 
@@ -90,6 +96,7 @@ export function ProductDialog({ item: inputItem, onClose }: ProductDialogProps) 
             {item.extras.length > 0 && (
               <section className={styles.extras} aria-label="Добавки к блюду">
                 <h3>Добавить к блюду</h3>
+                <p>Заказ с добавками пока недоступен. Для оформления добавьте блюдо без них.</p>
                 <div className={styles.extraList}>
                   {item.extras.map((extra) => (
                     <div className={styles.extra} key={extra}>

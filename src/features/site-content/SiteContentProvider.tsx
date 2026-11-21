@@ -6,9 +6,11 @@ import { subscribeSiteUpdate } from '../../shared/lib/siteUpdates'
 import { mergeSiteSettings } from '../../../shared/site-settings'
 
 const Context = createContext<SiteContent>(defaultSiteContent)
+const LoadedContext = createContext(false)
 
 export function SiteContentProvider({ children }: { children: ReactNode }) {
   const [content, setContent] = useState<SiteContent>(defaultSiteContent)
+  const [loaded, setLoaded] = useState(false)
   useEffect(() => {
     let active = true
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -22,8 +24,10 @@ export function SiteContentProvider({ children }: { children: ReactNode }) {
           '/site-content',
         )
         if (!active || currentRequest !== requestId) return
-        if (data && typeof data.browserTitle === 'string')
+        if (data && typeof data.browserTitle === 'string') {
           setContent({ ...data, settings: mergeSiteSettings(data.settings) })
+          setLoaded(true)
+        }
         if (data && data.nextPromotionChangeInMs !== undefined)
           nextDelay = Math.min(nextDelay, Math.max(100, data.nextPromotionChangeInMs + 100))
       } catch {
@@ -75,9 +79,18 @@ export function SiteContentProvider({ children }: { children: ReactNode }) {
       for (const key of Object.keys(values)) document.documentElement.style.removeProperty(key)
     }
   }, [content.browserTitle, content.brandLogo, content.settings])
-  return <Context.Provider value={content}>{children}</Context.Provider>
+  return (
+    <Context.Provider value={content}>
+      <LoadedContext.Provider value={loaded}>{children}</LoadedContext.Provider>
+    </Context.Provider>
+  )
 }
 
 export function useSiteContent() {
   return useContext(Context)
+}
+
+/** Initial defaults cannot confirm whether a promotion is enabled by the administrator. */
+export function useSiteContentLoaded() {
+  return useContext(LoadedContext)
 }

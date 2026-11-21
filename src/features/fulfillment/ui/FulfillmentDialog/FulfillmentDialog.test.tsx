@@ -20,7 +20,7 @@ test('сохраняет доставку по введённому адресу
   fireEvent.change(screen.getByRole('textbox', { name: 'Подъезд' }), { target: { value: '2' } })
   fireEvent.change(screen.getByRole('textbox', { name: 'Этаж' }), { target: { value: '3' } })
   fireEvent.change(screen.getByRole('textbox', { name: 'Квартира' }), { target: { value: '25' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить выбор' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить адрес' }))
   expect(onSave).toHaveBeenCalledWith({
     mode: 'delivery',
     label: 'ул. Мира, 10, подъезд 2, 3 этаж, квартира 25',
@@ -41,12 +41,12 @@ test('требует квартиру, подъезд и этаж, пока не
   fireEvent.change(screen.getByRole('textbox', { name: 'Улица и дом' }), {
     target: { value: 'ул. Мира, 10' },
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить выбор' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить адрес' }))
   expect(onSave).not.toHaveBeenCalled()
 
   fireEvent.click(screen.getByRole('checkbox', { name: 'Частный дом' }))
   expect(screen.getByRole('textbox', { name: 'Квартира' })).toBeDisabled()
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить выбор' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить адрес' }))
   expect(onSave).toHaveBeenCalledWith({
     mode: 'delivery',
     label: 'ул. Мира, 10',
@@ -64,7 +64,7 @@ test('требует квартиру, подъезд и этаж, пока не
 test('показывает ошибки обязательных полей при пустой форме доставки', () => {
   const onSave = vi.fn()
   render(<FulfillmentDialog onClose={() => {}} onSave={onSave} />)
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить выбор' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить адрес' }))
   expect(onSave).not.toHaveBeenCalled()
   expect(screen.getByText('Укажите улицу и номер дома')).toBeInTheDocument()
   expect(screen.getByText('Укажите подъезд')).toBeInTheDocument()
@@ -81,13 +81,13 @@ test('не сохраняет адрес с буквами в подъезде �
   fireEvent.change(screen.getByRole('textbox', { name: 'Подъезд' }), { target: { value: '2а' } })
   fireEvent.change(screen.getByRole('textbox', { name: 'Этаж' }), { target: { value: '3' } })
   fireEvent.change(screen.getByRole('textbox', { name: 'Квартира' }), { target: { value: '25' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить выбор' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить адрес' }))
   expect(onSave).not.toHaveBeenCalled()
   expect(screen.getByRole('alert')).toHaveTextContent('Подъезд — только цифры, до 3 знаков')
 
   fireEvent.change(screen.getByRole('textbox', { name: 'Подъезд' }), { target: { value: '2' } })
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить выбор' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить адрес' }))
   expect(onSave).toHaveBeenCalledTimes(1)
 })
 
@@ -117,7 +117,7 @@ test('подставляет текущий адрес при редактиро
     'Домофон не работает',
   )
 
-  fireEvent.click(screen.getByRole('button', { name: 'Сохранить выбор' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить адрес' }))
   expect(onSave).toHaveBeenCalledWith({
     mode: 'delivery',
     label: 'ул. Апрельская, 18, подъезд 1, 8 этаж, квартира 44',

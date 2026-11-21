@@ -12,6 +12,10 @@ test('ссылки покупателям ведут на существующи
 
   expect(screen.getByRole('link', { name: 'Акции' })).toHaveAttribute('href', '/promotions')
   expect(screen.getByRole('link', { name: 'О нас' })).toHaveAttribute('href', '/about')
+  expect(screen.getByRole('link', { name: 'Личный кабинет' })).toHaveAttribute(
+    'href',
+    '/account/orders',
+  )
   expect(screen.getByRole('link', { name: 'Политика конфиденциальности' })).toHaveAttribute(
     'href',
     '/privacy',

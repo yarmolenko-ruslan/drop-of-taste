@@ -4,6 +4,13 @@ import { useState } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { AccountScreen } from './AccountScreen'
 import { useCartStore } from '../../features/cart'
+import { defaultSiteContent } from '../../../shared/site-content'
+
+let siteContent = defaultSiteContent
+vi.mock('../../features/site-content/SiteContentProvider', () => ({
+  useSiteContent: () => siteContent,
+  useSiteContentLoaded: () => true,
+}))
 
 const { calls, state, catalogState } = vi.hoisted(() => ({
   calls: [] as { path: string; method: string; body: unknown; accountId: string | null }[],
@@ -130,6 +137,7 @@ beforeAll(() => {
   }
 })
 beforeEach(() => {
+  siteContent = defaultSiteContent
   catalogState.value = null
   useCartStore.setState({ lines: [], isOpen: false })
   calls.length = 0
@@ -152,6 +160,53 @@ beforeEach(() => {
   state.profileResponse = null
   state.notificationSaves = []
 })
+
+test.each(['disabled', 'removed', 'zero', 'future', 'expired'])(
+  'плашка дня рождения исчезает после обновления акции: %s',
+  async (change) => {
+    state.profile.birthday = '1992-02-29'
+    const view = renderAccount('profile')
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'День' })).toHaveTextContent('29'),
+    )
+    expect(screen.getByText('Скидка ко дню рождения')).toBeInTheDocument()
+    siteContent = {
+      ...defaultSiteContent,
+      promotions: defaultSiteContent.promotions
+        .filter((item) => change !== 'removed' || item.id !== 'birthday')
+        .map((item) =>
+          item.id !== 'birthday'
+            ? item
+            : {
+                ...item,
+                ...(change === 'disabled' && { enabled: false }),
+                ...(change === 'zero' && { discountPercent: 0 }),
+                ...(change === 'future' && { startsAt: '2099-01-01T00:00:00Z' }),
+                ...(change === 'expired' && { endsAt: '2000-01-01T00:00:00Z' }),
+              },
+        ),
+    }
+    view.rerender(
+      <MemoryRouter initialEntries={['/account/profile']}>
+        <Routes>
+          <Route
+            path="/account/:section?"
+            element={
+              <AccountScreen
+                user={userData}
+                onLogout={view.onLogout}
+                onUpdateUser={view.onUpdateUser}
+              />
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(screen.queryByText('Скидка ко дню рождения')).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'День' })).toBeDisabled()
+    expect(screen.getByText(/Дата сохраняется один раз/)).toBeInTheDocument()
+  },
+)
 function renderAccount(
   section: string,
   onUpdateUser = vi.fn(),
@@ -388,9 +443,7 @@ test('карточка заказа показывает статус-ленту
   expect(screen.getByText('Завершён')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /Отметить выполненным/ })).not.toBeInTheDocument()
   expect(screen.queryByText('Передан в кафе')).not.toBeInTheDocument()
-  expect(
-    screen.getByText('Самовывоз · г. Красноярск, улица Петра Подзолкова, 3и'),
-  ).toBeInTheDocument()
+  expect(screen.getByText('г. Красноярск, улица Петра Подзолкова, 3и')).toBeInTheDocument()
   expect(screen.getByText('Борщ × 1')).toBeInTheDocument()
   expect(screen.getByText('Скидка самовывоза')).toBeInTheDocument()
   expect(screen.getByText('Итого')).toBeInTheDocument()
@@ -749,7 +802,7 @@ test('адрес добавляется и удаляется через API', a
   await user.type(screen.getByRole('textbox', { name: 'Подъезд' }), '2')
   await user.type(screen.getByRole('textbox', { name: 'Этаж' }), '3')
   await user.type(screen.getByRole('textbox', { name: 'Квартира' }), '25')
-  await user.click(screen.getByRole('button', { name: 'Сохранить выбор' }))
+  await user.click(screen.getByRole('button', { name: 'Сохранить адрес' }))
   await screen.findByText('ул. Мира, д. 10, под. 2, эт. 3, кв. 25')
   expect(calls.some((call) => call.path === '/addresses' && call.method === 'POST')).toBe(true)
   await waitFor(() => expect(onAddressPicked).toHaveBeenCalledWith(state.addresses[0]))

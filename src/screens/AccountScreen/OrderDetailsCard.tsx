@@ -46,13 +46,20 @@ export function OrderDetailsCard({
   const completed = order.status === 'completed'
   const noPaymentRequired = order.quote.totalKopecks === 0
   const pickup = order.input.fulfillment.mode === 'pickup'
+  const hasAdjustments = Boolean(order.quote.adjustments?.length)
   const paid = order.paymentStatus === 'succeeded'
   const canceled = Boolean(order.canceledAt) || order.paymentStatus === 'canceled'
+  const onlinePaymentApplicable = !noPaymentRequired && order.paymentExpiresAt !== null
   const waitingForPayment =
-    canceled || (paymentEnabled && !noPaymentRequired && !paid && !completed)
+    canceled || (paymentEnabled && onlinePaymentApplicable && !paid && !completed)
   const stage = order.fulfillmentStatus ?? (order.status === 'completed' ? 'completed' : 'new')
   const stages = ['new', 'preparing', 'delivering', 'completed'] as const
-  const labels = ['Обработка заявки', 'Приготовление', 'Доставка', 'Завершён']
+  const labels = [
+    'Обработка заявки',
+    'Приготовление',
+    pickup ? 'Можно забирать' : 'Доставка',
+    'Завершён',
+  ]
   const current = stages.indexOf(stage)
   const steps: { label: string; detail: string; state: 'done' | 'current' | 'waiting' }[] =
     labels.map((label, index) => ({
@@ -87,6 +94,7 @@ export function OrderDetailsCard({
         <strong>Заказ №{order._id.slice(0, 6).toUpperCase()}</strong>
         <span className={styles.orderBadge}>{badge}</span>
       </header>
+      {order.quote.testMode && <p>Тестовый заказ — в кафе не передаётся.</p>}
       {waitingForPayment && !canceled && order.paymentExpiresAt && (
         <PaymentCountdown expiresAt={order.paymentExpiresAt} />
       )}
@@ -109,9 +117,14 @@ export function OrderDetailsCard({
         <div className={styles.orderTile}>
           <span>Получение</span>
           <strong>
-            {pickup
-              ? `Самовывоз · ${order.input.fulfillment.label}`
-              : order.input.fulfillment.label}
+            {pickup ? (
+              <>
+                <span className={styles.pickupMethod}>Самовывоз</span>
+                <span className={styles.pickupAddress}>{order.input.fulfillment.label}</span>
+              </>
+            ) : (
+              order.input.fulfillment.label
+            )}
           </strong>
         </div>
         <div className={styles.orderTile}>
@@ -120,14 +133,20 @@ export function OrderDetailsCard({
             {noPaymentRequired
               ? 'Не требуется — заказ на 0 ₽'
               : paid
-                ? 'Оплачено онлайн'
+                ? canceled
+                  ? order.quote.testMode
+                    ? 'Тестовая оплата подтверждена после отмены. Деньги не списывались.'
+                    : 'Оплачено после отмены — обратитесь к нам для возврата.'
+                  : 'Оплачено онлайн'
                 : order.paymentStatus === 'pending' || order.paymentStatus === 'creating'
                   ? 'Ожидаем подтверждения'
                   : canceled
                     ? 'Платёж отменён'
-                    : paymentEnabled
-                      ? 'Не оплачен'
-                      : 'Не указана'}
+                    : !onlinePaymentApplicable
+                      ? 'Онлайн-оплата не предусмотрена'
+                      : paymentEnabled
+                        ? 'Не оплачен'
+                        : 'Онлайн-оплата недоступна'}
           </strong>
         </div>
       </div>
@@ -149,13 +168,21 @@ export function OrderDetailsCard({
             </span>
           </li>
         ))}
-        {!order.quote.adjustments && order.quote.discountKopecks > 0 && (
+        {!hasAdjustments && order.quote.discountKopecks > 0 && (
           <li>
             <span>Скидка самовывоза</span>
             <span>−{(order.quote.discountKopecks / 100).toLocaleString('ru-RU')} ₽</span>
           </li>
         )}
-        {!order.quote.adjustments && (order.quote.promoDiscountKopecks ?? 0) > 0 && (
+        {!hasAdjustments && (order.quote.birthdayDiscountKopecks ?? 0) > 0 && (
+          <li>
+            <span>Скидка ко дню рождения</span>
+            <span>
+              −{((order.quote.birthdayDiscountKopecks ?? 0) / 100).toLocaleString('ru-RU')} ₽
+            </span>
+          </li>
+        )}
+        {!hasAdjustments && (order.quote.promoDiscountKopecks ?? 0) > 0 && (
           <li>
             <span>Бонус-код {order.quote.promoCode}</span>
             <span>
@@ -163,7 +190,7 @@ export function OrderDetailsCard({
             </span>
           </li>
         )}
-        {!order.quote.adjustments && order.quote.deliveryKopecks > 0 && (
+        {!hasAdjustments && order.quote.deliveryKopecks > 0 && (
           <li>
             <span>Доставка</span>
             <span>{(order.quote.deliveryKopecks / 100).toLocaleString('ru-RU')} ₽</span>
@@ -185,7 +212,7 @@ export function OrderDetailsCard({
           </button>
         )}
         {paymentEnabled &&
-          !noPaymentRequired &&
+          onlinePaymentApplicable &&
           !canceled &&
           onPay &&
           (!order.paymentStatus ||

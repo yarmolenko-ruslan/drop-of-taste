@@ -1,95 +1,118 @@
-import { createHash, createHmac, randomBytes, randomInt, randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { normalizeRussianMobilePhone } from '../../../shared/validation/phone.ts'
-import { CONSENT_VERSION, OTP_CODE_TTL_SECONDS } from '../../../shared/validation/auth.ts'
-import { SESSION_TTL_SECONDS, type AuthStore, type CodeSender } from './types.ts'
-
+import {
+  CONSENT_VERSION,
+  CALL_CHECK_TTL_SECONDS,
+  CALL_STATUS_POLL_SECONDS,
+  attemptTokenSchema,
+} from '../../../shared/validation/auth.ts'
+import {
+  CallProviderError,
+  SESSION_TTL_SECONDS,
+  type AuthStore,
+  type CallProvider,
+} from './types.ts'
 export { SESSION_TTL_SECONDS } from './types.ts'
 
-const CODE_TTL_MS = OTP_CODE_TTL_SECONDS * 1000
-
-type AuthServiceOptions = {
-  store: AuthStore
-  sender: CodeSender
-  secret: string
-  consentVersion?: () => Promise<string>
-  now?: () => number
-  // This exists only for the local stub sender and must never be used in production.
-  developmentCode?: string
-  // Only the local development API may return the one-time code to the browser.
-  exposeDevelopmentCode?: boolean
-}
-
-function tokenDigest(token: string): string {
-  return createHash('sha256').update(token).digest('hex')
+function digest(value: string) {
+  return createHash('sha256').update(value).digest('hex')
 }
 
 export function createAuthService({
   store,
-  sender,
-  secret,
+  provider,
   now = Date.now,
-  developmentCode,
-  exposeDevelopmentCode = false,
   consentVersion,
-}: AuthServiceOptions) {
-  function codeDigest(phone: string, code: string): string {
-    return createHmac('sha256', secret).update(`${phone}:${code}`).digest('hex')
-  }
-
+}: {
+  store: AuthStore
+  provider: CallProvider
+  now?: () => number
+  consentVersion?: () => Promise<string>
+}) {
   return {
-    async requestCode(rawPhone: string, ip: string) {
+    async startCall(rawPhone: string, ip: string) {
       const phone = normalizeRussianMobilePhone(rawPhone)
       if (!phone) return { status: 'invalid_phone' } as const
-      const code = developmentCode ?? randomInt(0, 1_000_000).toString().padStart(6, '0')
-      const digest = codeDigest(phone, code)
       const reservationId = randomUUID()
-      const currentTime = now()
-      const reservation = await store.reserveCode({
+      const startedAt = now()
+      const expiresAt = startedAt + CALL_CHECK_TTL_SECONDS * 1000
+      const reserved = await store.reserveCall({
         reservationId,
         phone,
         ip,
-        digest,
-        now: currentTime,
-        expiresAt: currentTime + CODE_TTL_MS,
+        now: startedAt,
+        expiresAt,
       })
-      if (reservation.status === 'limited') return reservation
-
-      try {
-        await sender.send(phone, code)
-      } catch {
-        await store.cancelCode(phone, reservationId)
-        return { status: 'delivery_failed' } as const
+      if (reserved.status === 'limited') return reserved
+      if (now() >= expiresAt) {
+        await store.cancelCall(phone, reservationId, true)
+        return { status: 'unavailable' } as const
       }
-      const confirmed = await store.confirmCode(phone, reservationId, now())
-      if (!confirmed) return { status: 'delivery_failed' } as const
+      let result: Awaited<ReturnType<CallProvider['start']>>
+      try {
+        result = await provider.start(phone, ip)
+        if (!/^[A-Za-z0-9_-]{1,128}$/.test(result.checkId) || !/^\+7\d{10}$/.test(result.callPhone))
+          throw new CallProviderError(false)
+      } catch (failure) {
+        await store.cancelCall(
+          phone,
+          reservationId,
+          failure instanceof CallProviderError && failure.definitelyRejected,
+        )
+        return { status: 'unavailable' } as const
+      }
+      const attemptToken = randomBytes(32).toString('base64url')
+      const confirmed = await store.confirmCall(phone, reservationId, now(), {
+        digest: digest(attemptToken),
+        checkId: result.checkId,
+        callPhone: result.callPhone,
+        expiresAt,
+      })
+      if (!confirmed) return { status: 'unavailable' } as const
       return {
         status: 'accepted',
+        attemptToken,
+        callPhone: result.callPhone,
+        expiresAt,
         retryAfterSeconds: 60,
-        ...(exposeDevelopmentCode ? { developmentCode: code } : {}),
       } as const
     },
-    async verifyCode(rawPhone: string, code: string) {
-      const phone = normalizeRussianMobilePhone(rawPhone)
-      if (!phone) return { status: 'invalid_phone' } as const
-      const result = await store.verifyCode(phone, codeDigest(phone, code), now())
-      if (result !== 'verified') return { status: result } as const
-
-      const account = await store.getOrCreateAccount(
-        phone,
-        consentVersion ? await consentVersion() : CONSENT_VERSION,
-        now(),
-      )
+    async checkCall(attemptToken: string) {
+      if (!attemptTokenSchema.safeParse(attemptToken).success) return { status: 'expired' } as const
+      const attemptDigest = digest(attemptToken)
+      const lease = await store.acquireCall(attemptDigest, now())
+      if (lease.status !== 'ready') return lease
+      let status: Awaited<ReturnType<CallProvider['status']>>
+      try {
+        status = await provider.status(lease.checkId)
+      } catch {
+        return { status: 'unavailable', pollAfterSeconds: CALL_STATUS_POLL_SECONDS } as const
+      }
+      if (status === 'expired') return { status: 'expired' } as const
+      if (status === 'waiting')
+        return { status: 'waiting', pollAfterSeconds: CALL_STATUS_POLL_SECONDS } as const
+      if (status !== 'verified')
+        return { status: 'unavailable', pollAfterSeconds: CALL_STATUS_POLL_SECONDS } as const
+      const revision = consentVersion ? await consentVersion() : CONSENT_VERSION
       const token = randomBytes(32).toString('base64url')
-      await store.createSession(tokenDigest(token), account.id, now() + SESSION_TTL_SECONDS * 1000)
-      return { status: 'verified', account, token } as const
+      const currentTime = now()
+      const result = await store.completeCall({
+        phone: lease.phone,
+        digest: attemptDigest,
+        checkId: lease.checkId,
+        now: currentTime,
+        consentVersion: revision,
+        sessionDigest: digest(token),
+        sessionExpiresAt: currentTime + SESSION_TTL_SECONDS * 1000,
+      })
+      return result.status === 'verified' ? { ...result, token } : result
     },
     async getAccount(token: string | undefined) {
-      return token ? store.findSession(tokenDigest(token), now()) : null
+      return token ? store.findSession(digest(token), now()) : null
     },
     async logout(token: string | undefined) {
-      if (token) await store.deleteSession(tokenDigest(token))
+      if (token) await store.deleteSession(digest(token))
     },
   }
 }
-
 export type AuthService = ReturnType<typeof createAuthService>

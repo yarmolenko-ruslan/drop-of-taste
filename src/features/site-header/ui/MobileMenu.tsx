@@ -75,10 +75,7 @@ export function MobileMenu({
               {content.settings.labels.delivery}
             </a>
           )}
-          <Link
-            to={content.settings.sections.account ? '/#account-benefits' : '/account/orders'}
-            onClick={onClose}
-          >
+          <Link to="/account/orders" onClick={onClose}>
             {content.settings.labels.account}
           </Link>
 

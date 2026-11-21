@@ -10,28 +10,9 @@ import { useSiteContent } from '../../../site-content/SiteContentProvider'
 import { CartLineItem, CartPrice } from './CartLineItem'
 import { LoadingState } from '../../../../shared/ui/LoadingState/LoadingState'
 import { BIRTHDAY_CLAIM_RELEASED_EVENT } from '../../../../../shared/birthday'
-
-type Quote = {
-  lines: {
-    productId: string
-    name: string
-    quantity: number
-    unitPriceKopecks: number
-    lineTotalKopecks: number
-  }[]
-  subtotalKopecks: number
-  discountKopecks: number
-  promoCode?: string
-  promoDiscountKopecks: number
-  birthdayDiscountKopecks?: number
-  deliveryKopecks: number
-  adjustments?: { label: string; amountKopecks: number }[]
-  totalKopecks: number
-  eligible: boolean
-  minimumOrderMessage?: string
-  deliveryTerms?: string
-  testMode: boolean
-}
+import { usePromotionActive } from '../../../../shared/lib/usePromotionActive'
+import type { CartQuote as Quote } from '../../model/checkoutAttempt'
+import { checkoutSchema } from '../../../../../shared/validation/checkout'
 
 function orderInput(
   lines: readonly CartLine[],
@@ -40,7 +21,7 @@ function orderInput(
   birthdayDiscount = false,
 ) {
   if (lines.some((line) => line.extras.length > 0))
-    throw new Error('Цены добавок уточняются. Уберите добавки из заказа.')
+    throw new Error('Заказ с добавками пока недоступен. Добавьте блюдо заново без добавок.')
   return {
     lines: lines.map((line) => ({
       productId: line.productId,
@@ -91,13 +72,22 @@ export function CartDrawer({
   onAddRecommendation,
 }: CartDrawerProps) {
   const siteContent = useSiteContent()
-  const birthdayPromotion = siteContent.promotions.find(
-    (item) => item.id === 'birthday' && item.enabled !== false,
+  const birthdayPromotion = siteContent.promotions.find((item) => item.id === 'birthday')
+  const birthdayInPeriod = usePromotionActive(birthdayPromotion)
+  const birthdayPromotionActive = Boolean(
+    birthdayInPeriod && birthdayPromotion && (birthdayPromotion.discountPercent ?? 10) > 0,
   )
   const accountId = user?.id
   const cafeAddress = siteContent.address
   const lines = useCartStore((state) => state.lines)
   const cartRevision = useCartStore((state) => state.revision)
+  const checkoutAttempt = useCartStore((state) => state.checkoutAttempt)
+  const savedAttempt =
+    checkoutAttempt &&
+    checkoutAttempt.accountId === accountId &&
+    checkoutAttempt.revision === cartRevision
+      ? checkoutAttempt
+      : null
   const close = useCartStore((state) => state.close)
   const clear = useCartStore((state) => state.clear)
   const changeQuantity = useCartStore((state) => state.changeQuantity)
@@ -110,7 +100,7 @@ export function CartDrawer({
     accountId &&
     birthdayAvailability.accountId === accountId &&
     birthdayAvailability.available &&
-    birthdayPromotion,
+    birthdayPromotionActive,
   )
   const birthdaySelectedForAccount =
     birthdaySelected && birthdayAccountId === accountId && birthdayAvailable
@@ -151,11 +141,15 @@ export function CartDrawer({
   const [orderKey, setOrderKey] = useState<string | null>(null)
   const [testPaymentEnabled, setTestPaymentEnabled] = useState(false)
   const [orderIdToPay, setOrderIdToPay] = useState<string | null>(null)
+  const paymentEnabled = savedAttempt?.paymentEnabled ?? testPaymentEnabled
+  const displayedFulfillment = savedAttempt?.input.fulfillment ?? fulfillment
   // При потере ответа заказ мог сохраниться: повторяем тот же ключ без нового расчёта.
   const [submittedInputSignature, setSubmittedInputSignature] = useState('')
   const mounted = useRef(true)
   useEffect(() => {
     const refreshAfterCancellation = () => {
+      const attempt = useCartStore.getState().checkoutAttempt
+      if (attempt) useCartStore.getState().forgetCheckout(attempt.key)
       cachedSignature.current = ''
       setQuote(null)
       setOrderIdToPay(null)
@@ -173,7 +167,24 @@ export function CartDrawer({
     }
   }, [])
   const catalog = useCatalog()
+  const [restoredKey, setRestoredKey] = useState<string | null>(null)
+  if (savedAttempt && restoredKey !== savedAttempt.key) {
+    setRestoredKey(savedAttempt.key)
+    setPromo(savedAttempt.input.promoCode ?? '')
+    setAppliedPromo(savedAttempt.input.promoCode ?? '')
+    setBirthdaySelected(Boolean(savedAttempt.input.birthdayDiscount))
+    setBirthdayAccountId(savedAttempt.accountId)
+    if (savedAttempt.input.birthdayDiscount)
+      setBirthdayAvailability({ accountId: savedAttempt.accountId, available: true })
+  }
+  const restoredFulfillmentKey = useRef<string | null>(null)
+  useEffect(() => {
+    if (!savedAttempt || restoredFulfillmentKey.current === savedAttempt.key) return
+    restoredFulfillmentKey.current = savedAttempt.key
+    onFulfillmentChange(savedAttempt.input.fulfillment)
+  }, [savedAttempt, onFulfillmentChange])
   const count = cartCount(lines)
+  if (!count && pricedItems !== null) setPricedItems(null)
   const hasUnpricedExtras = lines.some((line) => line.extras.length > 0)
   useEffect(() => {
     if (!isOpen || !count || busy) return
@@ -202,9 +213,10 @@ export function CartDrawer({
     ? null
     : JSON.stringify(orderInput(lines, fulfillment, appliedPromo, birthdaySelectedForAccount))
   const savedOrderMatches = Boolean(
-    (orderIdToPay || submittedInputSignature === signature) &&
-    quoteSignature === signature &&
-    quote,
+    savedAttempt ||
+    ((orderIdToPay || submittedInputSignature === signature) &&
+      quoteSignature === signature &&
+      quote),
   )
   const calculationKey = JSON.stringify([signature, isOpen, quoteAttempt, savedOrderMatches])
   // Invalidate checkout synchronously, including the first frame after reopening.
@@ -213,19 +225,20 @@ export function CartDrawer({
   }
   const calculating = calculation.key !== calculationKey || calculation.pending
   const latestSignature = useRef(signature)
-  const previousAccount = useRef(accountId)
-  useEffect(() => {
-    if (previousAccount.current === accountId) return
-    previousAccount.current = accountId
-    setBirthdaySelected(false)
-    setBirthdayAccountId(null)
+  const [previousAccount, setPreviousAccount] = useState(accountId)
+  if (previousAccount !== accountId) {
+    setPreviousAccount(accountId)
+    if (!savedAttempt) {
+      setBirthdaySelected(false)
+      setBirthdayAccountId(null)
+    }
     setSubmittedInputSignature('')
     setOrderIdToPay(null)
-  }, [accountId])
+  }
   useLayoutEffect(() => {
     latestSignature.current = signature
   }, [signature])
-  const currentQuote = quoteSignature === signature ? quote : null
+  const currentQuote = savedAttempt?.quote ?? (quoteSignature === signature ? quote : null)
   const itemQuote = pricedItems?.key === itemsKey ? pricedItems.quote : null
   const displayQuote =
     currentQuote ?? (pricedItems && pricedItems.accountId === accountId ? pricedItems.quote : null)
@@ -267,16 +280,27 @@ export function CartDrawer({
   )
 
   function chooseDelivery() {
-    if (fulfillment.mode === 'delivery') return
-    if (savedDelivery) onFulfillmentChange(savedDelivery)
-    else if (!user) onRequireAuth?.()
+    if (displayedFulfillment.mode === 'delivery') return
+    if (savedDelivery) {
+      discardSavedCheckout()
+      onFulfillmentChange(savedDelivery)
+    } else if (!user) onRequireAuth?.()
     else onGoToAddresses()
+  }
+
+  function discardSavedCheckout() {
+    if (savedAttempt) useCartStore.getState().forgetCheckout(savedAttempt.key)
+    setOrderIdToPay(null)
+    setSubmittedInputSignature('')
+    setOrderKey(null)
+    setQuote(null)
+    cachedSignature.current = ''
+    setQuoteAttempt((value) => value + 1)
   }
 
   useEffect(() => {
     if (!count) {
       cachedSignature.current = ''
-      setPricedItems(null)
       return
     }
     if (busy || !calculating || (!isOpen && cachedSignature.current === signature)) return
@@ -291,7 +315,8 @@ export function CartDrawer({
           setOrderKey(null)
         }
         try {
-          if (!requestBody) throw new Error('Цены добавок уточняются. Уберите добавки из заказа.')
+          if (!requestBody)
+            throw new Error('Заказ с добавками пока недоступен. Добавьте блюдо заново без добавок.')
           const [configResponse, quoteResponse] = await Promise.allSettled([
             apiRequest<{ testPaymentEnabled: boolean; birthdayAvailable?: boolean }>(
               '/checkout/config',
@@ -329,7 +354,7 @@ export function CartDrawer({
             setNotice(
               result.promoDiscountKopecks > 0
                 ? `Бонус-код ${appliedPromo} применён`
-                : 'Бонус-код не применён: на этот заказ действует более выгодная скидка.',
+                : 'Бонус-код не изменил сумму заказа. Проверьте скидки в расчёте.',
             )
           else setNotice((previous) => (previous.startsWith('Заказ ') ? previous : ''))
         } catch (failure) {
@@ -396,7 +421,7 @@ export function CartDrawer({
   }
 
   async function createOrder() {
-    if (!currentQuote || !orderKey) return
+    if (!currentQuote || (!orderKey && !savedAttempt)) return
     if (!user) {
       onRequireAuth?.()
       return
@@ -406,16 +431,29 @@ export function CartDrawer({
       setNotice('')
       const submittedSignature = signature
       setSubmittedInputSignature(submittedSignature)
-      const result = orderIdToPay
-        ? { order: { _id: orderIdToPay } }
+      const attempt = savedAttempt ?? {
+        key: orderKey!,
+        accountId: user.id,
+        revision: cartRevision,
+        input: checkoutSchema.parse(
+          orderInput(lines, fulfillment, appliedPromo, birthdaySelectedForAccount),
+        ),
+        quote: currentQuote,
+        paymentEnabled,
+      }
+      useCartStore.getState().rememberCheckout(attempt)
+      const savedOrderId = attempt.orderId ?? orderIdToPay
+      const result = savedOrderId
+        ? { order: { _id: savedOrderId } }
         : await apiRequest<{ order: { _id: string } }>('/orders', {
             method: 'POST',
-            headers: { 'Idempotency-Key': orderKey, 'X-Account-Id': user.id },
+            headers: { 'Idempotency-Key': attempt.key, 'X-Account-Id': user.id },
             body: JSON.stringify({
-              ...orderInput(lines, fulfillment, appliedPromo, birthdaySelectedForAccount),
-              expectedTotalKopecks: currentQuote.totalKopecks,
+              ...attempt.input,
+              expectedTotalKopecks: attempt.quote.totalKopecks,
             }),
           })
+      useCartStore.getState().rememberCheckout({ ...attempt, orderId: result.order._id })
       if (!mounted.current) return
       if (currentQuote.totalKopecks === 0) {
         await apiRequest(`/orders/${encodeURIComponent(result.order._id)}/complete`, {
@@ -434,7 +472,7 @@ export function CartDrawer({
         onOrderCreated?.()
         return
       }
-      if (testPaymentEnabled) {
+      if (paymentEnabled) {
         const cartChanged = latestSignature.current !== submittedSignature
         if (cartChanged) {
           setOrderIdToPay(null)
@@ -468,7 +506,16 @@ export function CartDrawer({
         failure instanceof ApiError &&
         (failure.status >= 500 || ['NETWORK_ERROR', 'TIMEOUT'].includes(failure.code))
       if (!uncertain) setSubmittedInputSignature('')
+      const saved = useCartStore.getState().checkoutAttempt
+      if (
+        !uncertain &&
+        !saved?.orderId &&
+        saved &&
+        !(failure instanceof ApiError && failure.code === 'UNAUTHENTICATED')
+      )
+        useCartStore.getState().forgetCheckout(saved.key)
       if (failure instanceof ApiError && failure.code === 'ORDER_CANCELED') {
+        if (saved) useCartStore.getState().forgetCheckout(saved.key)
         const payment = useCartStore.getState().pendingPayment
         if (payment && payment.accountId === user.id)
           useCartStore.getState().forgetPayment(payment.orderId, user.id)
@@ -538,6 +585,19 @@ export function CartDrawer({
                 setQuote(null)
               }}
             >
+              <svg
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6m4-6v6" />
+              </svg>
               Очистить
             </button>
           )}
@@ -593,15 +653,23 @@ export function CartDrawer({
                 <div className={styles.fulfillmentTabs} role="group" aria-label="Способ получения">
                   <button
                     type="button"
-                    aria-pressed={fulfillment.mode === 'pickup'}
+                    aria-pressed={displayedFulfillment.mode === 'pickup'}
                     disabled={busy}
-                    onClick={() => onFulfillmentChange({ mode: 'pickup', label: cafeAddress })}
+                    onClick={() => {
+                      if (
+                        displayedFulfillment.mode === 'pickup' &&
+                        displayedFulfillment.label === cafeAddress
+                      )
+                        return
+                      discardSavedCheckout()
+                      onFulfillmentChange({ mode: 'pickup', label: cafeAddress })
+                    }}
                   >
                     Самовывоз
                   </button>
                   <button
                     type="button"
-                    aria-pressed={fulfillment.mode === 'delivery'}
+                    aria-pressed={displayedFulfillment.mode === 'delivery'}
                     disabled={busy}
                     onClick={chooseDelivery}
                   >
@@ -609,20 +677,23 @@ export function CartDrawer({
                   </button>
                 </div>
                 <div className={styles.fulfillmentDetail}>
-                  {fulfillment.mode === 'pickup' ? (
-                    <span>{fulfillment.label}</span>
+                  {displayedFulfillment.mode === 'pickup' ? (
+                    <span>{displayedFulfillment.label}</span>
                   ) : (
                     <>
-                      <span title={fulfillment.label}>
-                        {fulfillment.details
-                          ? formatCompactAddress(fulfillment.details)
-                          : fulfillment.label}
+                      <span title={displayedFulfillment.label}>
+                        {displayedFulfillment.details
+                          ? formatCompactAddress(displayedFulfillment.details)
+                          : displayedFulfillment.label}
                       </span>
                       <button
                         type="button"
                         className={styles.changeAddress}
                         disabled={busy}
-                        onClick={onGoToAddresses}
+                        onClick={() => {
+                          discardSavedCheckout()
+                          onGoToAddresses()
+                        }}
                       >
                         Изменить
                       </button>
@@ -636,6 +707,7 @@ export function CartDrawer({
                 onSubmit={(event) => {
                   event.preventDefault()
                   const code = promo.trim().toUpperCase()
+                  if (code !== appliedPromo) discardSavedCheckout()
                   setAppliedPromo(code)
                 }}
               >
@@ -670,6 +742,7 @@ export function CartDrawer({
                       checked={birthdaySelectedForAccount}
                       disabled={busy}
                       onChange={(event) => {
+                        discardSavedCheckout()
                         if (!event.target.checked) {
                           setBirthdaySelected(false)
                           return
@@ -764,7 +837,7 @@ export function CartDrawer({
                   {!displayQuote.eligible && displayQuote.minimumOrderMessage && (
                     <p>{displayQuote.minimumOrderMessage}</p>
                   )}
-                  {fulfillment.mode === 'delivery' && displayQuote.deliveryTerms && (
+                  {displayedFulfillment.mode === 'delivery' && displayQuote.deliveryTerms && (
                     <small>{displayQuote.deliveryTerms}</small>
                   )}
                 </div>
@@ -776,6 +849,9 @@ export function CartDrawer({
               )}
             </div>
             <footer className={styles.footer}>
+              {displayQuote?.testMode && (
+                <p>Тестовый заказ: деньги не списываются, заказ не передаётся в кафе.</p>
+              )}
               {busy && !orderIdToPay && <LoadingState compact label="Оформляем заказ…" />}
               <button
                 type="button"
@@ -798,8 +874,8 @@ export function CartDrawer({
                     : displayQuote
                       ? displayQuote.totalKopecks === 0
                         ? 'Оформить заказ'
-                        : testPaymentEnabled
-                          ? orderIdToPay
+                        : paymentEnabled
+                          ? (savedAttempt?.orderId ?? orderIdToPay)
                             ? 'Повторить переход к оплате'
                             : 'Перейти к оплате'
                           : 'Оформить заказ'

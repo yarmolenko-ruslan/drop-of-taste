@@ -57,7 +57,6 @@ export const homeCategories: readonly HomeCategory[] = [
         id: 'oatmeal',
         name: 'Каша овсяная с ягодами',
         details: 'На молоке, с клюквой и мёдом',
-        badges: ['lenten'],
       }),
       product({
         id: 'ham-omelet',
@@ -266,7 +265,7 @@ export const homeCategories: readonly HomeCategory[] = [
       product({
         id: 'latte',
         name: 'Латте',
-        details: 'Сироп на выбор',
+        details: 'Кофе с тёплым молоком',
         measure: 'мл',
         action: 'choose',
       }),

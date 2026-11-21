@@ -160,8 +160,7 @@ const productCopy: Record<string, ProductCopy> = {
     ingredients: ['Кофе', 'Молоко'],
   },
   latte: {
-    description:
-      'Мягкий кофе с большим количеством тёплого молока. Можно дополнить любимым сиропом.',
+    description: 'Мягкий кофе с большим количеством тёплого молока.',
     ingredients: ['Кофе', 'Молоко'],
   },
   'herbal-tea': {

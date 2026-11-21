@@ -392,7 +392,10 @@ export function AdminScreen({ staffLogin = false }: { staffLogin?: boolean }) {
           <p>
             {principal?.name} · {principal?.role === 'owner' ? 'Полный доступ' : 'Личный доступ'}
           </p>
-          <p>Изменения появляются на сайте сразу после сохранения.</p>
+          <p>
+            После сохранения сайт обновится автоматически. В открытой вкладке это может занять до
+            минуты.
+          </p>
         </div>
         <div className={styles.topActions}>
           <Link to="/">Открыть сайт ↗</Link>

@@ -1,5 +1,42 @@
 import { apiRequest, setAdminRequestIdentity } from './authApi'
 
+test.each(['TimeoutError', 'AbortError', 'TypeError', 'SyntaxError'])(
+  'ошибка чтения успешного ответа %s сохраняет возможность безопасно повторить запрос',
+  async (name) => {
+    const failure = new DOMException('Response body interrupted', name)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 201,
+        json: async () => {
+          throw failure
+        },
+      })),
+    )
+    await expect(apiRequest('/orders')).rejects.toMatchObject({
+      code: name === 'TimeoutError' ? 'TIMEOUT' : 'NETWORK_ERROR',
+    })
+  },
+)
+
+test('отмена чтения ответа внешним сигналом сохраняет исходную ошибку', async () => {
+  const controller = new AbortController()
+  const failure = new DOMException('Canceled', 'AbortError')
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => {
+        controller.abort()
+        throw failure
+      },
+    })),
+  )
+  await expect(apiRequest('/orders', { signal: controller.signal })).rejects.toBe(failure)
+})
+
 beforeEach(() => setAdminRequestIdentity(null))
 afterEach(() => {
   setAdminRequestIdentity(null)
@@ -191,4 +228,36 @@ test('session identity is sent only with admin working requests, and changes not
     window.removeEventListener('drop-of-taste:admin-session-expired', expired)
     window.removeEventListener('drop-of-taste:account-changed', customer)
   }
+})
+
+test('phone call methods send strict consent payloads to the new endpoints without retrying a failed start', async () => {
+  const { authApi } = await import('./authApi')
+  const fetchMock = vi.fn<typeof fetch>(async () =>
+    Response.json({ status: 'waiting', pollAfterSeconds: 3 }),
+  )
+  vi.stubGlobal('fetch', fetchMock)
+  const controller = new AbortController()
+  await authApi.startCall('+79991234567', true, controller.signal)
+  expect(fetchMock.mock.calls[0]![0]).toBe('/api/auth/call/start')
+  expect(JSON.parse(fetchMock.mock.calls[0]![1]!.body as string)).toEqual({
+    phone: '+79991234567',
+    consent: true,
+  })
+  await authApi.checkCall('A'.repeat(43), true, controller.signal)
+  expect(fetchMock.mock.calls[1]![0]).toBe('/api/auth/call/status')
+  expect(JSON.parse(fetchMock.mock.calls[1]![1]!.body as string)).toEqual({
+    attemptToken: 'A'.repeat(43),
+    consent: true,
+  })
+  fetchMock.mockResolvedValueOnce(
+    Response.json(
+      { error: { code: 'RATE_LIMITED', message: 'Повторите позже' } },
+      { status: 429, headers: { 'Retry-After': '60' } },
+    ),
+  )
+  await expect(authApi.startCall('+79991234567', true)).rejects.toMatchObject({
+    code: 'RATE_LIMITED',
+    retryAfterSeconds: 60,
+  })
+  expect(fetchMock).toHaveBeenCalledTimes(3)
 })

@@ -61,51 +61,65 @@ export async function apiRequest<T>(
       signal,
       headers,
     })
+    ensureCurrent()
+    if (!response.ok) {
+      const body = await response.json().catch(() => null)
+      ensureCurrent()
+      if (body?.error?.code === 'ACCOUNT_CHANGED')
+        window.dispatchEvent(new Event('drop-of-taste:account-changed'))
+      if (
+        ['ADMIN_UNAUTHORIZED', 'ADMIN_ACCOUNT_CHANGED', 'ADMIN_SESSION_CHANGED'].includes(
+          body?.error?.code,
+        )
+      )
+        window.dispatchEvent(new Event('drop-of-taste:admin-session-expired'))
+      throw new ApiError(
+        body?.error?.code ?? 'REQUEST_FAILED',
+        body?.error?.message ?? 'Не удалось выполнить запрос',
+        Number(response.headers.get('Retry-After') ?? 0),
+        response.status,
+      )
+    }
+    const result = response.status === 204 ? (undefined as T) : await response.json()
+    ensureCurrent()
+    return result
   } catch (failure) {
     if (externalSignal?.aborted) throw failure
     ensureCurrent()
-    if (failure instanceof DOMException && failure.name === 'TimeoutError')
-      throw new ApiError('TIMEOUT', 'Сервер не ответил вовремя. Попробуйте ещё раз')
-    throw new ApiError('NETWORK_ERROR', 'Нет связи с локальным сервером')
-  }
-  ensureCurrent()
-  if (!response.ok) {
-    const body = await response.json().catch(() => null)
-    ensureCurrent()
-    if (body?.error?.code === 'ACCOUNT_CHANGED')
-      window.dispatchEvent(new Event('drop-of-taste:account-changed'))
+    if (failure instanceof ApiError) throw failure
     if (
-      ['ADMIN_UNAUTHORIZED', 'ADMIN_ACCOUNT_CHANGED', 'ADMIN_SESSION_CHANGED'].includes(
-        body?.error?.code,
-      )
+      timeoutSignal.aborted ||
+      (failure instanceof DOMException && failure.name === 'TimeoutError')
     )
-      window.dispatchEvent(new Event('drop-of-taste:admin-session-expired'))
-    throw new ApiError(
-      body?.error?.code ?? 'REQUEST_FAILED',
-      body?.error?.message ?? 'Не удалось выполнить запрос',
-      Number(response.headers.get('Retry-After') ?? 0),
-      response.status,
-    )
+      throw new ApiError('TIMEOUT', 'Сервер не ответил вовремя. Попробуйте ещё раз')
+    // Заголовки ещё не означают получение ответа: обрыв тела после сохранения
+    // заказа тоже оставляет результат операции неизвестным.
+    throw new ApiError('NETWORK_ERROR', 'Нет связи с сервером. Попробуйте ещё раз.')
   }
-  const result = response.status === 204 ? (undefined as T) : await response.json()
-  ensureCurrent()
-  return result
 }
 
+export type CallAttempt = {
+  status: 'accepted'
+  attemptToken: string
+  callPhone: string
+  expiresAt: number
+  retryAfterSeconds: number
+}
+export type CallStatus =
+  | { status: 'verified'; user: AuthUser }
+  | { status: 'waiting' | 'unavailable'; pollAfterSeconds: number }
+  | { status: 'expired' }
 export const authApi = {
-  requestCode: (phone: string, signal?: AbortSignal) =>
-    apiRequest<{ status: string; retryAfterSeconds: number; developmentCode?: string }>(
-      '/auth/request-code',
-      {
-        method: 'POST',
-        body: JSON.stringify({ phone }),
-        signal,
-      },
-    ),
-  verifyCode: (phone: string, code: string, consent: boolean, signal?: AbortSignal) =>
-    apiRequest<{ user: AuthUser }>('/auth/verify-code', {
+  startCall: (phone: string, consent: boolean, signal?: AbortSignal) =>
+    apiRequest<CallAttempt>('/auth/call/start', {
       method: 'POST',
-      body: JSON.stringify({ phone, code, consent }),
+      body: JSON.stringify({ phone, consent }),
+      signal,
+    }),
+  checkCall: (attemptToken: string, consent: boolean, signal?: AbortSignal) =>
+    apiRequest<CallStatus>('/auth/call/status', {
+      method: 'POST',
+      body: JSON.stringify({ attemptToken, consent }),
       signal,
     }),
   me: () => apiRequest<{ user: AuthUser }>('/auth/me'),

@@ -11,7 +11,8 @@ test('показывает акции и фильтрует их по спосо
     </MemoryRouter>,
   )
 
-  expect(screen.getAllByRole('article')).toHaveLength(6)
+  expect(screen.getAllByRole('article')).toHaveLength(5)
+  expect(screen.queryByRole('heading', { name: 'Пирожки в подарок' })).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Самовывоз' }))
   expect(screen.getAllByRole('article')).toHaveLength(1)
   expect(screen.getByRole('heading', { name: 'Скидка на самовывоз' })).toBeInTheDocument()

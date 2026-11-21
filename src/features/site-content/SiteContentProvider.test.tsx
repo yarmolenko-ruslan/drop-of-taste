@@ -95,3 +95,33 @@ test('сохранение в админке сразу обновляет со�
   })
   await waitFor(() => expect(screen.getByText('Новое название · Новое меню')).toBeInTheDocument())
 })
+
+test('поздний ответ прежних настроек не возвращает отключённую акцию', async () => {
+  let finishOld!: (value: typeof defaultSiteContent) => void
+  let reads = 0
+  request.mockImplementation(async () => {
+    if (++reads === 1)
+      return new Promise<typeof defaultSiteContent>((resolve) => {
+        finishOld = resolve
+      })
+    return { ...defaultSiteContent, brandName: 'Акция выключена', promotions: [] }
+  })
+  function PromotionProbe() {
+    const content = useSiteContent()
+    return (
+      <p>
+        {content.brandName}:{' '}
+        {content.promotions.some((item) => item.id === 'birthday') ? 'есть акция' : 'нет акции'}
+      </p>
+    )
+  }
+  render(
+    <SiteContentProvider>
+      <PromotionProbe />
+    </SiteContentProvider>,
+  )
+  act(() => publishSiteUpdate('content'))
+  expect(await screen.findByText('Акция выключена: нет акции')).toBeInTheDocument()
+  await act(async () => finishOld(defaultSiteContent))
+  expect(screen.getByText('Акция выключена: нет акции')).toBeInTheDocument()
+})

@@ -55,7 +55,7 @@ test('при включённой тестовой оплате убирает �
       <HomeClosingSections />
     </MemoryRouter>,
   )
-  expect(await screen.findByText('Банковской картой')).toBeInTheDocument()
+  expect(await screen.findByText('Без списания денег')).toBeInTheDocument()
   expect(screen.queryByText('Оплата пока не принимается')).not.toBeInTheDocument()
 })
 

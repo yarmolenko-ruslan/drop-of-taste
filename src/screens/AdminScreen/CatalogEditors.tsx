@@ -401,6 +401,9 @@ export function ProductsEditor({
               onChange={setIngredientsText}
             />
             <TextField label="Добавки, через запятую" value={extrasText} onChange={setExtrasText} />
+            <p>
+              Добавки отображаются в карточке, но оформление заказа с добавками пока недоступно.
+            </p>
             <TextField
               label="Аллергены"
               value={product.allergenNote ?? ''}

@@ -57,6 +57,7 @@ export function IikoEditor({
         Импорт запускается вручную. Существующие карточки сохраняют тексты и фото, которые вы
         изменили в панели; цены из iiko обновляются.
       </p>
+      <p>Заказы с сайта в iiko пока не отправляются.</p>
       <button type="button" disabled={!configured || busy} onClick={() => void sync()}>
         {busy ? 'Загружаем…' : 'Загрузить меню из iiko'}
       </button>

@@ -196,7 +196,7 @@ export function FulfillmentDialog({ current, onClose, onSave }: FulfillmentDialo
         </form>
 
         <button className={styles.save} type="submit" form="fulfillment-form">
-          Сохранить выбор
+          Сохранить адрес
         </button>
       </div>
     </Dialog>

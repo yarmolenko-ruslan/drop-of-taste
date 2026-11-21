@@ -343,6 +343,15 @@
   overflow-wrap: anywhere;
 }
 
+.pickupMethod,
+.pickupAddress {
+  display: block;
+}
+
+.pickupMethod {
+  white-space: nowrap;
+}
+
 .orderLines {
   display: grid;
   gap: 8px;
@@ -825,6 +834,14 @@ dialog.confirmDialog {
   border: 1px solid #ead6bb;
   border-radius: 14px;
   background: #fcf6ed;
+  color: #654e42;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.birthDateNote {
+  grid-column: 1 / -1;
+  margin: 0;
   color: #654e42;
   font-size: 13px;
   line-height: 1.45;

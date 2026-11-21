@@ -76,11 +76,7 @@ export function SiteFooter() {
                 <Link to="/promotions">{content.settings.labels.promotions}</Link>
               </li>
               <li>
-                <Link
-                  to={content.settings.sections.account ? '/#account-benefits' : '/account/orders'}
-                >
-                  {content.settings.labels.account}
-                </Link>
+                <Link to="/account/orders">{content.settings.labels.account}</Link>
               </li>
               <li>
                 {content.settings.sections.benefits && (

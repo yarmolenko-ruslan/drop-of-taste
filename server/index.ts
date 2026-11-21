@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { createApp } from './app.ts'
 import { createMongoAuthStore, ensureAuthIndexes } from './modules/auth/mongo-store.ts'
 import { createAuthService } from './modules/auth/service.ts'
+import { createSmsRuCallProvider, type SmsRuDiagnostic } from './modules/auth/sms-ru.ts'
 import { getCatalog, seedCatalog } from './modules/catalog/mongo-catalog.ts'
 import { ensureShopIndexes, registerShopRoutes } from './modules/orders/routes.ts'
 import { registerProfileRoutes } from './modules/profile/routes.ts'
@@ -13,7 +14,9 @@ import { registerSiteUpdateRoutes } from './modules/content/updates.ts'
 import { createYooGateway } from './modules/payments/yookassa.ts'
 
 if (process.env.NODE_ENV === 'production') {
-  throw new Error('Production requires a real SMS sender and deployment configuration')
+  throw new Error(
+    'Production deployment requires HTTPS, secure cookies and trusted proxy configuration',
+  )
 }
 
 const origin = new URL(process.env.APP_ORIGIN ?? 'http://localhost:5173').origin
@@ -22,10 +25,21 @@ const mongoUri = process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/?replicaS
 
 const originUrl = new URL(origin)
 if (!['localhost', '127.0.0.1'].includes(originUrl.hostname) || originUrl.protocol !== 'http:') {
-  throw new Error('The stub API accepts only a local HTTP origin')
+  throw new Error('The local API accepts only a local HTTP origin')
 }
 if (!originUrl.port) throw new Error('APP_ORIGIN must include the local Vite port')
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid API_PORT')
+
+const provider = createSmsRuCallProvider(process.env.SMS_RU_API_ID ?? '', {
+  allowLocalIp: true,
+  onDiagnostic(event) {
+    // No OTP, full number, API key, balance or raw provider payload is recorded.
+    process.stderr.write(`${JSON.stringify({ event: 'sms_ru_callcheck', ...event })}\n`)
+    return db
+      .collection<SmsRuDiagnostic & { _id: string }>('auth_call_events')
+      .insertOne({ _id: event.requestId, ...event })
+  },
+})
 
 const mongo = new MongoClient(mongoUri, { serverSelectionTimeoutMS: 3_000 })
 await mongo.connect()
@@ -36,13 +50,7 @@ await ensureShopIndexes(db)
 
 const auth = createAuthService({
   store: createMongoAuthStore(mongo, db),
-  sender: {
-    async send(phone, code) {
-      process.stdout.write(`Local sign-in code for ****${phone.slice(-4)}: ${code}\n`)
-    },
-  },
-  secret: process.env.AUTH_HMAC_SECRET ?? randomBytes(32).toString('hex'),
-  exposeDevelopmentCode: true,
+  provider,
   consentVersion: async () => (await getSiteContent(db)).legalRevision,
 })
 

@@ -65,6 +65,15 @@ const item: DialogItem = {
   extras: ['Сметана'],
 }
 
+test('товар без фото и напиток без объёма получают подходящие подписи', () => {
+  render(<ProductDialog item={{ ...item, measure: 'мл', calories: 100 }} onClose={() => {}} />)
+  expect(screen.getByText('Фото пока нет')).toBeInTheDocument()
+  expect(screen.queryByText('СОУС К БЛЮДУ')).not.toBeInTheDocument()
+  expect(screen.getByText(/Объём уточняется · 100 ккал/)).toBeInTheDocument()
+  expect(screen.queryByText('Пищевая ценность уточняется')).not.toBeInTheDocument()
+  expect(screen.getByText(/Заказ с добавками пока недоступен/)).toBeInTheDocument()
+})
+
 test('показывает состав без удаления ингредиентов, сохраняет добавки и количество', () => {
   useCartStore.setState({ lines: [], isOpen: false })
   const onClose = vi.fn()

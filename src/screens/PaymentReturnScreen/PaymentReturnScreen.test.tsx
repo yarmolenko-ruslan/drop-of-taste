@@ -118,7 +118,7 @@ test.each(['succeeded', 'canceled'] as const)(
   },
 )
 
-test.each(['pending', 'succeeded'])(
+test.each(['pending', 'succeeded', 'creating', 'unpaid', 'error'])(
   'отменённый заказ при платеже %s не предлагает оплату заново',
   async (status) => {
     vi.stubGlobal(
@@ -133,7 +133,10 @@ test.each(['pending', 'succeeded'])(
     expect(await screen.findByText(/Время оплаты истекло. Заказ отменён/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Вернуться к оплате' })).not.toBeInTheDocument()
     expect(screen.queryByText('Оплата прошла успешно.')).not.toBeInTheDocument()
-    if (status === 'succeeded') expect(screen.getByRole('status')).toHaveTextContent('для возврата')
+    expect(screen.queryByText('Платёж ещё создаётся. Проверяем статус…')).not.toBeInTheDocument()
+    expect(screen.queryByText('Оплата для этого заказа не завершена.')).not.toBeInTheDocument()
+    if (status === 'succeeded')
+      expect(screen.getByRole('status')).toHaveTextContent('Настоящие деньги не списывались')
   },
 )
 

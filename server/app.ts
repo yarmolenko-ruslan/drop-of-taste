@@ -1,5 +1,5 @@
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify'
-import { requestCodeBodySchema, verifyCodeBodySchema } from '../shared/validation/auth.ts'
+import { startCallBodySchema, checkCallBodySchema } from '../shared/validation/auth.ts'
 import { SESSION_TTL_SECONDS, type AuthService } from './modules/auth/service.ts'
 import { readSessionToken, sessionCookieName } from './modules/auth/session-cookie.ts'
 import { createOriginChecker } from './http/origins.ts'
@@ -55,57 +55,40 @@ export function createApp(
 
   app.get('/api/health', async () => ({ status: 'ok' }))
 
-  app.post('/api/auth/request-code', async (request, reply) => {
-    const parsed = requestCodeBodySchema.safeParse(request.body)
-    if (!parsed.success) {
-      return reply.code(400).send(error('INVALID_BODY', 'Проверьте данные запроса'))
-    }
-    const { phone } = parsed.data
-    const result = await auth.requestCode(phone, request.ip)
-    if (result.status === 'invalid_phone') {
+  app.post('/api/auth/call/start', async (request, reply) => {
+    const parsed = startCallBodySchema.safeParse(request.body)
+    if (!parsed.success)
+      return reply
+        .code(400)
+        .send(error('INVALID_BODY', 'Проверьте номер и согласие на обработку данных'))
+    const result = await auth.startCall(parsed.data.phone, request.ip)
+    if (result.status === 'invalid_phone')
       return reply.code(400).send(error('INVALID_PHONE', 'Введите российский мобильный номер'))
-    }
-    if (result.status === 'limited') {
+    if (result.status === 'limited')
       return reply
         .header('Retry-After', String(result.retryAfterSeconds))
         .code(429)
-        .send(error('RATE_LIMITED', 'Повторите запрос позже'))
-    }
-    if (result.status === 'delivery_failed') {
-      return reply.code(503).send(error('DELIVERY_UNAVAILABLE', 'Не удалось отправить код'))
-    }
-    return reply.code(202).send({
-      status: 'accepted',
-      retryAfterSeconds: result.retryAfterSeconds,
-      ...(result.developmentCode ? { developmentCode: result.developmentCode } : {}),
-    })
+        .send(error('RATE_LIMITED', 'Повторите проверку позже'))
+    if (result.status === 'unavailable')
+      return reply
+        .code(503)
+        .send(
+          error('CALL_CHECK_UNAVAILABLE', 'Не удалось начать проверку телефона. Повторите позже'),
+        )
+    return reply.code(202).send(result)
   })
 
-  app.post('/api/auth/verify-code', async (request, reply) => {
-    const parsed = verifyCodeBodySchema.safeParse(request.body)
-    if (!parsed.success) {
-      return reply.code(400).send(error('INVALID_BODY', 'Проверьте данные запроса'))
-    }
-    const { phone, code } = parsed.data
-    const result = await auth.verifyCode(phone, code)
-    if (result.status === 'invalid_phone') {
-      return reply.code(400).send(error('INVALID_PHONE', 'Введите российский мобильный номер'))
-    }
-    if (result.status === 'limited') {
-      // Retry-After нужен фронту, чтобы показать таймер повторного запроса кода.
-      return reply
-        .header('Retry-After', '60')
-        .code(429)
-        .send(error('CODE_ATTEMPTS_EXCEEDED', 'Запросите новый код'))
-    }
-    if (result.status !== 'verified') {
-      return reply.code(400).send(error('INVALID_CODE', 'Неверный или просроченный код'))
-    }
+  app.post('/api/auth/call/status', async (request, reply) => {
+    const parsed = checkCallBodySchema.safeParse(request.body)
+    if (!parsed.success)
+      return reply.code(400).send(error('INVALID_BODY', 'Проверьте данные подтверждения'))
+    const result = await auth.checkCall(parsed.data.attemptToken)
+    if (result.status !== 'verified') return result
     reply.header(
       'Set-Cookie',
       sessionCookie(cookieName, result.token, options.secureCookies, SESSION_TTL_SECONDS),
     )
-    return { user: result.account }
+    return { status: 'verified', user: result.account }
   })
 
   app.get('/api/auth/me', async (request, reply) => {

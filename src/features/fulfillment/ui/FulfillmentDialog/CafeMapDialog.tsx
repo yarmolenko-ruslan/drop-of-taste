@@ -12,7 +12,8 @@ export function CafeMapDialog({ onClose }: { onClose: () => void }) {
           <span className={styles.eyebrow}>{content.brandName}</span>
           <h2 id="cafe-map-title">Самовывоз из кафе</h2>
           <p className={styles.intro}>
-            Оформите заказ на сайте и заберите его в нашем кафе со скидкой 10%.
+            Оформите заказ на сайте и заберите его в нашем кафе. Стоимость и доступные скидки
+            указаны в корзине.
           </p>
           <div className={styles.pickup}>
             <span className={styles.pickupLabel}>АДРЕС КАФЕ</span>

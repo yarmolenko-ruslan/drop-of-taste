@@ -11,6 +11,7 @@ export type Order = {
   fulfilledAt?: string | null
   input: { fulfillment: { mode: 'pickup' | 'delivery'; label: string }; birthdayDiscount?: boolean }
   quote: {
+    testMode?: boolean
     lines: {
       productId: string
       name: string

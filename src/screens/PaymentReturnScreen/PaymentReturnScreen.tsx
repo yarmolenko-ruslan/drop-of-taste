@@ -73,7 +73,10 @@ export function PaymentReturnScreen() {
           timer = setTimeout(() => void check(), result.orderCanceled ? 10000 : 3000)
       } catch (failure) {
         if (active) {
-          setError(failure instanceof Error ? failure.message : 'Не удалось проверить оплату')
+          setError(
+            (failure instanceof Error ? failure.message : 'Не удалось проверить оплату') +
+              ' Повторяем проверку автоматически.',
+          )
           timer = setTimeout(() => void check(), 5000)
         }
       }
@@ -88,13 +91,14 @@ export function PaymentReturnScreen() {
   return (
     <main style={{ width: 'min(100% - 40px, 680px)', margin: '70px auto 100px' }}>
       <h1>Статус оплаты</h1>
+      <p>Тестовая оплата: настоящие деньги не списываются, заказ не передаётся в кафе.</p>
       {!orderId && <p role="alert">Не найден номер заказа для проверки.</p>}
       {orderId && !status && !error && <LoadingState label="Проверяем оплату в ЮKassa…" />}
       {orderCanceled && (
         <p role="status">
           Время оплаты истекло. Заказ отменён.
           {status === 'succeeded' &&
-            ' Оплата поступила после отмены. Обратитесь к нам для возврата.'}
+            ' Тестовая оплата подтверждена после отмены. Настоящие деньги не списывались.'}
         </p>
       )}
       {!orderCanceled && status === 'succeeded' && <p role="status">Оплата прошла успешно.</p>}
@@ -110,11 +114,13 @@ export function PaymentReturnScreen() {
           {resuming && <LoadingState compact label="Открываем страницу оплаты…" />}
         </>
       )}
-      {status === 'creating' && <p role="status">Платёж ещё создаётся. Проверяем статус…</p>}
-      {(status === 'error' || status === 'unpaid') && (
+      {!orderCanceled && status === 'creating' && (
+        <p role="status">Платёж ещё создаётся. Проверяем статус…</p>
+      )}
+      {!orderCanceled && (status === 'error' || status === 'unpaid') && (
         <p role="status">Оплата для этого заказа не завершена.</p>
       )}
-      {error && <p role="alert">{error} Повторяем проверку автоматически.</p>}
+      {error && <p role="alert">{error}</p>}
       {orderId && (error || status === 'error' || status === 'unpaid') && (
         <button type="button" onClick={() => setRevision((value) => value + 1)}>
           Проверить ещё раз

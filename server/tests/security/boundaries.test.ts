@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createTestCallProvider } from '../fixtures/call-provider.ts'
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -38,18 +39,17 @@ async function setup() {
   await seedCatalog(db)
   const auth = createAuthService({
     store: createMongoAuthStore(mongo, db),
-    secret: 'isolated-security-test',
-    developmentCode: '123456',
-    sender: { send: async () => {} },
+
+    provider: createTestCallProvider(),
   })
   const app = createApp(auth, { origins: [origin], secureCookies: false })
   registerProfileRoutes(app, db, mongo, auth, [origin])
   registerShopRoutes(app, db, mongo, auth, [origin])
   await registerAdminRoutes(app, db, [origin], 'audit-admin-password', mongo)
   registerIikoRoutes(app, db, mongo)
-  const sent = await auth.requestCode('+79991234567', '127.0.0.1')
-  expect(sent.status).toBe('accepted')
-  const login = await auth.verifyCode('+79991234567', '123456')
+  const sent = await auth.startCall('+79991234567', '127.0.0.1')
+  if (sent.status !== 'accepted') throw new Error('Test registration failed')
+  const login = await auth.checkCall(sent.attemptToken)
   if (login.status !== 'verified') throw new Error('Test sign-in failed')
   return { app, db, headers: { origin, cookie: `dev_session=${login.token}` } }
 }
@@ -217,8 +217,8 @@ test('encoded routes preserve Origin checks, account guards and private cache he
   const { app, headers } = await setup()
   try {
     const mutations = [
-      ['POST', '/api/auth/request-code', { phone: '+79990000001' }],
-      ['POST', '/api/auth/verify-code', { phone: '+79990000001', code: '123456', consent: true }],
+      ['POST', '/api/auth/call/start', { phone: '+79990000001', consent: true }],
+      ['POST', '/api/auth/call/status', { attemptToken: 'A'.repeat(43), consent: true }],
       ['POST', '/api/auth/logout', undefined],
       ['PUT', '/api/profile/notifications', { push: false, email: false, sms: false }],
       ['POST', '/api/addresses', {}],

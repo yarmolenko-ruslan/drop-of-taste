@@ -3,6 +3,31 @@ import type { Db } from 'mongodb'
 import { defaultSiteContent } from '../../../shared/site-content.ts'
 import { getPublicSiteContent, getSiteContent } from './service.ts'
 
+test('шаблонная акция с подарком скрыта до настройки её выполнения кафе', async () => {
+  const db = { collection: () => ({ findOne: async () => null }) } as unknown as Db
+  const editable = await getSiteContent(db)
+  expect(editable.promotions.find((item) => item.id === 'first-order')?.enabled).toBe(false)
+  const publicContent = await getPublicSiteContent(db)
+  expect(publicContent.promotions.some((item) => item.id === 'first-order')).toBe(false)
+  expect(publicContent.promotions.some((item) => item.id === 'pickup')).toBe(true)
+})
+
+test('явно включённая администратором акция с ручным подарком сохраняется', async () => {
+  const db = {
+    collection: () => ({
+      findOne: async () => ({
+        ...defaultSiteContent,
+        contentVersion: 1,
+        promotions: defaultSiteContent.promotions.map((item) =>
+          item.id === 'first-order' ? { ...item, enabled: true } : item,
+        ),
+      }),
+    }),
+  } as unknown as Db
+  const content = await getPublicSiteContent(db)
+  expect(content.promotions.some((item) => item.id === 'first-order')).toBe(true)
+})
+
 test('старые подписи из сохранённых настроек заменяются, а авторский текст сохраняется', async () => {
   const db = {
     collection: () => ({

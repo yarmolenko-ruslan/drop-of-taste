@@ -14,7 +14,8 @@ export function isPromotionActive(
 export function pickupDiscountPercent(promotions: SiteContent['promotions'], now = Date.now()) {
   return promotions.reduce((best, promotion) => {
     const rate = promotion.discountPercent ?? (promotion.id === 'pickup' ? 10 : 0)
-    return promotion.category === 'pickup' &&
+    return promotion.id !== 'birthday' &&
+      promotion.category === 'pickup' &&
       isPromotionActive(promotion, now) &&
       Number.isFinite(rate) &&
       rate >= 0 &&

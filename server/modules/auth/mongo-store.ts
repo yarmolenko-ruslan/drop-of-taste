@@ -1,6 +1,13 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto'
+import { CALL_STATUS_POLL_SECONDS } from '../../../shared/validation/auth.ts'
 import type { ClientSession, Db, MongoClient } from 'mongodb'
-import type { Account, AuthStore, ReserveCodeResult, VerifyCodeResult } from './types.ts'
+import type {
+  Account,
+  AuthStore,
+  ReserveCallResult,
+  CompleteCallResult,
+  CallRecord,
+} from './types.ts'
 import {
   DAY_MS,
   GLOBAL_DAILY_LIMIT,
@@ -8,20 +15,19 @@ import {
   IP_HOURLY_LIMIT,
   PHONE_DAILY_LIMIT,
   PHONE_HOURLY_LIMIT,
+  SEND_COOLDOWN_MS,
 } from './limits.ts'
 
-type CodeRecord = { digest: string; expiresAt: number; attempts: number }
 type PendingRecord = {
   reservationId: string
-  digest: string
   expiresAt: number
   ip: string
-  /** Время записи лимитов при резервировании — по нему лимиты откатываются при сбое доставки. */
+  /** Время записи лимитов при резервировании — по нему лимиты откатываются при отказе регистрации. */
   reservedAt: number
 }
 type ChallengeDoc = {
   _id: string
-  active?: CodeRecord
+  active?: CallRecord
   pending?: PendingRecord
   cleanupAt: Date
 }
@@ -43,6 +49,7 @@ function equalDigest(left: string, right: string) {
 }
 
 export async function ensureAuthIndexes(db: Db) {
+  await db.collection('auth_challenges').createIndex({ 'active.digest': 1 })
   await db.collection<UserDoc>('users').createIndex({ phone: 1 }, { unique: true })
   await db
     .collection<ChallengeDoc>('auth_challenges')
@@ -53,6 +60,9 @@ export async function ensureAuthIndexes(db: Db) {
   await db
     .collection<SessionDoc>('sessions')
     .createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
+  await db
+    .collection('auth_call_events')
+    .createIndex({ createdAt: 1 }, { expireAfterSeconds: 7 * 24 * 60 * 60 })
 }
 
 export function createMongoAuthStore(client: MongoClient, db: Db): AuthStore {
@@ -62,20 +72,26 @@ export function createMongoAuthStore(client: MongoClient, db: Db): AuthStore {
   const sessions = db.collection<SessionDoc>('sessions')
 
   async function transaction<T>(action: (session: ClientSession) => Promise<T>): Promise<T> {
-    const session = client.startSession()
-    try {
-      const result = await session.withTransaction(() => action(session))
-      if (result === undefined) throw new Error('Transaction did not return a result')
-      return result
-    } finally {
-      await session.endSession()
+    for (let attempt = 0; ; attempt++) {
+      const session = client.startSession()
+      try {
+        const result = await session.withTransaction(() => action(session))
+        if (result === undefined) throw new Error('Transaction did not return a result')
+        return result
+      } catch (failure) {
+        // Concurrent first requests can race to create a unique limit/account document.
+        // Retry the aborted DB transaction only; provider calls are outside this scope.
+        if ((failure as { code?: number })?.code !== 11000 || attempt >= 2) throw failure
+      } finally {
+        await session.endSession()
+      }
     }
   }
 
   async function saveChallenge(
     session: ClientSession,
     phone: string,
-    active?: CodeRecord,
+    active?: CallRecord,
     pending?: PendingRecord,
   ) {
     if (!active && !pending) {
@@ -90,7 +106,7 @@ export function createMongoAuthStore(client: MongoClient, db: Db): AuthStore {
     )
   }
 
-  /** Убирает одну запись резервирования из лимитного документа (откат при сбое доставки). */
+  /** Убирает одну запись резервирования из лимитного документа (откат при отказе регистрации). */
   async function rollbackLimit(session: ClientSession, key: string, reservedAt: number) {
     const doc = await limits.findOne({ _id: key }, { session })
     if (!doc) return
@@ -107,14 +123,7 @@ export function createMongoAuthStore(client: MongoClient, db: Db): AuthStore {
   }
 
   return {
-    async reserveCode({
-      reservationId,
-      phone,
-      ip,
-      digest,
-      now,
-      expiresAt,
-    }): Promise<ReserveCodeResult> {
+    async reserveCall({ reservationId, phone, ip, now, expiresAt }): Promise<ReserveCallResult> {
       return transaction(async (session) => {
         const phoneKey = `phone:${phone}`
         const ipKey = `ip:${ip}`
@@ -138,7 +147,7 @@ export function createMongoAuthStore(client: MongoClient, db: Db): AuthStore {
             : undefined
         const retryMs = Math.max(
           pending ? pending.expiresAt - now : 0,
-          phoneTimes.length ? phoneTimes[phoneTimes.length - 1]! + 60_000 - now : 0,
+          phoneTimes.length ? phoneTimes[phoneTimes.length - 1]! + SEND_COOLDOWN_MS - now : 0,
           phoneTimes.length >= PHONE_HOURLY_LIMIT ? phoneTimes[0]! + HOUR - now : 0,
           phoneDayTimes.length >= PHONE_DAILY_LIMIT ? phoneDayTimes[0]! + DAY - now : 0,
           ipTimes.length >= IP_HOURLY_LIMIT ? ipTimes[0]! + HOUR - now : 0,
@@ -150,7 +159,6 @@ export function createMongoAuthStore(client: MongoClient, db: Db): AuthStore {
 
         await saveChallenge(session, phone, active, {
           reservationId,
-          digest,
           expiresAt,
           ip,
           reservedAt: now,
@@ -178,7 +186,7 @@ export function createMongoAuthStore(client: MongoClient, db: Db): AuthStore {
         return { status: 'reserved' }
       })
     },
-    async confirmCode(phone, reservationId, now) {
+    async confirmCall(phone, reservationId, now, call) {
       return transaction(async (session) => {
         const doc = await challenges.findOne({ _id: phone }, { session })
         if (doc?.pending?.reservationId !== reservationId) return false
@@ -187,74 +195,95 @@ export function createMongoAuthStore(client: MongoClient, db: Db): AuthStore {
           await saveChallenge(session, phone, active)
           return false
         }
-        await saveChallenge(session, phone, {
-          digest: doc.pending.digest,
-          expiresAt: doc.pending.expiresAt,
-          attempts: 0,
-        })
+        await saveChallenge(session, phone, call)
         return true
       })
     },
-    async cancelCode(phone, reservationId) {
+    async cancelCall(phone, reservationId, releaseLimits) {
       await transaction(async (session) => {
         const doc = await challenges.findOne({ _id: phone }, { session })
         if (!doc || doc.pending?.reservationId !== reservationId) return true
         const pending = doc.pending
-        // SMS не ушёл — откатываем лимиты, записанные при резервировании,
-        // чтобы сбой доставки не сжигал бюджеты номера, IP и всего сервиса.
-        await rollbackLimit(session, `phone:${phone}`, pending.reservedAt)
-        await rollbackLimit(session, `phone-day:${phone}`, pending.reservedAt)
-        await rollbackLimit(session, `ip:${pending.ip}`, pending.reservedAt)
-        await rollbackLimit(session, 'global-day', pending.reservedAt)
+        // An uncertain outcome must retain the request budget.
+        if (releaseLimits) {
+          await rollbackLimit(session, `phone:${phone}`, pending.reservedAt)
+          await rollbackLimit(session, `phone-day:${phone}`, pending.reservedAt)
+          await rollbackLimit(session, `ip:${pending.ip}`, pending.reservedAt)
+          await rollbackLimit(session, 'global-day', pending.reservedAt)
+        }
         await saveChallenge(session, phone, doc.active)
         return true
       })
     },
-    async verifyCode(phone, digest, now): Promise<VerifyCodeResult> {
+    async acquireCall(digest, now) {
+      return transaction(async (session) => {
+        const doc = await challenges.findOne({ 'active.digest': digest }, { session })
+        const active = doc?.active
+        if (!doc || !active || !active.checkId || active.expiresAt <= now)
+          return { status: 'expired' } as const
+        if ((active.nextCheckAt ?? 0) > now)
+          return {
+            status: 'waiting',
+            pollAfterSeconds: Math.ceil((active.nextCheckAt! - now) / 1000),
+          } as const
+        await saveChallenge(
+          session,
+          doc._id,
+          { ...active, nextCheckAt: now + CALL_STATUS_POLL_SECONDS * 1000 },
+          doc.pending,
+        )
+        return {
+          status: 'ready',
+          phone: doc._id,
+          checkId: active.checkId,
+          expiresAt: active.expiresAt,
+        } as const
+      })
+    },
+    async completeCall({
+      phone,
+      digest,
+      checkId,
+      now,
+      consentVersion,
+      sessionDigest,
+      sessionExpiresAt,
+    }): Promise<CompleteCallResult> {
       return transaction(async (session) => {
         const doc = await challenges.findOne({ _id: phone }, { session })
         const active = doc?.active
-        if (!active) return 'invalid'
-        if (active.expiresAt <= now) {
-          await saveChallenge(session, phone, undefined, doc.pending)
-          return 'expired'
-        }
-        if (active.attempts >= 5) return 'limited'
-        if (!equalDigest(active.digest, digest)) {
-          const attempts = active.attempts + 1
-          await saveChallenge(session, phone, { ...active, attempts }, doc.pending)
-          return attempts >= 5 ? 'limited' : 'invalid'
-        }
+        if (
+          !active ||
+          active.expiresAt <= now ||
+          active.checkId !== checkId ||
+          !equalDigest(active.digest, digest)
+        )
+          return { status: 'expired' }
         await saveChallenge(session, phone, undefined, doc.pending)
-        return 'verified'
-      })
-    },
-    async getOrCreateAccount(phone, consentVersion, consentAcceptedAt) {
-      const id = randomUUID()
-      let account: UserDoc | null
-      try {
-        account = await users.findOneAndUpdate(
+        const id = randomUUID()
+        const account = await users.findOneAndUpdate(
           { phone },
           {
             $setOnInsert: { _id: id, id, phone, name: '' },
-            $set: { consentVersion, consentAcceptedAt: new Date(consentAcceptedAt) },
+            $set: { consentVersion, consentAcceptedAt: new Date(now) },
           },
-          { upsert: true, returnDocument: 'after' },
+          { upsert: true, returnDocument: 'after', session },
         )
-      } catch (failure) {
-        if ((failure as { code?: number }).code !== 11000) throw failure
-        account = await users.findOne({ phone })
-      }
-      if (!account) throw new Error('Could not create account')
-      return { id: account.id, phone: account.phone, name: account.name }
-    },
-    async createSession(digest, accountId, expiresAt) {
-      await sessions.insertOne({ _id: digest, accountId, expiresAt: new Date(expiresAt) })
+        if (!account) throw new Error('Could not create account')
+        await sessions.insertOne(
+          { _id: sessionDigest, accountId: account.id, expiresAt: new Date(sessionExpiresAt) },
+          { session },
+        )
+        return {
+          status: 'verified',
+          account: { id: account.id, phone: account.phone, name: account.name },
+        }
+      })
     },
     async findSession(digest, now) {
       const session = await sessions.findOne({ _id: digest, expiresAt: { $gt: new Date(now) } })
       if (!session) return null
-      // _id и id у пользователя совпадают (см. getOrCreateAccount) — ищем по _id,
+      // _id и id у пользователя совпадают — ищем по _id,
       // чтобы запрос шёл по встроенному индексу, а не по скану коллекции.
       const account = await users.findOne({ _id: session.accountId })
       return account ? { id: account.id, phone: account.phone, name: account.name } : null

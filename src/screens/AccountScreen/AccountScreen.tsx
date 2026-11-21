@@ -21,6 +21,11 @@ import { useCartStore } from '../../features/cart'
 import { useCatalog } from '../../features/catalog/api/CatalogProvider'
 import { formatCompactAddress } from '../../shared/lib/formatCompactAddress'
 import { BIRTHDAY_CLAIM_RELEASED_EVENT } from '../../../shared/birthday'
+import {
+  useSiteContent,
+  useSiteContentLoaded,
+} from '../../features/site-content/SiteContentProvider'
+import { usePromotionActive } from '../../shared/lib/usePromotionActive'
 
 type AccountUser = {
   id: string
@@ -101,6 +106,16 @@ export function AccountScreen({
   onAddressPicked,
 }: AccountScreenProps) {
   const { section = 'orders' } = useParams()
+  const siteContent = useSiteContent()
+  const siteContentLoaded = useSiteContentLoaded()
+  const birthdayPromotion = siteContent.promotions.find((item) => item.id === 'birthday')
+  const birthdayInPeriod = usePromotionActive(birthdayPromotion)
+  const birthdayPromotionActive = Boolean(
+    siteContentLoaded &&
+    birthdayPromotion &&
+    birthdayInPeriod &&
+    (birthdayPromotion.discountPercent ?? 10) > 0,
+  )
   const currentBirthYear = Number(krasnoyarskToday().slice(0, 4))
   const [name, setName] = useState(user.name)
   const [email, setEmail] = useState('')
@@ -648,7 +663,7 @@ export function AccountScreen({
     const current = orders.find((order) => order._id === id)
     if (
       current?.paymentStatus !== 'pending' &&
-      !window.confirm('Отменить заказ? Скидка снова станет доступна.')
+      !window.confirm('Отменить заказ и освободить скидку ко дню рождения?')
     )
       return
     try {
@@ -673,7 +688,7 @@ export function AccountScreen({
         ),
       )
       window.dispatchEvent(new Event(BIRTHDAY_CLAIM_RELEASED_EVENT))
-      setNotice('Заказ отменён. Скидка снова доступна.')
+      setNotice('Заказ отменён. Скидка освобождена; применить её можно в период действия акции.')
     } catch (failure) {
       setNotice(failure instanceof Error ? failure.message : 'Не удалось отменить заказ')
     }
@@ -694,7 +709,7 @@ export function AccountScreen({
       (line) => !products.some((product) => product._id === line.productId && product.available),
     )
     if (missing) {
-      setNotice(`Не удалось повторить заказ: «${missing.name}» сейчас недоступен.`)
+      setNotice(`Не удалось повторить заказ: товар «${missing.name}» сейчас недоступен.`)
       return
     }
     for (const line of order.quote.lines) {
@@ -1147,19 +1162,27 @@ export function AccountScreen({
                       aria-describedby={errors.day ? 'profile-birthdate-error' : undefined}
                     >
                       <legend>Дата рождения</legend>
-                      <div className={styles.birthDateHint}>
-                        <span className={styles.birthDateHintIcon} aria-hidden="true">
-                          ✦
-                        </span>
-                        <div>
-                          <strong>Скидка ко дню рождения</strong>
-                          <p>
-                            Укажите дату рождения, чтобы получить скидку за 3 дня до праздника и 3
-                            дня после.
-                          </p>
-                          <span>Дата сохраняется один раз — изменить её потом нельзя.</span>
+                      {birthdayPromotionActive && (
+                        <div className={styles.birthDateHint}>
+                          <span className={styles.birthDateHintIcon} aria-hidden="true">
+                            ✦
+                          </span>
+                          <div>
+                            <strong>Скидка ко дню рождения</strong>
+                            <p>
+                              {savedBirthday
+                                ? 'Скидку можно выбрать в корзине за 3 дня до дня рождения, в сам день рождения и 3 дня после.'
+                                : 'Укажите дату рождения, чтобы выбрать скидку в корзине за 3 дня до праздника, в сам день рождения и 3 дня после.'}
+                            </p>
+                            <span>Дата сохраняется один раз — изменить её потом нельзя.</span>
+                          </div>
                         </div>
-                      </div>
+                      )}
+                      {!birthdayPromotionActive && (
+                        <p className={styles.birthDateNote}>
+                          Дата сохраняется один раз — изменить её потом нельзя.
+                        </p>
+                      )}
                       <label>
                         <span className={styles.visuallyHidden}>День</span>
                         <Select
@@ -1232,7 +1255,10 @@ export function AccountScreen({
 
               <section className={styles.card} aria-labelledby="notifications-title">
                 <h2 id="notifications-title">Уведомления и рассылки</h2>
-                <p>Персональные предложения, новости, акции и скидки.</p>
+                <p>
+                  Выберите, какие рассылки вы разрешаете. Сейчас согласие сохраняется, но рассылки
+                  ещё не отправляются.
+                </p>
                 <div className={styles.notifications}>
                   {(
                     [

@@ -43,6 +43,8 @@ type OrderDoc = {
     createdAt: Date
     updatedAt: Date
     capturedAt?: Date
+    recoveryToken?: string
+    recoveryUntil?: Date
   }
 }
 type BirthdayClaim = {
@@ -107,10 +109,15 @@ const PAGE_SIZE = 50
 type OrdersQuery = { accountId: string; $or?: Array<Record<string, unknown>> }
 
 function quoteError(error: unknown) {
-  if (error instanceof Error && ['PRODUCT_UNAVAILABLE', 'EXTRAS_UNPRICED'].includes(error.message))
-    return failure(error.message, 'Состав корзины изменился. Проверьте позиции.')
+  if (error instanceof Error && error.message === 'PRODUCT_UNAVAILABLE')
+    return failure(error.message, 'Некоторые товары больше недоступны. Проверьте корзину.')
+  if (error instanceof Error && error.message === 'EXTRAS_UNPRICED')
+    return failure(
+      error.message,
+      'Заказ с добавками пока недоступен. Добавьте блюдо заново без добавок.',
+    )
   if (error instanceof Error && error.message === 'INVALID_PROMO_CODE')
-    return failure('INVALID_PROMO_CODE', 'Бонус-код не найден или срок его действия истёк')
+    return failure('INVALID_PROMO_CODE', 'Бонус-код недействителен или сейчас недоступен')
   if (error instanceof Error && error.message === 'PROMO_NOT_APPLICABLE')
     return failure('PROMO_NOT_APPLICABLE', 'Бонус-код не действует на комбо и наборы')
   if (error instanceof Error && error.message.startsWith('BIRTHDAY_')) {
@@ -118,7 +125,8 @@ function quoteError(error: unknown) {
       BIRTHDAY_UNAVAILABLE: 'Скидка ко дню рождения сейчас недоступна',
       BIRTHDAY_DATE_REQUIRED: 'Укажите дату рождения в личном кабинете',
       BIRTHDAY_OUTSIDE_WINDOW: 'Скидка доступна за 3 дня до и 3 дня после дня рождения',
-      BIRTHDAY_ALREADY_USED: 'Скидка этого года уже использована или ожидает оплаты',
+      BIRTHDAY_ALREADY_USED:
+        'Скидка этого праздничного периода уже использована или зарезервирована в другом заказе',
       BIRTHDAY_NOT_APPLICABLE: 'Скидка не действует на комбо и наборы',
     }
     return failure(error.message, messages[error.message] ?? 'Скидка недоступна')
@@ -333,12 +341,11 @@ export function registerShopRoutes(
       }
     })
   }
-  const reconcileCanceledPayments = async () => {
+  const reconcilePayments = async () => {
     if (!gateway) return
     await processOrderBatch(
       db.collection<OrderDoc>('orders').find(
         {
-          canceledAt: { $exists: true },
           'payment.id': { $exists: true },
           'payment.status': { $in: ['creating', 'error', 'pending'] },
         },
@@ -355,11 +362,128 @@ export function registerShopRoutes(
             payment.captured_at,
           )
         } catch (error) {
-          app.log.warn({ error, orderId: order._id }, 'Cannot reconcile canceled order payment')
+          app.log.warn({ error, orderId: order._id }, 'Cannot reconcile order payment')
         } finally {
           await db
             .collection<OrderDoc>('orders')
             .updateOne({ _id: order._id }, { $set: { paymentCheckedAt: new Date() } })
+        }
+      },
+    )
+  }
+  const reconcileUnknownPayments = async () => {
+    if (!gateway?.findByOrderId) return
+    const orders = db.collection<OrderDoc>('orders')
+    const now = new Date()
+    const availableLease = {
+      $or: [
+        { 'payment.recoveryUntil': { $exists: false } },
+        { 'payment.recoveryUntil': { $lte: now } },
+      ],
+    }
+    await processOrderBatch(
+      orders.find(
+        {
+          'payment.id': { $exists: false },
+          'payment.status': { $in: ['creating', 'error', 'pending'] },
+          'payment.updatedAt': { $lte: new Date(+now - 60_000) },
+          $and: [
+            availableLease,
+            {
+              $or: [
+                { paymentCheckedAt: { $exists: false } },
+                { paymentCheckedAt: { $lte: new Date(+now - 60_000) } },
+              ],
+            },
+          ],
+        },
+        { limit: 100, sort: { paymentCheckedAt: 1, _id: 1 } },
+      ),
+      async (order) => {
+        const token = randomUUID()
+        // Общая аренда с /pay не позволяет создать платёж между проверкой его
+        // отсутствия у провайдера и освобождением скидки. Переживает рестарт API.
+        const claim = await orders.findOneAndUpdate(
+          {
+            _id: order._id,
+            'payment.id': { $exists: false },
+            'payment.status': order.payment!.status,
+            'payment.updatedAt': order.payment!.updatedAt,
+            ...availableLease,
+          },
+          {
+            $set: {
+              'payment.recoveryToken': token,
+              'payment.recoveryUntil': new Date(Date.now() + 60_000),
+            },
+          },
+          { returnDocument: 'after' },
+        )
+        if (!claim) return
+        try {
+          // Поиск только читает платежи: даже после окончания окна идемпотентности
+          // повторный create не создаст случайный второй платёж отменённого заказа.
+          const payment = await gateway.findByOrderId!(
+            order._id,
+            new Date(+(order.payment!.createdAt ?? order.createdAt) - 60_000),
+            new Date(),
+          )
+          if (payment) {
+            const status = checkedPayment(payment, order.quote.totalKopecks)
+            let confirmationUrl: string | undefined
+            try {
+              confirmationUrl = safeConfirmationUrl(payment.confirmation?.confirmation_url)
+            } catch {
+              /* ID сохраняется для сверки. */
+            }
+            const linked = await orders.findOneAndUpdate(
+              {
+                _id: order._id,
+                'payment.recoveryToken': token,
+                'payment.id': { $exists: false },
+                'payment.status': order.payment!.status,
+              },
+              {
+                $set: {
+                  'payment.id': payment.id,
+                  ...(confirmationUrl && { 'payment.confirmationUrl': confirmationUrl }),
+                },
+              },
+              { returnDocument: 'after' },
+            )
+            if (linked) await updateVerifiedPayment(linked, status, payment.id, payment.captured_at)
+          } else if (order.canceledAt || paymentExpired(order)) {
+            // null допустим только после полной успешной выборки провайдера.
+            const canceled = await orders.updateOne(
+              {
+                _id: order._id,
+                'payment.recoveryToken': token,
+                'payment.id': { $exists: false },
+                'payment.status': order.payment!.status,
+              },
+              {
+                $set: {
+                  'payment.status': 'canceled',
+                  'payment.updatedAt': new Date(),
+                  canceledAt: order.canceledAt ?? new Date(paymentDeadline(order)!),
+                },
+              },
+            )
+            if (canceled.modifiedCount) {
+              await syncBirthdayClaim(order, 'canceled')
+              await logPayment(order, 'canceled')
+            }
+          }
+        } catch (error) {
+          app.log.warn({ error, orderId: order._id }, 'Cannot recover payment ID')
+        } finally {
+          await orders.updateOne(
+            { _id: order._id, 'payment.recoveryToken': token },
+            {
+              $set: { paymentCheckedAt: new Date() },
+              $unset: { 'payment.recoveryToken': '', 'payment.recoveryUntil': '' },
+            },
+          )
         }
       },
     )
@@ -397,8 +521,9 @@ export function registerShopRoutes(
   let expirationTimer: ReturnType<typeof setInterval> | undefined
   let backgroundRun: Promise<void> | undefined
   const runBackground = () => {
-    backgroundRun ??= expireOrders()
-      .then(reconcileCanceledPayments)
+    backgroundRun ??= reconcilePayments()
+      .then(reconcileUnknownPayments)
+      .then(() => expireOrders())
       .then(releaseCanceledBirthdayClaims)
       .catch((error) => app.log.error({ error }, 'Cannot expire unpaid orders'))
       .finally(() => {
@@ -680,6 +805,12 @@ export function registerShopRoutes(
       return reply.code(409).send(failure('ORDER_CANCELED', 'Время оплаты истекло. Заказ отменён'))
     if (order.requiresPayment === false || order.quote.totalKopecks === 0)
       return reply.code(409).send(failure('PAYMENT_NOT_REQUIRED', 'Заказ не требует оплаты'))
+    if (order.payment?.status === 'succeeded') {
+      await syncBirthdayClaim(order, 'succeeded')
+      return { status: 'succeeded' }
+    }
+    if (order.payment?.status === 'canceled')
+      return reply.code(409).send(failure('ORDER_CANCELED', 'Платёж отменён. Оформите новый заказ'))
     if (order.status !== 'test' || (order.fulfillmentStatus && order.fulfillmentStatus !== 'new'))
       return reply.code(409).send(failure('ORDER_FINISHED', 'Заказ уже завершён'))
     if (
@@ -748,8 +879,10 @@ export function registerShopRoutes(
           .send(failure('PAYMENT_STATUS_UNAVAILABLE', 'Не удалось проверить оплату'))
       }
     }
-    if (order.payment?.status === 'succeeded' || order.payment?.status === 'canceled')
-      return reply.code(409).send(failure('PAYMENT_FINISHED', 'Для этого заказа оплата завершена'))
+    if (order.payment?.recoveryUntil && order.payment.recoveryUntil.getTime() > Date.now())
+      return reply
+        .code(409)
+        .send(failure('PAYMENT_STARTING', 'Проверяем предыдущую попытку оплаты. Повторите позже'))
     if (
       order.payment?.status === 'creating' &&
       Date.now() - order.payment.updatedAt.getTime() < 30_000
@@ -780,6 +913,10 @@ export function registerShopRoutes(
         canceledAt: { $exists: false },
         createdAt: { $gt: new Date(Date.now() - PAYMENT_WINDOW_MS) },
         fulfillmentStatus: { $nin: ['preparing', 'delivering', 'completed'] },
+        $or: [
+          { 'payment.recoveryUntil': { $exists: false } },
+          { 'payment.recoveryUntil': { $lte: new Date() } },
+        ],
         ...(order.payment
           ? { 'payment.status': order.payment.status, 'payment.updatedAt': order.payment.updatedAt }
           : { payment: { $exists: false } }),
@@ -963,7 +1100,9 @@ export function registerShopRoutes(
     })
     if (!order) return reply.code(404).send(failure('NOT_FOUND', 'Заказ не найден'))
     if (order.status !== 'test' || order.payment?.status === 'succeeded')
-      return reply.code(409).send(failure('ORDER_FINISHED', 'Оплаченный заказ нельзя отменить'))
+      return reply
+        .code(409)
+        .send(failure('ORDER_FINISHED', 'Оформленный или оплаченный заказ нельзя отменить'))
     if (order.payment?.status === 'canceled') {
       await syncBirthdayClaim(order, 'canceled')
       return { status: 'canceled' }

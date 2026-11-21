@@ -112,6 +112,92 @@ vi.mock('../features/cart/ui/CartDrawer/CartDrawer', async () => {
 
 const accountA = { id: 'a', phone: '+79991234567', name: 'Анна' }
 
+test.each(['guest', 'same-account'])(
+  'вход в другой вкладке сохраняет общую корзину: %s',
+  async (mode) => {
+    if (mode === 'guest') me.mockRejectedValueOnce(new Error('guest'))
+    else me.mockResolvedValueOnce({ user: accountA })
+    render(<App />)
+    await waitFor(() => expect(me).toHaveBeenCalledTimes(1))
+    await act(async () => {})
+    act(() =>
+      useCartStore
+        .getState()
+        .add(
+          { id: 'borscht', name: 'Борщ', priceRub: 360 },
+          { variant: '', removedIngredients: [], extras: {}, quantity: 1 },
+        ),
+    )
+    me.mockResolvedValueOnce({ user: accountA })
+    act(() =>
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'drop-of-taste:session-change',
+          newValue: crypto.randomUUID(),
+          storageArea: localStorage,
+        }),
+      ),
+    )
+    await waitFor(() => expect(screen.getByTestId('account-label')).toHaveTextContent('Анна'))
+    expect(useCartStore.getState().lines).toHaveLength(1)
+    expect(JSON.parse(localStorage.getItem('drop-of-taste:cart')!).state.lines).toHaveLength(1)
+  },
+)
+
+test('смена аккаунта в другой вкладке очищает корзину предыдущего пользователя', async () => {
+  me.mockResolvedValueOnce({ user: accountA })
+  render(<App />)
+  await waitFor(() => expect(screen.getByTestId('account-label')).toHaveTextContent('Анна'))
+  act(() =>
+    useCartStore
+      .getState()
+      .add(
+        { id: 'borscht', name: 'Борщ', priceRub: 360 },
+        { variant: '', removedIngredients: [], extras: {}, quantity: 1 },
+      ),
+  )
+  me.mockResolvedValueOnce({ user: { ...accountA, id: 'b', name: 'Борис' } })
+  act(() =>
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: 'drop-of-taste:session-change',
+        newValue: crypto.randomUUID(),
+        storageArea: localStorage,
+      }),
+    ),
+  )
+  await waitFor(() => expect(screen.getByTestId('account-label')).toHaveTextContent('Борис'))
+  expect(useCartStore.getState().lines).toHaveLength(0)
+})
+
+test('сообщение после смены аккаунта не очищает повторно новую общую корзину', async () => {
+  me.mockResolvedValueOnce({ user: accountA })
+  render(<App />)
+  await waitFor(() => expect(screen.getByTestId('account-label')).toHaveTextContent('Анна'))
+  // Другая вкладка уже очистила старую корзину и начала новую от нового аккаунта.
+  act(() => {
+    useCartStore.getState().clear()
+    useCartStore
+      .getState()
+      .add(
+        { id: 'borscht', name: 'Борщ', priceRub: 360 },
+        { variant: '', removedIngredients: [], extras: {}, quantity: 1 },
+      )
+  })
+  me.mockResolvedValueOnce({ user: { ...accountA, id: 'b', name: 'Борис' } })
+  act(() =>
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: 'drop-of-taste:session-change',
+        newValue: JSON.stringify({ accountId: 'b', cartCleared: true }),
+        storageArea: localStorage,
+      }),
+    ),
+  )
+  await waitFor(() => expect(screen.getByTestId('account-label')).toHaveTextContent('Борис'))
+  expect(useCartStore.getState().lines).toHaveLength(1)
+})
+
 test('выбор адреса из корзины возвращает её в режим доставки с выбранным адресом', async () => {
   me.mockResolvedValue({ user: accountA })
   render(<App />)

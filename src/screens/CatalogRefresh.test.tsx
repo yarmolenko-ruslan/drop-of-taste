@@ -1,9 +1,9 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { CatalogProvider } from './CatalogProvider'
-import { CategoryScreen } from '../../../screens/CategoryScreen/CategoryScreen'
-import { HomeScreen } from '../../../screens/HomeScreen/HomeScreen'
-import { SearchScreen } from '../../../screens/SearchScreen/SearchScreen'
+import { CatalogProvider } from '../features/catalog/api/CatalogProvider'
+import { CategoryScreen } from './CategoryScreen/CategoryScreen'
+import { HomeScreen } from './HomeScreen/HomeScreen'
+import { SearchScreen } from './SearchScreen/SearchScreen'
 
 const catalog = {
   categories: [
@@ -68,7 +68,7 @@ test.each(['/', '/menu/soups', '/search?q=борщ'])(
     expect(screen.getByText('Борщ стабильный')).toBe(product)
     expect(screen.queryByLabelText('Загружаем меню…')).not.toBeInTheDocument()
     await act(async () => fail(new Error('offline')))
-    expect(await screen.findByText('Нет связи с локальным сервером')).toBeInTheDocument()
+    expect(await screen.findByText('Нет связи с сервером. Попробуйте ещё раз.')).toBeInTheDocument()
     expect(screen.getByText('Борщ стабильный')).toBe(product)
   },
 )

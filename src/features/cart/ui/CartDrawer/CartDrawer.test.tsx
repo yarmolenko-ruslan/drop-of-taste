@@ -870,7 +870,7 @@ test('повтор оплаты сохранённого заказа со ск�
   const pay = screen.getByRole('button', { name: /Перейти к оплате/ })
   await waitFor(() => expect(pay).toBeEnabled())
   await userEvent.setup().click(pay)
-  await screen.findByText('Нет связи с локальным сервером')
+  await screen.findByText('Нет связи с сервером. Попробуйте ещё раз.')
   const quotes = fetchMock.mock.calls.filter(([url]) => url === '/api/checkout/quote').length
   view.rerender(<CartDrawer {...props} isOpen={false} />)
   view.rerender(<CartDrawer {...props} isOpen />)
@@ -1009,7 +1009,7 @@ test('после потери ответа создания заказа пов�
   const checkout = screen.getByRole('button', { name: /Оформить заказ/ })
   await waitFor(() => expect(checkout).toBeEnabled())
   await userEvent.setup().click(checkout)
-  await screen.findByText('Нет связи с локальным сервером')
+  await screen.findByText('Нет связи с сервером. Попробуйте ещё раз.')
   view.rerender(<CartDrawer {...props} isOpen={false} />)
   view.rerender(<CartDrawer {...props} isOpen />)
   act(() => document.dispatchEvent(new Event('visibilitychange')))

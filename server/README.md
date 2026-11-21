@@ -20,7 +20,7 @@ server/
 │   │   ├── response-access.ts # ответы с учётом прав
 │   │   └── *.test.ts
 │   ├── auth/
-│   │   ├── service.ts       # одноразовые коды и сессии
+│   │   ├── service.ts       # подтверждение звонка пользователя и сессии
 │   │   ├── types.ts
 │   │   ├── limits.ts
 │   │   ├── session-cookie.ts

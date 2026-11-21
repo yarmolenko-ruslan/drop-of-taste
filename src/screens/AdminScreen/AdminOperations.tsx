@@ -30,12 +30,14 @@ type Order = {
     discountKopecks: number
     promoCode?: string
     promoDiscountKopecks?: number
+    birthdayDiscountKopecks?: number
+    adjustments?: { label: string; amountKopecks: number }[]
   }
 }
 const stages: { id: Stage; label: string; action?: string }[] = [
   { id: 'new', label: 'Новые заказы', action: 'Принять заказ' },
   { id: 'preparing', label: 'В работе', action: 'Передать в доставку' },
-  { id: 'delivering', label: 'В доставке', action: 'Завершить заказ' },
+  { id: 'delivering', label: 'В доставке / к выдаче', action: 'Завершить заказ' },
   { id: 'completed', label: 'Завершённые' },
 ]
 const money = (kopecks: number) => `${(kopecks / 100).toLocaleString('ru-RU')} ₽`
@@ -64,7 +66,21 @@ function OrderCard({
   collapsible?: boolean
 }) {
   const canceled = Boolean(order.canceledAt) || order.payment?.status === 'canceled'
+  const hasAdjustments = Boolean(order.quote.adjustments?.length)
   const current = stages.findIndex((stage) => stage.id === order.fulfillmentStatus)
+  const pickup = order.input.fulfillment.mode === 'pickup'
+  const stageLabel =
+    order.fulfillmentStatus === 'delivering'
+      ? pickup
+        ? 'Можно забирать'
+        : 'В доставке'
+      : stages[current]?.label
+  const action =
+    pickup && order.fulfillmentStatus === 'preparing'
+      ? 'Заказ готов'
+      : pickup && order.fulfillmentStatus === 'delivering'
+        ? 'Выдать заказ'
+        : stages[current]?.action
   const header = (
     <div className={styles.cardTop}>
       <div>
@@ -81,23 +97,24 @@ function OrderCard({
         {order.customer?.name && order.customer.phone}{' '}
       </p>
       <p>
-        <b>{order.input.fulfillment.mode === 'pickup' ? 'Самовывоз' : 'Доставка'}:</b>{' '}
-        {order.input.fulfillment.label}
+        <b>{pickup ? 'Самовывоз' : 'Доставка'}:</b> {order.input.fulfillment.label}
       </p>
       <p>
-        <b>Этап:</b> {canceled ? 'Отменён' : stages[current]?.label}
+        <b>Этап:</b> {canceled ? 'Отменён' : stageLabel}
       </p>
       <p>
         <b>Оплата:</b>{' '}
-        {order.payment?.status === 'succeeded'
-          ? order.canceledAt
-            ? 'Оплачено после отмены — требуется проверка возврата'
-            : 'Оплачено'
-          : order.payment?.status === 'pending'
-            ? 'Ожидает подтверждения'
-            : order.payment?.status === 'canceled'
-              ? 'Отменена'
-              : 'Не оплачено'}
+        {order.quote.totalKopecks === 0
+          ? 'Не требуется — заказ на 0 ₽'
+          : order.payment?.status === 'succeeded'
+            ? order.canceledAt
+              ? 'Оплачено после отмены — требуется проверка платежа'
+              : 'Оплачено'
+            : order.payment?.status === 'pending' || order.payment?.status === 'creating'
+              ? 'Ожидает подтверждения'
+              : order.payment?.status === 'canceled'
+                ? 'Отменена'
+                : 'Не оплачено'}
       </p>
       <details open={collapsible || undefined}>
         <summary>Состав заказа</summary>
@@ -108,13 +125,27 @@ function OrderCard({
             </li>
           ))}
         </ul>
-        {order.quote.discountKopecks > 0 && <p>Скидка: −{money(order.quote.discountKopecks)}</p>}
-        {(order.quote.promoDiscountKopecks ?? 0) > 0 && (
+        {order.quote.adjustments?.map((adjustment) => (
+          <p key={adjustment.label}>
+            {adjustment.label}:{' '}
+            {adjustment.amountKopecks < 0 ? '−' : adjustment.amountKopecks > 0 ? '+' : ''}
+            {money(Math.abs(adjustment.amountKopecks))}
+          </p>
+        ))}
+        {!hasAdjustments && order.quote.discountKopecks > 0 && (
+          <p>Скидка за самовывоз: −{money(order.quote.discountKopecks)}</p>
+        )}
+        {!hasAdjustments && (order.quote.birthdayDiscountKopecks ?? 0) > 0 && (
+          <p>Скидка ко дню рождения: −{money(order.quote.birthdayDiscountKopecks ?? 0)}</p>
+        )}
+        {!hasAdjustments && (order.quote.promoDiscountKopecks ?? 0) > 0 && (
           <p>
             Бонус-код {order.quote.promoCode}: −{money(order.quote.promoDiscountKopecks ?? 0)}
           </p>
         )}
-        {order.quote.deliveryKopecks > 0 && <p>Доставка: {money(order.quote.deliveryKopecks)}</p>}
+        {!hasAdjustments && order.quote.deliveryKopecks > 0 && (
+          <p>Доставка: {money(order.quote.deliveryKopecks)}</p>
+        )}
       </details>
       {onAdvance && !canceled && (
         <button
@@ -123,7 +154,7 @@ function OrderCard({
           disabled={busy || disabled}
           onClick={onAdvance}
         >
-          {busy ? 'Сохраняем…' : stages[current]?.action} →
+          {busy ? 'Сохраняем…' : action} →
         </button>
       )}
     </>
@@ -219,6 +250,7 @@ export function OrdersEditor({ canManage = true }: { canManage?: boolean }) {
         <div>
           <h2>Заказы</h2>
           <p>Новые заказы проверяются автоматически каждые 20 секунд.</p>
+          <p>Заказы создаются в тестовом режиме и не передаются в кафе.</p>
         </div>
         <button type="button" onClick={() => void load(stage)}>
           Обновить
@@ -428,7 +460,10 @@ export function ClientsEditor() {
             <b>Адреса:</b>{' '}
             {selected.addresses.length ? selected.addresses.join('; ') : 'Не добавлены'}
           </p>
-          <h3>История заказов · {selected.orders.length}</h3>
+          <h3>
+            История заказов · {selected.orders.length}
+            {selected.nextBefore ? '+' : ''}
+          </h3>
           {selected.orders.length ? (
             selected.orders.map((order) => <OrderCard key={order._id} order={order} collapsible />)
           ) : (

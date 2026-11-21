@@ -1,7 +1,7 @@
 import type { Db } from 'mongodb'
-import { z } from 'zod'
 import type { CatalogDoc } from '../catalog/template.ts'
-import { addressDetailsSchema } from '../../../shared/validation/address.ts'
+import type { Checkout } from '../../../shared/validation/checkout.ts'
+export { checkoutSchema, type Checkout } from '../../../shared/validation/checkout.ts'
 import { getSiteContent } from '../content/service.ts'
 import {
   bonusCodeDiscount,
@@ -10,33 +10,6 @@ import {
 } from '../../../shared/bonus-code.ts'
 import { pickupDiscountPercent, isPromotionActive } from '../../../shared/promotion.ts'
 import { birthdayCelebrationYear } from '../../../shared/birthday.ts'
-
-const lineSchema = z
-  .object({
-    productId: z.string().min(1).max(100),
-    quantity: z.number().int().min(1).max(99),
-    extras: z.array(z.object({ name: z.string(), quantity: z.number().int().min(1) })).default([]),
-  })
-  .strict()
-const fulfillmentSchema = z.discriminatedUnion('mode', [
-  z.object({ mode: z.literal('pickup'), label: z.string().min(1).max(300) }).strict(),
-  z
-    .object({
-      mode: z.literal('delivery'),
-      label: z.string().min(5).max(300),
-      details: addressDetailsSchema,
-    })
-    .strict(),
-])
-export const checkoutSchema = z
-  .object({
-    lines: z.array(lineSchema).min(1).max(100),
-    fulfillment: fulfillmentSchema,
-    promoCode: z.string().trim().max(40).optional(),
-    birthdayDiscount: z.boolean().optional(),
-  })
-  .strict()
-export type Checkout = z.infer<typeof checkoutSchema>
 
 export async function calculateQuote(db: Db, input: Checkout, accountId?: string) {
   const ids = [...new Set(input.lines.map((line) => line.productId))]

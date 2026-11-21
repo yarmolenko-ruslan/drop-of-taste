@@ -405,7 +405,7 @@ test('restricted dashboard and save payloads preserve the allowed editor and do 
   await user.click(screen.getAllByRole('button', { name: 'Сохранить акции' })[0]!)
   await waitFor(() => expect(writes).toHaveLength(1))
   expect(Object.keys(writes[0]!)).toEqual(['promotions'])
-  expect(await screen.findAllByText('Сохранено. Изменения уже видны на сайте.')).toHaveLength(2)
+  expect(await screen.findAllByText('Сохранено. Сайт обновится автоматически.')).toHaveLength(2)
   expect(screen.getByRole('button', { name: 'Добавить акцию' })).toBeInTheDocument()
 })
 

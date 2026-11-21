@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { z } from 'zod'
+import { checkoutAttemptSchema, type CheckoutAttempt } from './checkoutAttempt'
 
 export const MAX_CART_QUANTITY = 99
 type CartProduct = {
@@ -35,6 +36,9 @@ type CartState = {
   isOpen: boolean
   revision: string
   pendingPayment: { orderId: string; accountId: string; revision: string } | null
+  checkoutAttempt: CheckoutAttempt | null
+  rememberCheckout: (attempt: CheckoutAttempt) => void
+  forgetCheckout: (key: string) => void
   rememberPayment: (orderId: string, accountId: string) => void
   finishPayment: (orderId: string, accountId: string) => void
   forgetPayment: (orderId: string, accountId: string) => void
@@ -95,6 +99,13 @@ export const useCartStore = create<CartState>()(
       isOpen: false,
       revision: crypto.randomUUID(),
       pendingPayment: null,
+      checkoutAttempt: null,
+      rememberCheckout: (attempt) =>
+        set((state) =>
+          attempt.revision === state.revision ? { checkoutAttempt: attempt } : state,
+        ),
+      forgetCheckout: (key) =>
+        set((state) => (state.checkoutAttempt?.key === key ? { checkoutAttempt: null } : state)),
       rememberPayment: (orderId, accountId) =>
         set((state) => ({
           pendingPayment: { orderId, accountId, revision: state.revision },
@@ -109,12 +120,22 @@ export const useCartStore = create<CartState>()(
               revision: crypto.randomUUID(),
             }),
             pendingPayment: null,
+            ...(state.checkoutAttempt?.orderId === orderId &&
+              state.checkoutAttempt.accountId === accountId && {
+                checkoutAttempt: null,
+              }),
           }
         }),
       forgetPayment: (orderId, accountId) =>
         set((state) =>
           state.pendingPayment?.orderId === orderId && state.pendingPayment.accountId === accountId
-            ? { pendingPayment: null }
+            ? {
+                pendingPayment: null,
+                ...(state.checkoutAttempt?.orderId === orderId &&
+                  state.checkoutAttempt.accountId === accountId && {
+                    checkoutAttempt: null,
+                  }),
+              }
             : state,
         ),
       open: () => set({ isOpen: true }),
@@ -173,7 +194,13 @@ export const useCartStore = create<CartState>()(
             )
             .filter((line) => line.quantity > 0),
         })),
-      clear: () => set({ lines: [], revision: crypto.randomUUID(), pendingPayment: null }),
+      clear: () =>
+        set({
+          lines: [],
+          revision: crypto.randomUUID(),
+          pendingPayment: null,
+          checkoutAttempt: null,
+        }),
       syncCatalog: (products) =>
         set((state) => {
           const byId = new Map(products.map((product) => [product._id, product]))
@@ -220,12 +247,14 @@ export const useCartStore = create<CartState>()(
         lines: state.lines,
         revision: state.revision,
         pendingPayment: state.pendingPayment,
+        checkoutAttempt: state.checkoutAttempt,
       }),
       merge: (persisted, current) => {
         const data = persisted as {
           lines?: unknown
           revision?: unknown
           pendingPayment?: unknown
+          checkoutAttempt?: unknown
         } | null
         if (!Array.isArray(data?.lines)) return current
         let repaired = false
@@ -261,6 +290,7 @@ export const useCartStore = create<CartState>()(
           lines = [...byKey.values()]
         }
         const payment = pendingPaymentSchema.safeParse(data.pendingPayment)
+        const checkout = checkoutAttemptSchema.safeParse(data.checkoutAttempt)
         return {
           ...current,
           lines,
@@ -270,6 +300,7 @@ export const useCartStore = create<CartState>()(
               ? data.revision
               : current.revision,
           pendingPayment: payment.success ? payment.data : null,
+          checkoutAttempt: checkout.success && !repaired ? checkout.data : null,
         }
       },
     },

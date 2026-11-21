@@ -77,15 +77,23 @@ function SauceCard({
       <div className={styles.sauceText}>
         <h3>{name}</h3>
         <p>
-          {live?.amount != null ? `${live.amount} ${live.measure}` : 'Вес уточняется'} ·{' '}
-          {live?.calories != null ? `${live.calories} ккал` : 'Калорийность уточняется'} ·{' '}
+          {live?.amount != null
+            ? `${live.amount} ${live.measure}`
+            : live?.measure === 'мл'
+              ? 'Объём уточняется'
+              : 'Вес уточняется'}{' '}
+          · {live?.calories != null ? `${live.calories} ккал` : 'Калорийность уточняется'} ·{' '}
           <strong>{priceRub === null ? 'Цена уточняется' : `${priceRub} ₽`}</strong>
         </p>
       </div>
       <span className={styles.sauceActionWrap}>
         <button
           type="button"
-          aria-label={`Добавить соус «${name}» в корзину`}
+          aria-label={
+            live?.action === 'choose' && onSauceAction
+              ? `Выбрать соус «${name}»`
+              : `Добавить соус «${name}» в корзину`
+          }
           className={styles.sauceAdd}
           disabled={live?.available === false}
           onClick={() =>
@@ -176,7 +184,7 @@ export function HomeClosingSections({
                 <strong>
                   {mode === 'payment'
                     ? testPaymentEnabled
-                      ? 'Онлайн-оплата'
+                      ? 'Тестовая онлайн-оплата'
                       : 'Оформление заказа'
                     : mode === 'pickup'
                       ? pickupPercent > 0
@@ -191,7 +199,7 @@ export function HomeClosingSections({
                 <span>
                   {mode === 'payment'
                     ? testPaymentEnabled
-                      ? 'Банковской картой'
+                      ? 'Без списания денег'
                       : 'За пару минут'
                     : detail}
                 </span>

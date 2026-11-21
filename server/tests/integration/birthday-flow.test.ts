@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createTestCallProvider } from '../fixtures/call-provider.ts'
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -24,9 +25,7 @@ test('одна скидка на праздничный год: гонка за�
   const origin = 'http://localhost:5173'
   const auth = createAuthService({
     store: createMongoAuthStore(mongo, db),
-    sender: { async send() {} },
-    secret: 'test-secret',
-    developmentCode: '123456',
+    provider: createTestCallProvider(),
   })
   const app = createApp(auth, { origins: [origin], secureCookies: false })
   let gatewayStatus: 'pending' | 'succeeded' | 'canceled' = 'succeeded'
@@ -67,17 +66,17 @@ test('одна скидка на праздничный год: гонка за�
     registerProfileRoutes(app, db, mongo, auth, [origin])
     registerShopRoutes(app, db, mongo, auth, [origin], false, gateway)
     const phone = '+79991234567'
-    await app.inject({
+    const callStart1 = await app.inject({
       method: 'POST',
-      url: '/api/auth/request-code',
+      url: '/api/auth/call/start',
       headers: { origin },
-      payload: { phone },
+      payload: { phone, consent: true },
     })
     const verified = await app.inject({
       method: 'POST',
-      url: '/api/auth/verify-code',
+      url: '/api/auth/call/status',
       headers: { origin },
-      payload: { phone, code: '123456', consent: true },
+      payload: { attemptToken: callStart1.json().attemptToken, consent: true },
     })
     const cookie = verified.headers['set-cookie']!.toString().split(';')[0]
     const local = new Intl.DateTimeFormat('en-CA', {
@@ -149,17 +148,17 @@ test('одна скидка на праздничный год: гонка за�
       { upsert: true },
     )
     const otherPhone = '+79991234568'
-    await app.inject({
+    const callStart2 = await app.inject({
       method: 'POST',
-      url: '/api/auth/request-code',
+      url: '/api/auth/call/start',
       headers: { origin },
-      payload: { phone: otherPhone },
+      payload: { phone: otherPhone, consent: true },
     })
     const otherLogin = await app.inject({
       method: 'POST',
-      url: '/api/auth/verify-code',
+      url: '/api/auth/call/status',
       headers: { origin },
-      payload: { phone: otherPhone, code: '123456', consent: true },
+      payload: { attemptToken: callStart2.json().attemptToken, consent: true },
     })
     const otherHeaders = {
       origin,
@@ -245,17 +244,17 @@ test('одна скидка на праздничный год: гонка за�
       },
     )
     const thirdPhone = '+79991234569'
-    await app.inject({
+    const callStart3 = await app.inject({
       method: 'POST',
-      url: '/api/auth/request-code',
+      url: '/api/auth/call/start',
       headers: { origin },
-      payload: { phone: thirdPhone },
+      payload: { phone: thirdPhone, consent: true },
     })
     const thirdLogin = await app.inject({
       method: 'POST',
-      url: '/api/auth/verify-code',
+      url: '/api/auth/call/status',
       headers: { origin },
-      payload: { phone: thirdPhone, code: '123456', consent: true },
+      payload: { attemptToken: callStart3.json().attemptToken, consent: true },
     })
     const thirdHeaders = {
       origin,

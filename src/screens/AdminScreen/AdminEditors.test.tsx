@@ -124,3 +124,55 @@ test('поздняя загрузка изображения не заменяе
   expect(signal.aborted).toBe(true)
   expect(change).toHaveBeenCalledExactlyOnceWith('/manual.png')
 })
+
+test('ссылка баннера выбирается из общего списка и допускает собственный адрес', async () => {
+  const user = userEvent.setup()
+  request.mockImplementation(async (_path: string, init: RequestInit) => ({
+    content: { ...defaultSiteContent, ...JSON.parse(String(init.body)) },
+  }))
+  const initial = {
+    ...defaultSiteContent,
+    heroSlides: [{ ...defaultSiteContent.heroSlides[0]!, href: '/about' }],
+  }
+  render(<ContentEditor initial={initial} onSaved={() => {}} />)
+  const destination = screen.getByRole('combobox', {
+    name: 'Куда ведёт картинка (ссылка внутри сайта)',
+  })
+  await user.click(destination)
+  await user.click(screen.getByRole('option', { name: 'Другая ссылка…' }))
+  await user.type(screen.getByRole('textbox', { name: 'Своя ссылка внутри сайта' }), '/menu/soups')
+  await user.click(screen.getAllByRole('button', { name: 'Сохранить сайт' })[0]!)
+  await waitFor(() => expect(request).toHaveBeenCalledOnce())
+  expect(JSON.parse(request.mock.calls[0]![1].body).heroSlides[0].href).toBe('/menu/soups')
+  await user.click(destination)
+  await user.click(screen.getByRole('option', { name: 'Все акции' }))
+  expect(
+    screen.queryByRole('textbox', { name: 'Своя ссылка внутри сайта' }),
+  ).not.toBeInTheDocument()
+  expect(destination).toHaveTextContent('Все акции')
+})
+
+test('своя ссылка баннера не исчезает при вводе пути с префиксом готовой ссылки', async () => {
+  const user = userEvent.setup()
+  render(
+    <ContentEditor
+      initial={{
+        ...defaultSiteContent,
+        heroSlides: [{ ...defaultSiteContent.heroSlides[0]!, href: '/about' }],
+      }}
+      onSaved={() => {}}
+    />,
+  )
+  await user.click(
+    screen.getByRole('combobox', { name: 'Куда ведёт картинка (ссылка внутри сайта)' }),
+  )
+  await user.click(screen.getByRole('option', { name: 'Другая ссылка…' }))
+  await user.type(
+    screen.getByRole('textbox', { name: 'Своя ссылка внутри сайта' }),
+    '/promotions/custom-offer',
+  )
+  expect(screen.getByRole('textbox', { name: 'Своя ссылка внутри сайта' })).toHaveValue(
+    '/promotions/custom-offer',
+  )
+  expect(screen.getByRole('textbox', { name: 'Своя ссылка внутри сайта' })).toHaveFocus()
+})

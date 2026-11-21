@@ -24,6 +24,8 @@ const { calls, state, catalogState } = vi.hoisted(() => ({
     paymentCheckResponse: null as Promise<{ status: string }> | null,
     moreOrdersResponse: null as Promise<{ orders: unknown[]; nextCursor: string | null }> | null,
     failOrders: false,
+    failProfile: false,
+    profileResponse: null as Promise<unknown> | null,
     notificationSaves: [] as Array<() => void>,
   },
 }))
@@ -55,7 +57,10 @@ vi.mock('../../features/auth/api/authApi', () => ({
         })
       })
     }
-    if (path === '/profile') return { profile: state.profile }
+    if (path === '/profile') {
+      if (state.failProfile) throw new Error('Профиль недоступен')
+      return state.profileResponse ?? { profile: state.profile }
+    }
     if (path.startsWith('/orders?cursor='))
       return state.moreOrdersResponse ?? { orders: [], nextCursor: null }
     if (path === '/orders') {
@@ -143,6 +148,8 @@ beforeEach(() => {
   state.paymentCheckResponse = null
   state.moreOrdersResponse = null
   state.failOrders = false
+  state.failProfile = false
+  state.profileResponse = null
   state.notificationSaves = []
 })
 function renderAccount(
@@ -918,4 +925,53 @@ test('устаревший опрос не снимает отмену; дока
   fireEvent.focus(window)
   expect(await screen.findByText('Оплачено онлайн')).toBeInTheDocument()
   expect(screen.queryByText('Нет активных заказов.')).not.toBeInTheDocument()
+})
+
+test('повторная загрузка профиля сохраняет уже открытый личный кабинет', async () => {
+  state.failProfile = true
+  renderAccount('profile')
+  const retry = await screen.findByRole('button', { name: 'Повторить загрузку' })
+  const name = screen.getByRole('textbox', { name: 'Имя' })
+  const navigation = screen.getByRole('navigation', { name: 'Разделы личного кабинета' })
+  state.failProfile = false
+  let finish!: (value: { profile: typeof state.profile }) => void
+  state.profileResponse = new Promise((resolve) => {
+    finish = resolve
+  })
+  await userEvent.setup().click(retry)
+  expect(retry).toBeDisabled()
+  expect(screen.getByRole('textbox', { name: 'Имя' })).toBe(name)
+  expect(screen.getByRole('navigation', { name: 'Разделы личного кабинета' })).toBe(navigation)
+  expect(name).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Сохранить' })).toBeDisabled()
+  expect(screen.getByRole('checkbox', { name: 'Push-уведомления' })).toBeDisabled()
+  expect(screen.queryByLabelText('Загружаем личный кабинет…')).not.toBeInTheDocument()
+  await act(async () => finish({ profile: state.profile }))
+  expect(screen.getByRole('textbox', { name: 'Имя' })).toBe(name)
+  expect(name).toBeEnabled()
+  expect(retry).not.toBeInTheDocument()
+})
+
+test('общие списки даты рождения сохраняют выбранные день, месяц и год', async () => {
+  const user = userEvent.setup()
+  renderAccount('profile')
+  const day = await screen.findByRole('combobox', { name: 'День' })
+  await user.click(day)
+  await user.click(screen.getByRole('option', { name: '29' }))
+  await user.click(screen.getByRole('combobox', { name: 'Месяц' }))
+  await user.click(screen.getByRole('option', { name: 'Февраль' }))
+  await user.click(screen.getByRole('combobox', { name: 'Год' }))
+  await user.click(screen.getByRole('option', { name: '1992' }))
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+  await waitFor(() =>
+    expect(
+      calls.some(
+        (call) =>
+          call.path === '/profile' &&
+          call.method === 'PUT' &&
+          (call.body as { birthday?: string }).birthday === '1992-02-29',
+      ),
+    ).toBe(true),
+  )
+  expect(day).toBeDisabled()
 })

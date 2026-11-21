@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useCartStore } from '../../model/cartStore'
 import { CartDrawer } from './CartDrawer'
@@ -758,7 +758,9 @@ test('применяет скидку сервера и сохраняет це�
   ).toBeInTheDocument()
   await userEvent.setup().click(checkbox)
   await waitFor(() => expect(finish).toBeDefined())
-  expect(screen.getAllByText('360 ₽')).toHaveLength(1)
+  expect(screen.getAllByText('360 ₽')).toHaveLength(4)
+  expect(screen.getByRole('status', { name: 'Расчёт заказа' })).toHaveAttribute('aria-busy', 'true')
+  expect(screen.queryByLabelText('Рассчитываем стоимость')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: /Оформить заказ/ })).toBeDisabled()
   await act(async () =>
     finish(
@@ -1073,4 +1075,223 @@ test('после истечения срока создаёт новый зак�
   expect(keys[1]).not.toBe(keys[0])
   expect(fetchMock.mock.calls.some(([url]) => url === '/api/orders/order-2/pay')).toBe(true)
   expect(useCartStore.getState().lines).toHaveLength(1)
+})
+
+test.each(['increase', 'decrease', 'remove', 'add'] as const)(
+  'сохраняет цены и блоки при изменении товаров: %s',
+  async (action) => {
+    const user = userEvent.setup()
+    useCartStore.getState().add(product, { ...options, quantity: action === 'remove' ? 1 : 2 })
+    useCartStore.getState().add({ id: 'latte', name: 'Латте', priceRub: 200 }, options)
+    const units: Record<string, number> = { borscht: 40000, latte: 22000, tea: 10000 }
+    let finish!: () => void
+    let requests = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url === '/api/checkout/config')
+          return Promise.resolve(Response.json({ testPaymentEnabled: true }))
+        const input = JSON.parse(String(init?.body))
+        const lines = input.lines.map((line: { productId: string; quantity: number }) => ({
+          ...line,
+          unitPriceKopecks: units[line.productId],
+          lineTotalKopecks: units[line.productId]! * line.quantity,
+        }))
+        const subtotalKopecks = lines.reduce(
+          (sum: number, line: { lineTotalKopecks: number }) => sum + line.lineTotalKopecks,
+          0,
+        )
+        const response = () =>
+          Response.json({ lines, subtotalKopecks, totalKopecks: subtotalKopecks, eligible: true })
+        if (++requests === 1) return Promise.resolve(response())
+        return new Promise<Response>((resolve) => {
+          finish = () => resolve(response())
+        })
+      }),
+    )
+    render(
+      <CartDrawer
+        fulfillment={{ mode: 'pickup', label: 'Кафе' }}
+        savedDelivery={null}
+        onFulfillmentChange={vi.fn()}
+        onGoToAddresses={vi.fn()}
+        recommendations={[]}
+        onAddRecommendation={vi.fn()}
+      />,
+    )
+    const checkout = await screen.findByRole('button', { name: /Перейти к оплате/ })
+    await waitFor(() => expect(checkout).toBeEnabled())
+    const oldTotal = checkout.textContent
+    const breakdown = screen.getByRole('status', { name: 'Расчёт заказа' })
+    const latte = screen.getByRole('heading', { name: 'Латте' }).closest('article')!
+    const unchangedPrice = within(latte).getByText('220 ₽')
+    if (action === 'add') {
+      act(() => useCartStore.getState().add({ id: 'tea', name: 'Чай', priceRub: 100 }, options))
+    } else {
+      await user.click(
+        screen.getByRole('button', {
+          name:
+            action === 'increase' ? 'Увеличить количество «Борщ»' : 'Уменьшить количество «Борщ»',
+        }),
+      )
+    }
+    await waitFor(() => expect(finish).toBeDefined())
+    expect(screen.getByRole('status', { name: 'Расчёт заказа' })).toBe(breakdown)
+    expect(within(latte).getByText('220 ₽')).toBe(unchangedPrice)
+    expect(screen.queryByLabelText('Рассчитываем стоимость')).not.toBeInTheDocument()
+    expect(checkout.textContent).toBe(oldTotal)
+    expect(checkout).toBeDisabled()
+    if (action === 'increase' || action === 'decrease') {
+      const borscht = screen.getByRole('heading', { name: 'Борщ' }).closest('article')!
+      expect(
+        within(borscht).getByText(action === 'increase' ? '1 200 ₽' : '400 ₽'),
+      ).toBeInTheDocument()
+    }
+    await act(async () => finish())
+    expect(screen.getByRole('status', { name: 'Расчёт заказа' })).toBe(breakdown)
+    expect(within(latte).getByText('220 ₽')).toBe(unchangedPrice)
+    expect(checkout).toBeEnabled()
+    expect(checkout.textContent).not.toBe(oldTotal)
+  },
+)
+
+test('смена получения и бонус-кода сохраняет расчёт и элементы корзины до нового ответа', async () => {
+  const user = userEvent.setup()
+  useCartStore.getState().add(product, options)
+  let finish!: () => void
+  let requests = 0
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/checkout/config')
+        return Promise.resolve(Response.json({ testPaymentEnabled: true }))
+      const input = JSON.parse(String(init?.body))
+      const response = () =>
+        Response.json({
+          lines: [
+            {
+              productId: product.id,
+              quantity: 1,
+              unitPriceKopecks: 40000,
+              lineTotalKopecks: 40000,
+            },
+          ],
+          subtotalKopecks: 40000,
+          eligible: true,
+          totalKopecks: input.promoCode
+            ? 30000
+            : input.fulfillment.mode === 'delivery'
+              ? 50000
+              : 36000,
+          promoDiscountKopecks: input.promoCode ? 10000 : 0,
+          adjustments: [{ label: 'Доставка', amountKopecks: 10000 }],
+        })
+      if (++requests === 1) return Promise.resolve(response())
+      return new Promise<Response>((resolve) => {
+        finish = () => resolve(response())
+      })
+    }),
+  )
+  const props = {
+    fulfillment: { mode: 'pickup' as const, label: 'Кафе' },
+    savedDelivery: null,
+    onFulfillmentChange: vi.fn(),
+    onGoToAddresses: vi.fn(),
+    recommendations: [],
+    onAddRecommendation: vi.fn(),
+  }
+  const view = render(<CartDrawer {...props} />)
+  const checkout = await screen.findByRole('button', { name: /Перейти к оплате/ })
+  await waitFor(() => expect(checkout).toBeEnabled())
+  const breakdown = screen.getByRole('status', { name: 'Расчёт заказа' })
+  const price = screen
+    .getByRole('heading', { name: 'Борщ' })
+    .closest('article')!
+    .querySelector('strong')!
+  const fulfillment = { mode: 'delivery' as const, label: 'Красноярск, Мира, 10' }
+  view.rerender(<CartDrawer {...props} fulfillment={fulfillment} />)
+  await waitFor(() => expect(requests).toBe(2))
+  expect(screen.getByRole('status', { name: 'Расчёт заказа' })).toBe(breakdown)
+  expect(checkout).toHaveTextContent('360 ₽')
+  expect(checkout).toBeDisabled()
+  expect(price).toHaveTextContent('400 ₽')
+  expect(screen.queryByLabelText('Рассчитываем стоимость')).not.toBeInTheDocument()
+  await act(async () => finish())
+  expect(checkout).toHaveTextContent('500 ₽')
+  expect(checkout).toBeEnabled()
+  await user.type(screen.getByPlaceholderText('Введите бонус-код'), 'test')
+  expect(screen.getByRole('status', { name: 'Расчёт заказа' })).toBe(breakdown)
+  await user.click(screen.getByRole('button', { name: 'Применить бонус-код' }))
+  await waitFor(() => expect(requests).toBe(3))
+  expect(screen.getByRole('status', { name: 'Расчёт заказа' })).toBe(breakdown)
+  expect(checkout).toHaveTextContent('500 ₽')
+  expect(checkout).toBeDisabled()
+  await act(async () => finish())
+  expect(checkout).toHaveTextContent('300 ₽')
+  expect(checkout).toBeEnabled()
+})
+
+test('очистка и повторное добавление того же состава требуют нового расчёта', async () => {
+  useCartStore.getState().add(product, options)
+  let requests = 0
+  let finish!: (response: Response) => void
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) => {
+      if (url === '/api/checkout/config')
+        return Promise.resolve(Response.json({ testPaymentEnabled: false }))
+      requests++
+      if (requests === 1)
+        return Promise.resolve(
+          Response.json({
+            lines: [
+              {
+                productId: product.id,
+                quantity: 1,
+                unitPriceKopecks: 40000,
+                lineTotalKopecks: 40000,
+              },
+            ],
+            subtotalKopecks: 40000,
+            totalKopecks: 36000,
+            eligible: true,
+          }),
+        )
+      return new Promise<Response>((resolve) => {
+        finish = resolve
+      })
+    }),
+  )
+  render(
+    <CartDrawer
+      fulfillment={{ mode: 'pickup', label: 'Кафе' }}
+      savedDelivery={null}
+      onFulfillmentChange={vi.fn()}
+      onGoToAddresses={vi.fn()}
+      recommendations={[]}
+      onAddRecommendation={vi.fn()}
+    />,
+  )
+  const checkout = screen.getByRole('button', { name: /Оформить заказ/ })
+  await waitFor(() => expect(checkout).toBeEnabled())
+  act(() => {
+    useCartStore.getState().clear()
+    useCartStore.getState().add(product, options)
+  })
+  expect(checkout).toBeDisabled()
+  await waitFor(() => expect(requests).toBe(2))
+  await act(async () =>
+    finish(
+      Response.json({
+        lines: [
+          { productId: product.id, quantity: 1, unitPriceKopecks: 50000, lineTotalKopecks: 50000 },
+        ],
+        subtotalKopecks: 50000,
+        totalKopecks: 45000,
+        eligible: true,
+      }),
+    ),
+  )
+  expect(checkout).toBeEnabled()
+  expect(checkout).toHaveTextContent('450 ₽')
 })

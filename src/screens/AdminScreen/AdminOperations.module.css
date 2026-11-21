@@ -66,6 +66,7 @@
 }
 .cardTop {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
@@ -141,15 +142,15 @@
   gap: 10px;
   margin: 22px 0;
 }
-.search input,
-.search select {
+.search input {
   border: 1px solid #cbbeb2;
   border-radius: 9px;
   padding: 12px;
   font: inherit;
 }
-.search select {
-  padding-right: 44px;
+.search > span {
+  flex: 0 0 auto;
+  width: auto;
 }
 .search input {
   flex: 1;
@@ -167,7 +168,10 @@
   max-height: 700px;
   overflow: auto;
 }
-.clientList button {
+.clientButton {
+  width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
   display: grid;
   gap: 4px;
   text-align: left;
@@ -178,16 +182,30 @@
   font: inherit;
   cursor: pointer;
 }
-.clientList .selectedClient {
+.selectedClient {
   border-color: #8f1723;
   background: #f9eeee;
 }
-.clientList span,
-.clientList small {
+.clientIdentity > span,
+.clientButton small {
   color: #716157;
+}
+.clientIdentity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  min-width: 0;
+}
+.clientIdentity > span {
+  white-space: nowrap;
+}
+.clientItem {
+  min-width: 0;
 }
 .profile {
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 .profile h3 {
   margin: 0 0 18px;
@@ -215,9 +233,66 @@
     grid-template-columns: 1fr;
   }
   .clientList {
-    max-height: 280px;
+    max-height: none;
+    overflow: visible;
+  }
+  .clientButton {
+    position: relative;
+    padding-right: 36px;
+  }
+  .clientButton::after {
+    content: '';
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid #8f1723;
+    border-bottom: 2px solid #8f1723;
+    transform: translateY(-70%) rotate(45deg);
+  }
+  .clientButton[aria-expanded='true']::after {
+    transform: translateY(-30%) rotate(225deg);
+  }
+  .clientItem .profile {
+    padding: 16px 0 8px;
   }
   .search {
     flex-direction: column;
   }
+  .search > span {
+    width: 100%;
+  }
+}
+
+.clientButton:focus-visible,
+.orderSummary:focus-visible {
+  outline: 2px solid #8f1723;
+  outline-offset: 2px;
+}
+.orderSummary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  list-style: none;
+}
+.orderSummary::-webkit-details-marker {
+  display: none;
+}
+.orderSummary .cardTop {
+  flex: 1;
+  min-width: 0;
+  color: #29231e;
+}
+.orderSummary::after {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #8f1723;
+  border-bottom: 2px solid #8f1723;
+  transform: rotate(45deg);
+}
+.orderAccordion[open] > .orderSummary::after {
+  transform: rotate(225deg);
 }

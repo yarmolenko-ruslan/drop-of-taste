@@ -12,6 +12,7 @@ export type Tab =
   | 'legal'
   | 'logs'
   | 'iiko'
+  | 'employees'
 
 const adminSections: readonly (readonly [Tab, string])[] = [
   ['orders', 'Заказы'],
@@ -24,9 +25,19 @@ const adminSections: readonly (readonly [Tab, string])[] = [
   ['legal', 'Документы'],
   ['logs', 'Журнал'],
   ['iiko', 'iiko'],
+  ['employees', 'Сотрудники'],
 ]
 
-export function AdminTabs({ tab, onSelect }: { tab: Tab; onSelect: (tab: Tab) => void }) {
+export function AdminTabs({
+  tab,
+  onSelect,
+  allowed,
+}: {
+  tab: Tab
+  onSelect: (tab: Tab) => void
+  allowed?: Tab[]
+}) {
+  const allowedKey = allowed?.join(',')
   const navRef = useRef<HTMLElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const fullWidthRef = useRef(0)
@@ -50,7 +61,7 @@ export function AdminTabs({ tab, onSelect }: { tab: Tab; onSelect: (tab: Tab) =>
       observer?.disconnect()
       window.removeEventListener('resize', measure)
     }
-  }, [collapsed])
+  }, [collapsed, allowedKey])
 
   useEffect(() => {
     if (!open) return
@@ -91,20 +102,22 @@ export function AdminTabs({ tab, onSelect }: { tab: Tab; onSelect: (tab: Tab) =>
         className={styles.tabList}
         hidden={collapsed && !open}
       >
-        {adminSections.map(([id, label]) => (
-          <button
-            type="button"
-            key={id}
-            className={tab === id ? styles.active : ''}
-            aria-current={tab === id ? 'page' : undefined}
-            onClick={() => {
-              onSelect(id)
-              setOpen(false)
-            }}
-          >
-            {label}
-          </button>
-        ))}
+        {adminSections
+          .filter(([id]) => !allowed || allowed.includes(id))
+          .map(([id, label]) => (
+            <button
+              type="button"
+              key={id}
+              className={tab === id ? styles.active : ''}
+              aria-current={tab === id ? 'page' : undefined}
+              onClick={() => {
+                onSelect(id)
+                setOpen(false)
+              }}
+            >
+              {label}
+            </button>
+          ))}
       </div>
     </nav>
   )

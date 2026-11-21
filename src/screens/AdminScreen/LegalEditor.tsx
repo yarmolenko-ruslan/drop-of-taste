@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { apiRequest } from '../../features/auth/api/authApi'
 import styles from './AdminScreen.module.css'
 import type { SiteContent } from '../../../shared/site-content'
-import { changedContentFields, errorMessage } from './adminUtils'
+import { completeAdminContent, changedContentFields, errorMessage } from './adminUtils'
 import { TextField } from './AdminFields'
 
 export function LegalEditor({
@@ -32,17 +32,18 @@ export function LegalEditor({
     setBusy(true)
     setMessage('')
     try {
-      const result = await apiRequest<{ content: SiteContent }>('/admin/content', {
+      const result = await apiRequest<{ content: Partial<SiteContent> }>('/admin/content', {
         method: 'PATCH',
         body: JSON.stringify(changes),
       })
-      setSaved(result.content)
+      const updated = completeAdminContent(result.content, saved)
+      setSaved(updated)
       setContent((current) => ({
-        ...result.content,
+        ...updated,
         ...changedContentFields(current, content, () => true),
       }))
       setMessage('Документы сохранены и обновлены на сайте')
-      onSaved(result.content)
+      onSaved(updated)
     } catch (error) {
       setMessage(errorMessage(error))
     } finally {

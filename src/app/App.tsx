@@ -224,7 +224,7 @@ function AppContent() {
   }, [catalog])
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const isAdmin = pathname === '/admin'
+  const isAdmin = /^\/(?:admin|staff)\/?$/i.test(pathname)
   const isCartOpen = useCartStore((state) => state.isOpen)
   const [cartHasOpened, setCartHasOpened] = useState(isCartOpen)
   // После первого открытия сохраняем экземпляр корзины: закрытие окна не
@@ -540,7 +540,8 @@ function AppContent() {
             <Route path="menu/:categoryId" element={<CategoryScreen />} />
             <Route path="search" element={<SearchScreen />} />
             <Route path="about" element={<AboutScreen />} />
-            <Route path="admin" element={<AdminScreen />} />
+            <Route path="admin" element={<AdminScreen key="owner" />} />
+            <Route path="staff" element={<AdminScreen key="employee" staffLogin />} />
             <Route
               path="payment/return"
               element={

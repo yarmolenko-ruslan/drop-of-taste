@@ -45,7 +45,7 @@ export function CategoryScreen() {
       : categoryId === 'sauces'
         ? { id: 'sauces', title: 'Соусы', subtitle: 'Добавьте вкуса любимому блюду', products: [] }
         : undefined)
-  if (catalog && (!catalog.data || catalog.error))
+  if (catalog && !catalog.data)
     return (
       <main className={styles.root}>
         <CatalogStatus />
@@ -56,6 +56,7 @@ export function CategoryScreen() {
     return (
       <>
         <main className={styles.root}>
+          <CatalogStatus />
           <nav className={styles.breadcrumbs} aria-label="Навигационная цепочка">
             <Link to="/">Главная</Link>
             <span aria-hidden="true">/</span>
@@ -100,6 +101,7 @@ export function CategoryScreen() {
 
   return (
     <>
+      <CatalogStatus />
       <CategoryProducts
         categoryTitle={category.title}
         categorySubtitle={category.subtitle}

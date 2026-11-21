@@ -1,3 +1,4 @@
+import { Select } from '../../shared/ui/Select/Select'
 import { useRef, useState, type FormEvent } from 'react'
 import { apiRequest } from '../../features/auth/api/authApi'
 import styles from './AdminScreen.module.css'
@@ -160,8 +161,10 @@ export function CategoriesEditor({
 export function ProductsEditor({
   data,
   refresh,
+  canManage = true,
 }: {
   data: Dashboard
+  canManage?: boolean
   refresh: () => Promise<Dashboard>
 }) {
   const [selectedId, setSelectedId] = useState('')
@@ -186,7 +189,7 @@ export function ProductsEditor({
   }
   async function save(event: FormEvent) {
     event.preventDefault()
-    if (pending.current) return
+    if (!canManage || pending.current) return
     pending.current = true
     setBusy(true)
     setMessage('')
@@ -224,7 +227,13 @@ export function ProductsEditor({
     }
   }
   async function remove() {
-    if (pending.current || !selectedId || !window.confirm(`Удалить «${product.name}»?`)) return
+    if (
+      !canManage ||
+      pending.current ||
+      !selectedId ||
+      !window.confirm(`Удалить «${product.name}»?`)
+    )
+      return
     pending.current = true
     setBusy(true)
     try {
@@ -248,7 +257,7 @@ export function ProductsEditor({
   return (
     <div className={styles.productsLayout}>
       <aside className={styles.productList}>
-        <button type="button" onClick={() => select('')}>
+        <button type="button" disabled={!canManage} onClick={() => select('')}>
           + Новый товар
         </button>
         {data.categories.map((category) => (
@@ -270,38 +279,46 @@ export function ProductsEditor({
         ))}
       </aside>
       <form className={styles.editor} onSubmit={(event) => void save(event)}>
-        <fieldset disabled={busy} className={styles.editorFields}>
+        <fieldset disabled={busy || !canManage} className={styles.editorFields}>
           <div className={styles.actions}>
             <button type="submit" disabled={busy || !data.categories.length}>
               {busy ? 'Сохраняем…' : 'Сохранить товар'}
             </button>
             <span role="status">{message}</span>
           </div>
-          <h2>{selectedId ? 'Редактировать товар' : 'Новый товар'}</h2>
+          <h2>
+            {!canManage
+              ? selectedId
+                ? 'Карточка товара'
+                : 'Выберите товар из списка'
+              : selectedId
+                ? 'Редактировать товар'
+                : 'Новый товар'}
+          </h2>
           <div className={styles.grid}>
             <TextField label="Название" value={product.name} onChange={(v) => set('name', v)} />
             <label className={styles.field}>
               <span>Раздел</span>
-              <select
+              <Select
                 value={product.categoryId}
-                onChange={(e) => set('categoryId', e.target.value)}
+                onValueChange={(value) => set('categoryId', value)}
               >
                 {data.categories.map((item) => (
                   <option value={item._id} key={item._id}>
                     {item.title}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className={styles.field}>
               <span>Действие карточки</span>
-              <select
+              <Select
                 value={product.action}
-                onChange={(e) => set('action', e.target.value as Product['action'])}
+                onValueChange={(value) => set('action', value as Product['action'])}
               >
                 <option value="add">Добавить в корзину</option>
                 <option value="choose">Открыть карточку для выбора</option>
-              </select>
+              </Select>
             </label>
             <TextField
               label="Короткое описание"
@@ -340,13 +357,13 @@ export function ProductsEditor({
             </label>
             <label className={styles.field}>
               <span>Единица</span>
-              <select
+              <Select
                 value={product.measure}
-                onChange={(e) => set('measure', e.target.value as Product['measure'])}
+                onValueChange={(value) => set('measure', value as Product['measure'])}
               >
                 <option>г</option>
                 <option>мл</option>
-              </select>
+              </Select>
             </label>
             <label className={styles.field}>
               <span>Калорийность</span>

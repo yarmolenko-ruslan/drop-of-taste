@@ -38,7 +38,11 @@ function memoryDatabase() {
               credential = next
             },
           }
-        : { createIndex: async () => 'index' },
+        : {
+            createIndex: async () => 'index',
+            insertOne: async () => ({ acknowledged: true }),
+            updateOne: async () => ({ acknowledged: true, matchedCount: 1 }),
+          },
   } as unknown as Db
 }
 

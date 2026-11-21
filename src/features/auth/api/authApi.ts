@@ -12,6 +12,16 @@ export class ApiError extends Error {
   }
 }
 
+let adminIdentity: string | null = null
+let adminSessionId: string | null = null
+let adminRequestEpoch = 0
+/** Bind working requests and their responses to the administrative screen that initiated them. */
+export function setAdminRequestIdentity(id: string | null, sessionId: string | null = null) {
+  adminIdentity = id
+  adminSessionId = id ? sessionId : null
+  adminRequestEpoch++
+}
+
 const REQUEST_TIMEOUT_MS = 15_000
 
 export async function apiRequest<T>(
@@ -20,6 +30,15 @@ export async function apiRequest<T>(
   timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<T> {
   let response: Response
+  const administrative = path.startsWith('/admin/')
+  const epoch = adminRequestEpoch
+  const ensureCurrent = () => {
+    if (administrative && epoch !== adminRequestEpoch)
+      throw new ApiError(
+        'ADMIN_REQUEST_SUPERSEDED',
+        'Учётная запись изменилась. Повторите действие после входа',
+      )
+  }
   // Внешний сигнал (отмена диалогом) объединяем с таймаутом: иначе зависший
   // сервер оставлял бы кнопку в busy-состоянии бессрочно.
   const externalSignal = init?.signal ?? null
@@ -27,6 +46,14 @@ export async function apiRequest<T>(
   const signal = externalSignal ? AbortSignal.any([externalSignal, timeoutSignal]) : timeoutSignal
   try {
     const headers = new Headers(init?.headers)
+    if (
+      administrative &&
+      adminIdentity &&
+      !['/admin/login', '/admin/session', '/admin/logout'].includes(path.split('?')[0]!)
+    ) {
+      headers.set('X-Admin-Account-Id', adminIdentity)
+      if (adminSessionId) headers.set('X-Admin-Session-Id', adminSessionId)
+    }
     if (init?.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
     response = await fetch(`/api${path}`, {
       credentials: 'same-origin',
@@ -36,15 +63,22 @@ export async function apiRequest<T>(
     })
   } catch (failure) {
     if (externalSignal?.aborted) throw failure
+    ensureCurrent()
     if (failure instanceof DOMException && failure.name === 'TimeoutError')
       throw new ApiError('TIMEOUT', 'Сервер не ответил вовремя. Попробуйте ещё раз')
     throw new ApiError('NETWORK_ERROR', 'Нет связи с локальным сервером')
   }
+  ensureCurrent()
   if (!response.ok) {
     const body = await response.json().catch(() => null)
+    ensureCurrent()
     if (body?.error?.code === 'ACCOUNT_CHANGED')
       window.dispatchEvent(new Event('drop-of-taste:account-changed'))
-    if (body?.error?.code === 'ADMIN_UNAUTHORIZED')
+    if (
+      ['ADMIN_UNAUTHORIZED', 'ADMIN_ACCOUNT_CHANGED', 'ADMIN_SESSION_CHANGED'].includes(
+        body?.error?.code,
+      )
+    )
       window.dispatchEvent(new Event('drop-of-taste:admin-session-expired'))
     throw new ApiError(
       body?.error?.code ?? 'REQUEST_FAILED',
@@ -53,7 +87,9 @@ export async function apiRequest<T>(
       response.status,
     )
   }
-  return response.status === 204 ? (undefined as T) : response.json()
+  const result = response.status === 204 ? (undefined as T) : await response.json()
+  ensureCurrent()
+  return result
 }
 
 export const authApi = {

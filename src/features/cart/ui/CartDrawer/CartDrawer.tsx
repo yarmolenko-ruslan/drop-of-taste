@@ -1,19 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Dialog } from '../../../../shared/ui/Dialog/Dialog'
-import {
-  cartCount,
-  formatCartPrice,
-  useCartStore,
-  MAX_CART_QUANTITY,
-  type CartLine,
-} from '../../index'
+import { cartCount, formatCartPrice, useCartStore, type CartLine } from '../../index'
 import styles from './CartDrawer.module.css'
 import { ApiError, apiRequest, type AuthUser } from '../../../auth/api/authApi'
 import type { FulfillmentSelection } from '../../../fulfillment/ui/FulfillmentDialog/FulfillmentDialog'
 import { useCatalog } from '../../../catalog/api/CatalogProvider'
 import { formatCompactAddress } from '../../../../shared/lib/formatCompactAddress'
 import { useSiteContent } from '../../../site-content/SiteContentProvider'
-import { Spinner } from '../../../../shared/ui/Spinner/Spinner'
+import { CartLineItem, CartPrice } from './CartLineItem'
 import { LoadingState } from '../../../../shared/ui/LoadingState/LoadingState'
 import { BIRTHDAY_CLAIM_RELEASED_EVENT } from '../../../../../shared/birthday'
 
@@ -103,6 +97,7 @@ export function CartDrawer({
   const accountId = user?.id
   const cafeAddress = siteContent.address
   const lines = useCartStore((state) => state.lines)
+  const cartRevision = useCartStore((state) => state.revision)
   const close = useCartStore((state) => state.close)
   const clear = useCartStore((state) => state.clear)
   const changeQuantity = useCartStore((state) => state.changeQuantity)
@@ -139,8 +134,14 @@ export function CartDrawer({
   }, [notice, isOpen])
   const [quote, setQuote] = useState<Quote | null>(null)
   const [quoteSignature, setQuoteSignature] = useState('')
-  // Цены блюд не меняются при выборе скидки; итог принимаем только из нового расчёта.
-  const [pricedItems, setPricedItems] = useState<{ key: string; quote: Quote } | null>(null)
+  // Последний ответ остаётся на экране, пока сервер проверяет изменённую корзину.
+  // Оформление использует только currentQuote с совпадающей подписью.
+  const [pricedItems, setPricedItems] = useState<{
+    key: string
+    lines: readonly CartLine[]
+    quote: Quote
+    accountId: string | undefined
+  } | null>(null)
   const itemsKey = JSON.stringify(lines)
   const [busy, setBusy] = useState(false)
   const [calculation, setCalculation] = useState({ key: '', pending: true })
@@ -188,6 +189,7 @@ export function CartDrawer({
     }
   }, [isOpen, count, busy])
   const signature = JSON.stringify([
+    cartRevision,
     lines,
     fulfillment,
     appliedPromo,
@@ -225,7 +227,28 @@ export function CartDrawer({
   }, [signature])
   const currentQuote = quoteSignature === signature ? quote : null
   const itemQuote = pricedItems?.key === itemsKey ? pricedItems.quote : null
-  const displayedSubtotal = itemQuote ? itemQuote.subtotalKopecks / 100 : null
+  const displayQuote =
+    currentQuote ?? (pricedItems && pricedItems.accountId === accountId ? pricedItems.quote : null)
+  const cachedPrices = new Map(
+    pricedItems?.lines.map((line, index) => [
+      line.key,
+      { line, price: pricedItems.quote.lines[index] },
+    ]),
+  )
+  const lineTotals = lines.map((line) => {
+    if (line.extras.length > 0) return null
+    const cached = cachedPrices.get(line.key)
+    const serverPrice = cached?.line.unitPriceRub === line.unitPriceRub ? cached?.price : null
+    const unitPrice = serverPrice
+      ? (serverPrice.unitPriceKopecks ?? serverPrice.lineTotalKopecks / serverPrice.quantity) / 100
+      : line.unitPriceRub
+    return unitPrice === null ? null : unitPrice * line.quantity
+  })
+  const displayedSubtotal = itemQuote
+    ? itemQuote.subtotalKopecks / 100
+    : lineTotals.every((total) => total !== null)
+      ? lineTotals.reduce((sum, total) => sum + total, 0)
+      : null
   const pricedRecommendations = recommendations.flatMap((item) => {
     const live = catalog?.itemsById.get(item.id)
     return live?.available
@@ -253,6 +276,7 @@ export function CartDrawer({
   useEffect(() => {
     if (!count) {
       cachedSignature.current = ''
+      setPricedItems(null)
       return
     }
     if (busy || !calculating || (!isOpen && cachedSignature.current === signature)) return
@@ -261,7 +285,6 @@ export function CartDrawer({
       async () => {
         setCalculation({ key: calculationKey, pending: true })
         setQuoteFailed(false)
-        setNotice((previous) => (previous.startsWith('Заказ ') ? previous : ''))
         if (cachedSignature.current !== signature) {
           setOrderIdToPay(null)
           setSubmittedInputSignature('')
@@ -296,7 +319,7 @@ export function CartDrawer({
           const result = quoteResponse.value
           setTestPaymentEnabled(config.testPaymentEnabled)
           setQuote(result)
-          setPricedItems({ key: itemsKey, quote: result })
+          setPricedItems({ key: itemsKey, lines, quote: result, accountId })
           setQuoteSignature(signature)
           const sameQuote = cachedSignature.current === signature
           const nextOrderKey = crypto.randomUUID()
@@ -308,6 +331,7 @@ export function CartDrawer({
                 ? `Бонус-код ${appliedPromo} применён`
                 : 'Бонус-код не применён: на этот заказ действует более выгодная скидка.',
             )
+          else setNotice((previous) => (previous.startsWith('Заказ ') ? previous : ''))
         } catch (failure) {
           if (controller.signal.aborted || !mounted.current) return
           setQuote(null)
@@ -342,6 +366,7 @@ export function CartDrawer({
     calculating,
     accountId,
     itemsKey,
+    lines,
   ])
 
   async function startPayment(id: string, submittedSignature: string) {
@@ -486,18 +511,9 @@ export function CartDrawer({
 
   if (!isOpen) return null
 
-  const price = (value: number | null) =>
-    value === null ? (
-      calculating ? (
-        <span className={styles.priceLoader}>
-          <Spinner size={16} label="Рассчитываем стоимость" />
-        </span>
-      ) : (
-        '—'
-      )
-    ) : (
-      formatCartPrice(value)
-    )
+  const price = (value: number | null) => (
+    <CartPrice value={value} calculating={value === null && calculating} />
+  )
 
   return (
     <Dialog
@@ -561,56 +577,14 @@ export function CartDrawer({
                 </h3>
                 <div className={styles.lines}>
                   {lines.map((line, index) => (
-                    <article className={styles.line} key={line.key}>
-                      <div className={styles.lineImage}>
-                        {line.image ? (
-                          <img src={line.image} alt="" />
-                        ) : (
-                          <span aria-hidden="true">◉</span>
-                        )}
-                      </div>
-                      <div className={styles.lineInfo}>
-                        <h4>{line.name}</h4>
-                        {line.variant && <span>{line.variant}</span>}
-                        {line.removedIngredients.length > 0 && (
-                          <span>Без: {line.removedIngredients.join(', ')}</span>
-                        )}
-                        {line.extras.length > 0 && (
-                          <span>
-                            Добавки:{' '}
-                            {line.extras
-                              .map(({ name, quantity }) => `${name} × ${quantity}`)
-                              .join(', ')}
-                          </span>
-                        )}
-                        <strong>
-                          {price(
-                            itemQuote?.lines[index]
-                              ? itemQuote.lines[index].lineTotalKopecks / 100
-                              : null,
-                          )}
-                        </strong>
-                      </div>
-                      <div className={styles.counter} aria-label={`Количество «${line.name}»`}>
-                        <button
-                          type="button"
-                          aria-label={`Уменьшить количество «${line.name}»`}
-                          disabled={busy}
-                          onClick={() => changeQuantity(line.key, -1)}
-                        >
-                          −
-                        </button>
-                        <span>{line.quantity}</span>
-                        <button
-                          type="button"
-                          aria-label={`Увеличить количество «${line.name}»`}
-                          disabled={line.quantity >= MAX_CART_QUANTITY || busy}
-                          onClick={() => changeQuantity(line.key, 1)}
-                        >
-                          +
-                        </button>
-                      </div>
-                    </article>
+                    <CartLineItem
+                      key={line.key}
+                      line={line}
+                      totalRub={lineTotals[index] ?? null}
+                      calculating={lineTotals[index] === null && calculating}
+                      busy={busy}
+                      onChangeQuantity={changeQuantity}
+                    />
                   ))}
                 </div>
               </section>
@@ -759,13 +733,18 @@ export function CartDrawer({
                   </div>
                 </section>
               )}
-              {currentQuote && (
-                <div className={styles.priceBreakdown} role="status" aria-label="Расчёт заказа">
+              {displayQuote && (
+                <div
+                  className={styles.priceBreakdown}
+                  role="status"
+                  aria-label="Расчёт заказа"
+                  aria-busy={calculating}
+                >
                   <div className={styles.priceRow}>
                     <span>Стоимость блюд</span>
-                    <span>{formatCartPrice(currentQuote.subtotalKopecks / 100)}</span>
+                    <span>{formatCartPrice(displayQuote.subtotalKopecks / 100)}</span>
                   </div>
-                  {currentQuote.adjustments?.map((adjustment) => (
+                  {displayQuote.adjustments?.map((adjustment) => (
                     <div className={styles.priceRow} key={adjustment.label}>
                       <span>{adjustment.label}</span>
                       <span>
@@ -780,13 +759,13 @@ export function CartDrawer({
                   ))}
                   <div className={`${styles.priceRow} ${styles.priceTotal}`}>
                     <strong>Итого</strong>
-                    <strong>{formatCartPrice(currentQuote.totalKopecks / 100)}</strong>
+                    <strong>{formatCartPrice(displayQuote.totalKopecks / 100)}</strong>
                   </div>
-                  {!currentQuote.eligible && currentQuote.minimumOrderMessage && (
-                    <p>{currentQuote.minimumOrderMessage}</p>
+                  {!displayQuote.eligible && displayQuote.minimumOrderMessage && (
+                    <p>{displayQuote.minimumOrderMessage}</p>
                   )}
-                  {fulfillment.mode === 'delivery' && currentQuote.deliveryTerms && (
-                    <small>{currentQuote.deliveryTerms}</small>
+                  {fulfillment.mode === 'delivery' && displayQuote.deliveryTerms && (
+                    <small>{displayQuote.deliveryTerms}</small>
                   )}
                 </div>
               )}
@@ -812,20 +791,20 @@ export function CartDrawer({
                   else setQuoteAttempt((value) => value + 1)
                 }}
               >
-                {currentQuote
-                  ? currentQuote.totalKopecks === 0
-                    ? 'Оформить заказ'
-                    : testPaymentEnabled
-                      ? orderIdToPay
-                        ? 'Повторить переход к оплате'
-                        : 'Перейти к оплате'
-                      : 'Оформить заказ'
-                  : hasUnpricedExtras
-                    ? 'Уберите добавки'
-                    : quoteFailed && !calculating
-                      ? 'Повторить расчёт'
+                {hasUnpricedExtras
+                  ? 'Уберите добавки'
+                  : quoteFailed && !currentQuote && !calculating
+                    ? 'Повторить расчёт'
+                    : displayQuote
+                      ? displayQuote.totalKopecks === 0
+                        ? 'Оформить заказ'
+                        : testPaymentEnabled
+                          ? orderIdToPay
+                            ? 'Повторить переход к оплате'
+                            : 'Перейти к оплате'
+                          : 'Оформить заказ'
                       : 'Оформить заказ'}{' '}
-                <span>{price(currentQuote ? currentQuote.totalKopecks / 100 : null)}</span>
+                <span>{price(displayQuote ? displayQuote.totalKopecks / 100 : null)}</span>
               </button>
             </footer>
           </>

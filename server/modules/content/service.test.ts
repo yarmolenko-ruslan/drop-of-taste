@@ -89,3 +89,29 @@ test('процент дня рождения обновляет подписи, 
   expect(inactive.promotions.some((promotion) => promotion.id === 'birthday')).toBe(false)
   expect(inactive.heroSlides.some((slide) => slide.id === 'birthday')).toBe(false)
 })
+
+test.each([undefined, 1])(
+  'undeclared storage metadata never reaches public content (version %s)',
+  async (contentVersion) => {
+    const db = {
+      collection: () => ({
+        findOne: async () => ({
+          _id: 'public',
+          ...defaultSiteContent,
+          contentVersion,
+          brandName: 'Авторское название',
+          internalNotes: 'private-metadata-do-not-publish',
+          tokenHash: 'private-storage-token',
+        }),
+      }),
+    } as unknown as Db
+    for (const content of [await getSiteContent(db), await getPublicSiteContent(db)]) {
+      expect(content.brandName).toBe('Авторское название')
+      expect(JSON.stringify(content)).not.toContain('private-')
+      expect(content).not.toHaveProperty('_id')
+      expect(content).not.toHaveProperty('contentVersion')
+      expect(content).not.toHaveProperty('internalNotes')
+      expect(content.settings.delivery).toEqual(defaultSiteContent.settings.delivery)
+    }
+  },
+)

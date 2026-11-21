@@ -7,7 +7,7 @@ export function CafeMapDialog({ onClose }: { onClose: () => void }) {
   const content = useSiteContent()
   return (
     <Dialog titleId="cafe-map-title" onClose={onClose} className={styles.dialog}>
-      <div className={styles.layout}>
+      <div className={`${styles.layout} ${styles.cafeLayout}`}>
         <div className={styles.content}>
           <span className={styles.eyebrow}>{content.brandName}</span>
           <h2 id="cafe-map-title">Самовывоз из кафе</h2>

@@ -1,3 +1,4 @@
+import { Select } from '../../shared/ui/Select/Select'
 import { useEffect, useState, type FormEvent } from 'react'
 import { apiRequest } from '../../features/auth/api/authApi'
 import styles from './AdminScreen.module.css'
@@ -6,7 +7,7 @@ import { errorMessage, localDate, isoDate } from './adminUtils'
 import { TextField } from './AdminFields'
 import { LoadingState } from '../../shared/ui/LoadingState/LoadingState'
 
-export function BonusCodesEditor() {
+export function BonusCodesEditor({ canManage = true }: { canManage?: boolean }) {
   const [codes, setCodes] = useState<BonusCode[]>([])
   const [loadingCodes, setLoadingCodes] = useState(true)
   const [draft, setDraft] = useState<BonusCode>({
@@ -37,6 +38,7 @@ export function BonusCodesEditor() {
   }, [])
   async function save(event: FormEvent) {
     event.preventDefault()
+    if (!canManage || busy) return
     setBusy(true)
     setMessage('')
     try {
@@ -69,7 +71,8 @@ export function BonusCodesEditor() {
     }
   }
   async function remove() {
-    if (!existing || !window.confirm(`Удалить бонус-код ${draft._id}?`)) return
+    if (!canManage || busy || !existing || !window.confirm(`Удалить бонус-код ${draft._id}?`))
+      return
     setBusy(true)
     try {
       await apiRequest(`/admin/bonus-codes/${encodeURIComponent(draft._id)}`, { method: 'DELETE' })
@@ -88,6 +91,7 @@ export function BonusCodesEditor() {
       <aside className={styles.productList}>
         <button
           type="button"
+          disabled={!canManage || busy}
           onClick={() => {
             setDraft({
               _id: '',
@@ -103,7 +107,7 @@ export function BonusCodesEditor() {
         >
           + Новый код
         </button>
-        {loadingCodes && <LoadingState compact={codes.length > 0} label="Загружаем бонус-коды…" />}
+        {loadingCodes && codes.length === 0 && <LoadingState label="Загружаем бонус-коды…" />}
         {codes.map((code) => (
           <button
             type="button"
@@ -120,83 +124,85 @@ export function BonusCodesEditor() {
         ))}
       </aside>
       <form className={styles.editor} onSubmit={(event) => void save(event)}>
-        <div className={styles.actions}>
-          <button type="submit" disabled={busy}>
-            {busy ? 'Сохраняем…' : 'Сохранить бонус-код'}
-          </button>
-          <span role="status">{message}</span>
-        </div>
-        <h2>{existing ? `Бонус-код ${draft._id}` : 'Новый бонус-код'}</h2>
-        <label className={styles.field}>
-          <span>Код для клиента</span>
-          <input
-            value={draft._id}
-            readOnly={existing}
-            required
-            onChange={(event) => setDraft({ ...draft, _id: event.target.value.toUpperCase() })}
-          />
-        </label>
-        <div className={styles.grid}>
+        <fieldset className={styles.accessFieldset} disabled={!canManage || busy}>
+          <div className={styles.actions}>
+            <button type="submit" disabled={busy}>
+              {busy ? 'Сохраняем…' : 'Сохранить бонус-код'}
+            </button>
+            <span role="status">{message}</span>
+          </div>
+          <h2>{existing ? `Бонус-код ${draft._id}` : 'Новый бонус-код'}</h2>
           <label className={styles.field}>
-            <span>Вид скидки</span>
-            <select
-              value={draft.kind}
-              onChange={(event) =>
-                setDraft({ ...draft, kind: event.target.value as BonusCode['kind'], value: 10 })
-              }
-            >
-              <option value="percent">Проценты</option>
-              <option value="rubles">Рубли</option>
-            </select>
-          </label>
-          <label className={styles.field}>
-            <span>{draft.kind === 'percent' ? 'Скидка, %' : 'Скидка, ₽'}</span>
+            <span>Код для клиента</span>
             <input
-              type="number"
-              min="0.01"
-              max={draft.kind === 'percent' ? 100 : 1000000}
-              step="0.01"
+              value={draft._id}
+              readOnly={existing}
               required
-              value={draft.value}
-              onChange={(event) => setDraft({ ...draft, value: Number(event.target.value) })}
+              onChange={(event) => setDraft({ ...draft, _id: event.target.value.toUpperCase() })}
             />
           </label>
-          <TextField
-            label="Действует с"
-            type="datetime-local"
-            value={localDate(draft.startsAt)}
-            onChange={(v) => setDraft({ ...draft, startsAt: isoDate(v) ?? '' })}
-          />
-          <TextField
-            label="Действует до"
-            type="datetime-local"
-            value={localDate(draft.endsAt)}
-            onChange={(v) => setDraft({ ...draft, endsAt: isoDate(v) ?? '' })}
-          />
-        </div>
-        <label className={styles.check}>
-          <input
-            type="checkbox"
-            checked={draft.active}
-            onChange={(event) => setDraft({ ...draft, active: event.target.checked })}
-          />
-          Код включён
-        </label>
-        <p>
-          Время указывается по вашему часовому поясу. Код не действует на комбо и наборы. Если
-          действует скидка за самовывоз, применяется более выгодная скидка. Стоимость доставки не
-          уменьшается.
-        </p>
-        {existing && (
-          <button
-            type="button"
-            className={styles.danger}
-            disabled={busy}
-            onClick={() => void remove()}
-          >
-            Удалить код
-          </button>
-        )}
+          <div className={styles.grid}>
+            <label className={styles.field}>
+              <span>Вид скидки</span>
+              <Select
+                value={draft.kind}
+                onValueChange={(value) =>
+                  setDraft({ ...draft, kind: value as BonusCode['kind'], value: 10 })
+                }
+              >
+                <option value="percent">Проценты</option>
+                <option value="rubles">Рубли</option>
+              </Select>
+            </label>
+            <label className={styles.field}>
+              <span>{draft.kind === 'percent' ? 'Скидка, %' : 'Скидка, ₽'}</span>
+              <input
+                type="number"
+                min="0.01"
+                max={draft.kind === 'percent' ? 100 : 1000000}
+                step="0.01"
+                required
+                value={draft.value}
+                onChange={(event) => setDraft({ ...draft, value: Number(event.target.value) })}
+              />
+            </label>
+            <TextField
+              label="Действует с"
+              type="datetime-local"
+              value={localDate(draft.startsAt)}
+              onChange={(v) => setDraft({ ...draft, startsAt: isoDate(v) ?? '' })}
+            />
+            <TextField
+              label="Действует до"
+              type="datetime-local"
+              value={localDate(draft.endsAt)}
+              onChange={(v) => setDraft({ ...draft, endsAt: isoDate(v) ?? '' })}
+            />
+          </div>
+          <label className={styles.check}>
+            <input
+              type="checkbox"
+              checked={draft.active}
+              onChange={(event) => setDraft({ ...draft, active: event.target.checked })}
+            />
+            Код включён
+          </label>
+          <p>
+            Время указывается по вашему часовому поясу. Код не действует на комбо и наборы. Если
+            действует скидка за самовывоз, применяется более выгодная скидка. Стоимость доставки не
+            уменьшается.
+          </p>
+          {existing && (
+            <button
+              type="button"
+              className={styles.danger}
+              disabled={busy}
+              onClick={() => void remove()}
+            >
+              Удалить код
+            </button>
+          )}
+        </fieldset>
       </form>
     </div>
   )

@@ -107,7 +107,7 @@ export function useCatalogItem(id: string): ApiCatalogItem | undefined {
 export function CatalogStatus() {
   const catalog = useCatalog()
   if (!catalog) return null
-  if (catalog.loading)
+  if (catalog.loading && !catalog.data)
     return (
       <div className={styles.status}>
         <Spinner label="Загружаем меню…" />

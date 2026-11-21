@@ -5,6 +5,44 @@
   color: #29231e;
   padding: clamp(24px, 4vw, 64px);
 }
+.logGroup {
+  margin-block: 12px;
+  border: 1px solid #ead8bf;
+  border-radius: 14px;
+  background: #fffdfa;
+}
+
+.logGroupSummary {
+  padding: 16px 18px;
+  color: var(--color-burgundy);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.logGroupSummary > span {
+  display: inline-block;
+  margin-left: 12px;
+  color: #806b62;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.logGroupSummary:focus-visible {
+  outline: 3px solid var(--color-gold);
+  outline-offset: 3px;
+}
+
+.logGroupEntries {
+  display: grid;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.statusMessage {
+  min-height: 1.5em;
+  line-height: 1.5;
+}
+
 .root {
   width: 100%;
   padding-inline: 24px;
@@ -173,7 +211,6 @@
   font-size: 14px;
 }
 .field input:not([type='file']),
-.field select,
 .field textarea {
   width: 100%;
   min-width: 0;
@@ -187,18 +224,9 @@
 .field textarea {
   resize: vertical;
 }
-.root select {
-  appearance: none;
-  cursor: pointer;
-  padding-right: 44px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='m3 6 5 5 5-5' stroke='%235b3027' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 16px center;
-  background-size: 16px;
-}
+
 .field input:focus,
-.field textarea:focus,
-.field select:focus {
+.field textarea:focus {
   outline: 2px solid #9c2531;
   outline-offset: 1px;
 }
@@ -379,4 +407,191 @@ code {
   margin: 0;
   padding: 0;
   border: 0;
+}
+
+.accessFieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.accessFieldset legend {
+  font-weight: 800;
+  font-size: 22px;
+  margin-bottom: 20px;
+}
+.employeeLayout {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+  gap: 32px;
+  margin-top: 24px;
+}
+.employeeItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+.employeeItem[aria-pressed='true'] {
+  outline: 3px solid #b78149;
+  outline-offset: 2px;
+}
+.permissionRow {
+  border-bottom: 1px solid #e9dfd2;
+  padding-block: 16px;
+}
+.permissionRow p {
+  color: #5f534a;
+  margin: 0;
+}
+.secret,
+.readOnly {
+  padding: 20px;
+  background: #fff5db;
+  border: 1px solid #d8b875;
+  border-radius: 12px;
+  margin-block: 20px;
+  overflow-wrap: anywhere;
+}
+.secret code {
+  font-size: 20px;
+  user-select: all;
+}
+@media (max-width: 760px) {
+  .employeeLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.permissionChecks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 28px;
+  margin-bottom: 12px;
+}
+.permissionRow {
+  margin: 16px 0;
+  border: 1px solid #e9dfd2;
+  border-radius: 12px;
+  padding: 16px;
+  min-width: 0;
+}
+.permissionRow legend {
+  padding-inline: 8px;
+  font-size: 18px;
+  margin: 0;
+}
+.permissionChecks .check {
+  margin: 0;
+}
+.permissionChecks input {
+  width: 20px;
+  height: 20px;
+  accent-color: #8f1723;
+}
+dialog.credentialsDialog {
+  width: min(calc(100vw - 32px), 620px);
+}
+.credentialsContent {
+  max-height: min(85dvh, 760px);
+  overflow-y: auto;
+  padding: clamp(24px, 4vw, 40px);
+}
+.credentialsContent h2 {
+  padding-right: 32px;
+  margin-top: 8px;
+}
+.credentialValues {
+  padding: 20px;
+  border: 1px solid #d8b875;
+  border-radius: 12px;
+  background: #fff5db;
+}
+.credentialValues dt {
+  font-size: 14px;
+  margin-top: 18px;
+  color: #615446;
+}
+.credentialValues dt:first-child {
+  margin-top: 0;
+}
+.credentialValues dd {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+  user-select: all;
+  font-size: 20px;
+}
+.activityLog {
+  border-bottom: 1px solid #e9dfd2;
+  padding-bottom: 32px;
+  margin-bottom: 32px;
+}
+.activitySuccess {
+  color: #266b3a;
+  font-weight: 700;
+}
+.activityFailure {
+  color: #8f1723;
+  font-weight: 700;
+}
+.credentialsContent button {
+  border: 0;
+  border-radius: 9px;
+  background: #8f1723;
+  color: white;
+  padding: 10px 16px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.credentialsContent button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.credentialsContent .secondary {
+  background: #eee6db;
+  color: #5b3027;
+}
+
+.activityFilters {
+  gap: 14px;
+}
+.activityFilters .field {
+  gap: 6px;
+  margin-bottom: 0;
+}
+.activityActions {
+  justify-content: center;
+  margin-top: 16px;
+  margin-bottom: 24px;
+}
+@media (max-width: 800px) {
+  .activityActions {
+    flex-direction: column;
+  }
+}
+
+.activityCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) fit-content(40%);
+  align-items: center;
+  gap: 16px;
+}
+.activityText {
+  min-width: 0;
+  line-height: 1.4;
+}
+.activityText strong {
+  display: block;
+}
+.activityCard .activityText p {
+  margin: 6px 0 0;
+  line-height: 1.4;
+}
+.activityCard > span {
+  text-align: right;
 }

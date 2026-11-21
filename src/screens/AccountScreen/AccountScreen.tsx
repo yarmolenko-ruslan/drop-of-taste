@@ -1,3 +1,4 @@
+import { Select } from '../../shared/ui/Select/Select'
 import { OrderDetailsCard } from './OrderDetailsCard'
 import { cancellationAfterUpdate, type Order, type OrderStatus } from './orders'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -141,6 +142,7 @@ export function AccountScreen({
   const [ordersError, setOrdersError] = useState('')
   const [ordersNextCursor, setOrdersNextCursor] = useState<string | null>(null)
   const [ordersLoadingMore, setOrdersLoadingMore] = useState(false)
+  const [ordersRefreshing, setOrdersRefreshing] = useState(false)
   const ordersLoadMoreRef = useRef<HTMLDivElement | null>(null)
   const ordersRequestSeq = useRef(0)
   const ordersRevisionRef = useRef(ordersRevision)
@@ -155,6 +157,7 @@ export function AccountScreen({
     .join('|')
   const loadedOrderIds = orders.map((order) => order._id).join('|')
   const [loading, setLoading] = useState(true)
+  const [hasLoaded, setHasLoaded] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [addresses, setAddresses] = useState<Address[]>([])
@@ -311,10 +314,13 @@ export function AccountScreen({
               ? otherFailure.reason.message
               : 'Не удалось загрузить данные',
           )
-        }
+        } else setLoadError('')
       })
       .finally(() => {
-        if (active) setLoading(false)
+        if (active) {
+          setHasLoaded(true)
+          setLoading(false)
+        }
       })
     return () => {
       active = false
@@ -324,7 +330,7 @@ export function AccountScreen({
   const reloadOrders = useCallback(async () => {
     const seq = ++ordersRequestSeq.current
     setOrdersLoadingMore(false)
-    setOrdersNextCursor(null)
+    setOrdersRefreshing(true)
     try {
       const result = await accountRequest<{ orders: Order[]; nextCursor: string | null }>('/orders')
       if (seq !== ordersRequestSeq.current) return
@@ -334,6 +340,8 @@ export function AccountScreen({
     } catch (failure) {
       if (seq !== ordersRequestSeq.current) return
       setOrdersError(failure instanceof Error ? failure.message : 'Не удалось обновить заказы')
+    } finally {
+      if (seq === ordersRequestSeq.current) setOrdersRefreshing(false)
     }
   }, [accountRequest])
 
@@ -526,7 +534,7 @@ export function AccountScreen({
   }, [section, accountRequest, pendingPaymentIds])
 
   async function loadMoreOrders() {
-    if (!ordersNextCursor || ordersLoadingMore) return
+    if (!ordersNextCursor || ordersLoadingMore || ordersRefreshing) return
     const seq = ++ordersRequestSeq.current
     setOrdersLoadingMore(true)
     try {
@@ -551,7 +559,7 @@ export function AccountScreen({
 
   // Автодозагрузка следующей страницы при прокрутке к концу истории заказов.
   useEffect(() => {
-    if (!ordersNextCursor || ordersLoadingMore) return
+    if (!ordersNextCursor || ordersLoadingMore || ordersRefreshing) return
     if (typeof IntersectionObserver === 'undefined') return
     const node = ordersLoadMoreRef.current
     if (!node) return
@@ -718,7 +726,7 @@ export function AccountScreen({
     addressId: string,
     selection = addresses.find((address) => address.id === addressId),
   ) {
-    if (selectionBusy) return
+    if (loading || selectionBusy) return
     const previous = selectedAddressId
     setSelectionBusy(true)
     setSelectedAddressId(addressId)
@@ -737,7 +745,7 @@ export function AccountScreen({
   }
 
   async function saveProfile(nextNotifications = notifications) {
-    if (settingsBusyRef.current) return
+    if (loading || settingsBusyRef.current) return
     const profile = profileSchema.safeParse({ name, email })
     const birthDate = birthDateSchema.safeParse({ day, month, year })
     if (!profile.success || !birthDate.success) {
@@ -777,7 +785,7 @@ export function AccountScreen({
   }
 
   async function saveNotification(key: 'push' | 'email' | 'sms', checked: boolean) {
-    if (settingsBusyRef.current) return
+    if (loading || settingsBusyRef.current) return
     settingsBusyRef.current = true
     setSettingsBusy(true)
     const previous = notifications
@@ -801,7 +809,7 @@ export function AccountScreen({
   }
 
   if (!sections.some(({ id }) => id === section)) return <Navigate to="/account/orders" replace />
-  if (loading)
+  if (loading && !hasLoaded)
     return (
       <main className={`${styles.root} ${styles.loading}`}>
         <Spinner label="Загружаем личный кабинет…" />
@@ -809,7 +817,7 @@ export function AccountScreen({
     )
 
   return (
-    <main className={styles.root}>
+    <main className={styles.root} aria-busy={loading}>
       <nav className={styles.breadcrumbs} aria-label="Навигационная цепочка">
         <Link to="/">Главная</Link>
         <span aria-hidden="true">/</span>
@@ -858,8 +866,8 @@ export function AccountScreen({
               <p>{loadError}</p>
               <button
                 type="button"
+                disabled={loading || settingsBusy || selectionBusy || deleteBusy}
                 onClick={() => {
-                  setLoadError('')
                   setLoading(true)
                   setLoadAttempt((attempt) => attempt + 1)
                 }}
@@ -981,11 +989,10 @@ export function AccountScreen({
                 <>
                   {/* Сторожок: следующая страница заказов подгружается сама при прокрутке */}
                   <div ref={ordersLoadMoreRef} aria-hidden="true" />
-                  {ordersLoadingMore && <Spinner label="Загружаем ещё заказы…" size={24} />}
                   <button
                     type="button"
                     className={styles.loadMore}
-                    disabled={ordersLoadingMore}
+                    disabled={ordersLoadingMore || ordersRefreshing}
                     onClick={() => void loadMoreOrders()}
                   >
                     {ordersLoadingMore ? 'Загружаем…' : 'Загрузить ещё заказы'}
@@ -1012,7 +1019,7 @@ export function AccountScreen({
                       name="delivery-address"
                       value={address.id}
                       checked={selectedAddressId === address.id}
-                      disabled={selectionBusy}
+                      disabled={loading || selectionBusy}
                       onChange={() => saveSelection(address.id)}
                       onClick={() => {
                         if (onAddressPicked && selectedAddressId === address.id)
@@ -1037,6 +1044,7 @@ export function AccountScreen({
                       type="button"
                       aria-label={`Изменить адрес: ${address.label}`}
                       title="Изменить адрес"
+                      disabled={loading}
                       onClick={() => setAddressDialog({ mode: 'edit', address })}
                     >
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
@@ -1049,7 +1057,7 @@ export function AccountScreen({
                       type="button"
                       aria-label={`Удалить адрес: ${address.label}`}
                       title="Удалить адрес"
-                      disabled={selectionBusy}
+                      disabled={loading || selectionBusy}
                       onClick={() => setAddressToDelete(address)}
                     >
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
@@ -1062,6 +1070,7 @@ export function AccountScreen({
               <button
                 className={styles.addAddress}
                 type="button"
+                disabled={loading}
                 onClick={() => setAddressDialog({ mode: 'add' })}
               >
                 <span aria-hidden="true">+</span>
@@ -1087,6 +1096,7 @@ export function AccountScreen({
                       Имя
                       <input
                         value={name}
+                        disabled={loading}
                         maxLength={22}
                         aria-invalid={Boolean(errors.name)}
                         aria-describedby={errors.name ? 'profile-name-error' : undefined}
@@ -1115,6 +1125,7 @@ export function AccountScreen({
                         type="email"
                         autoComplete="email"
                         value={email}
+                        disabled={loading}
                         aria-invalid={Boolean(errors.email)}
                         aria-describedby={errors.email ? 'profile-email-error' : undefined}
                         onChange={(event) => {
@@ -1151,11 +1162,11 @@ export function AccountScreen({
                       </div>
                       <label>
                         <span className={styles.visuallyHidden}>День</span>
-                        <select
+                        <Select
                           value={day}
-                          disabled={Boolean(savedBirthday)}
-                          onChange={(event) => {
-                            setDay(event.target.value)
+                          disabled={loading || Boolean(savedBirthday)}
+                          onValueChange={(value) => {
+                            setDay(value)
                             clearError('day')
                           }}
                         >
@@ -1165,15 +1176,15 @@ export function AccountScreen({
                               {index + 1}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       </label>
                       <label>
                         <span className={styles.visuallyHidden}>Месяц</span>
-                        <select
+                        <Select
                           value={month}
-                          disabled={Boolean(savedBirthday)}
-                          onChange={(event) => {
-                            setMonth(event.target.value)
+                          disabled={loading || Boolean(savedBirthday)}
+                          onValueChange={(value) => {
+                            setMonth(value)
                             clearError('day')
                           }}
                         >
@@ -1183,15 +1194,15 @@ export function AccountScreen({
                               {item}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       </label>
                       <label>
                         <span className={styles.visuallyHidden}>Год</span>
-                        <select
+                        <Select
                           value={year}
-                          disabled={Boolean(savedBirthday)}
-                          onChange={(event) => {
-                            setYear(event.target.value)
+                          disabled={loading || Boolean(savedBirthday)}
+                          onValueChange={(value) => {
+                            setYear(value)
                             clearError('day')
                           }}
                         >
@@ -1204,7 +1215,7 @@ export function AccountScreen({
                               {item}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       </label>
                     </fieldset>
                     {errors.day && (
@@ -1213,7 +1224,7 @@ export function AccountScreen({
                       </p>
                     )}
                   </div>
-                  <button className={styles.save} type="submit" disabled={settingsBusy}>
+                  <button className={styles.save} type="submit" disabled={loading || settingsBusy}>
                     Сохранить
                   </button>
                 </form>
@@ -1234,7 +1245,7 @@ export function AccountScreen({
                       <input
                         type="checkbox"
                         checked={notifications[key]}
-                        disabled={settingsBusy || (key === 'email' && !savedEmail)}
+                        disabled={loading || settingsBusy || (key === 'email' && !savedEmail)}
                         onChange={(event) => void saveNotification(key, event.target.checked)}
                       />
                       {label}

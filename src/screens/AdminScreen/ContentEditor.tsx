@@ -1,11 +1,68 @@
+import { Select } from '../../shared/ui/Select/Select'
 import { useState, type FormEvent } from 'react'
 import { apiRequest } from '../../features/auth/api/authApi'
 import styles from './AdminScreen.module.css'
 import type { SiteContent } from '../../../shared/site-content'
-import { changedContentFields, errorMessage, localDate, isoDate } from './adminUtils'
+import {
+  completeAdminContent,
+  changedContentFields,
+  errorMessage,
+  localDate,
+  isoDate,
+} from './adminUtils'
 import { TextField, ImageField, PhoneField } from './AdminFields'
 import { SiteSettingsEditor } from './SiteSettingsEditor'
 import { defaultSiteContent } from '../../../shared/site-content'
+
+function BannerDestinationField({
+  value,
+  promotions,
+  onChange,
+}: {
+  value: string
+  promotions: SiteContent['promotions']
+  onChange: (value: string) => void
+}) {
+  const known =
+    value === '/promotions' ||
+    value === '/about' ||
+    promotions.some((promotion) => value === `/promotions/${promotion.id}`)
+  const [editingCustom, setEditingCustom] = useState(!known)
+  const custom = editingCustom || !known
+  return (
+    <div>
+      <label className={styles.field}>
+        <span>Куда ведёт картинка (ссылка внутри сайта)</span>
+        <Select
+          value={custom ? 'custom' : value}
+          onValueChange={(next) => {
+            setEditingCustom(next === 'custom')
+            onChange(next === 'custom' ? '' : next)
+          }}
+        >
+          <option value="/promotions">Все акции</option>
+          <option value="/about">О кафе</option>
+          {promotions.map((promotion) => (
+            <option key={promotion.id} value={`/promotions/${promotion.id}`}>
+              {promotion.subtitle}
+            </option>
+          ))}
+          <option value="custom">Другая ссылка…</option>
+        </Select>
+      </label>
+      {custom && (
+        <TextField
+          label="Своя ссылка внутри сайта"
+          value={value}
+          onChange={(next) => {
+            setEditingCustom(true)
+            onChange(next)
+          }}
+        />
+      )}
+    </div>
+  )
+}
 
 export function ContentEditor({
   initial,
@@ -36,17 +93,18 @@ export function ContentEditor({
     setBusy(true)
     setMessage('')
     try {
-      const result = await apiRequest<{ content: SiteContent }>('/admin/content', {
+      const result = await apiRequest<{ content: Partial<SiteContent> }>('/admin/content', {
         method: 'PATCH',
         body: JSON.stringify(changes),
       })
-      setSaved(result.content)
+      const updated = completeAdminContent(result.content, saved)
+      setSaved(updated)
       setContent((current) => ({
-        ...result.content,
+        ...updated,
         ...changedContentFields(current, content, () => true),
       }))
       setMessage('Сохранено. Изменения уже видны на сайте.')
-      onSaved(result.content)
+      onSaved(updated)
     } catch (error) {
       setMessage(errorMessage(error))
     } finally {
@@ -270,13 +328,13 @@ export function ContentEditor({
             <div className={styles.grid} key={index}>
               <label className={styles.field}>
                 <span>Значок {index + 1}</span>
-                <select
+                <Select
                   value={benefit.icon}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     set(
                       'benefits',
                       content.benefits.map((old, i) =>
-                        i === index ? { ...old, icon: event.target.value as typeof old.icon } : old,
+                        i === index ? { ...old, icon: value as typeof old.icon } : old,
                       ),
                     )
                   }
@@ -285,19 +343,17 @@ export function ContentEditor({
                   <option value="truck">Доставка</option>
                   <option value="card">Карта</option>
                   <option value="pin">Адрес</option>
-                </select>
+                </Select>
               </label>
               <label className={styles.field}>
                 <span>Источник текста {index + 1}</span>
-                <select
+                <Select
                   value={benefit.mode ?? 'custom'}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     set(
                       'benefits',
                       content.benefits.map((old, i) =>
-                        i === index
-                          ? { ...old, mode: event.target.value as NonNullable<typeof old.mode> }
-                          : old,
+                        i === index ? { ...old, mode: value as NonNullable<typeof old.mode> } : old,
                       ),
                     )
                   }
@@ -306,7 +362,7 @@ export function ContentEditor({
                   <option value="delivery">Актуальная стоимость доставки</option>
                   <option value="pickup">Актуальная скидка самовывоза</option>
                   <option value="payment">Доступный способ оплаты</option>
-                </select>
+                </Select>
                 <small>Чтобы вывести свой заголовок и пояснение, выберите «Мой текст».</small>
               </label>
               <TextField
@@ -445,35 +501,23 @@ export function ContentEditor({
                   )
                 }
               />
-              <label className={styles.field}>
-                <span>Куда ведёт картинка (ссылка внутри сайта)</span>
-                <input
-                  list="banner-destinations"
-                  value={
-                    slide.href ??
-                    (content.promotions.some((promotion) => promotion.id === slide.id)
-                      ? `/promotions/${slide.id}`
-                      : '/promotions')
-                  }
-                  onChange={(event) =>
-                    set(
-                      'heroSlides',
-                      content.heroSlides.map((item, i) =>
-                        i === index ? { ...item, href: event.target.value } : item,
-                      ),
-                    )
-                  }
-                />
-                <datalist id={index === 0 ? 'banner-destinations' : undefined}>
-                  <option value="/promotions">Все акции</option>
-                  <option value="/about">О кафе</option>
-                  {content.promotions.map((promotion) => (
-                    <option key={promotion.id} value={`/promotions/${promotion.id}`}>
-                      {promotion.subtitle}
-                    </option>
-                  ))}
-                </datalist>
-              </label>
+              <BannerDestinationField
+                value={
+                  slide.href ??
+                  (content.promotions.some((promotion) => promotion.id === slide.id)
+                    ? `/promotions/${slide.id}`
+                    : '/promotions')
+                }
+                promotions={content.promotions}
+                onChange={(value) =>
+                  set(
+                    'heroSlides',
+                    content.heroSlides.map((item, i) =>
+                      i === index ? { ...item, href: value } : item,
+                    ),
+                  )
+                }
+              />
             </div>
           ))}
           <button
@@ -604,15 +648,13 @@ export function ContentEditor({
               <div className={styles.grid}>
                 <label className={styles.field}>
                   <span>Раздел</span>
-                  <select
+                  <Select
                     value={promotion.category}
-                    onChange={(e) =>
+                    onValueChange={(value) =>
                       set(
                         'promotions',
                         content.promotions.map((old, i) =>
-                          i === index
-                            ? { ...old, category: e.target.value as typeof old.category }
-                            : old,
+                          i === index ? { ...old, category: value as typeof old.category } : old,
                         ),
                       )
                     }
@@ -620,17 +662,17 @@ export function ContentEditor({
                     <option value="delivery">Доставка</option>
                     <option value="pickup">Самовывоз</option>
                     <option value="cafe">В кафе</option>
-                  </select>
+                  </Select>
                 </label>
                 <label className={styles.field}>
                   <span>Цвет</span>
-                  <select
+                  <Select
                     value={promotion.theme}
-                    onChange={(e) =>
+                    onValueChange={(value) =>
                       set(
                         'promotions',
                         content.promotions.map((old, i) =>
-                          i === index ? { ...old, theme: e.target.value as typeof old.theme } : old,
+                          i === index ? { ...old, theme: value as typeof old.theme } : old,
                         ),
                       )
                     }
@@ -640,7 +682,7 @@ export function ContentEditor({
                         {color}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
               </div>
               {

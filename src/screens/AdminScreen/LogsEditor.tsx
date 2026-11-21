@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { apiRequest } from '../../features/auth/api/authApi'
 import { errorMessage } from './adminUtils'
+import { ActivityLog } from './ActivityLog'
+import { LogGroups } from './LogGroups.tsx'
+import { formatLogTime } from './groupLogEntries'
 import { LoadingState } from '../../shared/ui/LoadingState/LoadingState'
 import styles from './AdminScreen.module.css'
 
@@ -9,6 +12,7 @@ type AuditEntry = {
   action: string
   id?: string
   at: string
+  actor?: { name: string; role: string }
   changes?: { field: string; before: unknown; after: unknown }[]
 }
 type PaymentEntry = {
@@ -30,6 +34,11 @@ const paymentStatusLabels: Record<string, string> = {
   error: 'Ошибка',
 }
 const auditActionLabels: Record<string, string> = {
+  'employee.create': 'Создан сотрудник',
+  'employee.update': 'Изменён сотрудник',
+  'employee.password_reset': 'Сброшен пароль сотрудника',
+  'employee.password_changed': 'Сотрудник сменил пароль',
+  'order.stage': 'Изменён этап заказа',
   'content.update': 'Изменён сайт',
   'category.create': 'Создан раздел',
   'category.update': 'Изменён раздел',
@@ -69,7 +78,8 @@ export function LogsEditor() {
       .finally(() => setLoadingLogs(false))
   }, [])
   return (
-    <div className={styles.editor}>
+    <div className={styles.editor} aria-busy={loadingLogs}>
+      <ActivityLog />
       <div className={styles.actions}>
         <button type="button" onClick={() => void refresh()}>
           Обновить журнал
@@ -77,42 +87,50 @@ export function LogsEditor() {
         <span role="status">{message}</span>
       </div>
       <h2>Оплаты</h2>
-      {loadingLogs && <LoadingState compact={logs !== null} label="Загружаем журнал…" />}
+      {loadingLogs && !logs && <LoadingState label="Загружаем журнал…" />}
       {!logs ? (
         !loadingLogs && <p>Журнал пока недоступен.</p>
       ) : logs.payments.length === 0 ? (
         <p>Платежей пока нет.</p>
       ) : (
-        logs.payments.map((item) => (
-          <div className={styles.panel} key={item._id}>
-            <strong>
-              {new Date(item.at).toLocaleString('ru-RU')} · заказ {item.orderId.slice(0, 8)}
-            </strong>
-            <p>
-              {paymentStatusLabels[item.from] ?? item.from} →{' '}
-              {paymentStatusLabels[item.status] ?? item.status} ·{' '}
-              {(item.amountKopecks / 100).toLocaleString('ru-RU')} ₽
-              {item.paymentId ? ` · платёж ${item.paymentId}` : ''}
-            </p>
-          </div>
-        ))
+        <LogGroups
+          entries={logs.payments}
+          renderEntry={(item) => (
+            <div className={styles.panel} key={item._id}>
+              <strong>
+                {formatLogTime(item.at)} · заказ {item.orderId.slice(0, 8)}
+              </strong>
+              <p>
+                {paymentStatusLabels[item.from] ?? item.from} →{' '}
+                {paymentStatusLabels[item.status] ?? item.status} ·{' '}
+                {(item.amountKopecks / 100).toLocaleString('ru-RU')} ₽
+                {item.paymentId ? ` · платёж ${item.paymentId}` : ''}
+              </p>
+            </div>
+          )}
+        />
       )}
       <h2>Изменения на сайте</h2>
       {logs?.changes.length === 0 && <p>Изменений пока нет.</p>}
-      {logs?.changes.map((item) => (
-        <div className={styles.panel} key={item._id}>
-          <strong>
-            {new Date(item.at).toLocaleString('ru-RU')} ·{' '}
-            {auditActionLabels[item.action] ?? item.action}
-            {item.id ? ` · ${item.id}` : ''}
-          </strong>
-          {item.changes?.map((change, index) => (
-            <p key={index}>
-              <b>{change.field}</b>: {logValue(change.before)} → {logValue(change.after)}
-            </p>
-          ))}
-        </div>
-      ))}
+      <LogGroups
+        entries={logs?.changes ?? []}
+        renderEntry={(item) => (
+          <div className={styles.panel} key={item._id}>
+            <strong>
+              {formatLogTime(item.at)} · {auditActionLabels[item.action] ?? item.action}
+              {item.id ? ` · ${item.id}` : ''}
+              {item.actor
+                ? ` · ${item.actor.name} (${item.actor.role === 'owner' ? 'владелец' : 'сотрудник'})`
+                : ''}
+            </strong>
+            {item.changes?.map((change, index) => (
+              <p key={index}>
+                <b>{change.field}</b>: {logValue(change.before)} → {logValue(change.after)}
+              </p>
+            ))}
+          </div>
+        )}
+      />
     </div>
   )
 }

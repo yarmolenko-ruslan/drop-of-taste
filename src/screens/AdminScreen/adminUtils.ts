@@ -1,4 +1,4 @@
-import type { SiteContent } from '../../../shared/site-content'
+import { defaultSiteContent, type SiteContent } from '../../../shared/site-content'
 
 export const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Не удалось сохранить изменения'
@@ -29,4 +29,12 @@ export function changedContentFields(
       Object.assign(changed, { [key]: current[key] })
   }
   return changed
+}
+
+/** Fill UI-only defaults for omitted, inaccessible sections; never send those sections back. */
+export function completeAdminContent(
+  content: Partial<SiteContent>,
+  baseline: SiteContent = defaultSiteContent,
+): SiteContent {
+  return { ...baseline, ...content }
 }

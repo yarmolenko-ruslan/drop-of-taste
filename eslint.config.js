@@ -34,6 +34,9 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    settings: {
+      'jsx-a11y': { components: { Select: 'select' } },
+    },
   },
   { files: ['src/app/**'], rules: layerRestrictions(['server']) },
   { files: ['src/screens/**'], rules: layerRestrictions(['app', 'server']) },

@@ -1,3 +1,4 @@
+import type { AdminPrincipal } from '../../../shared/admin-access.ts'
 import type { Db, MongoClient } from 'mongodb'
 import type { FastifyInstance } from 'fastify'
 import { invalidateCatalogCache } from '../../modules/catalog/mongo-catalog.ts'
@@ -145,6 +146,7 @@ export async function syncIikoMenu(
   db: Db,
   mongo: MongoClient,
   env: NodeJS.ProcessEnv = process.env,
+  actor?: AdminPrincipal | null,
 ) {
   const appId = env.IIKO_APP_ID
   const clientSecret = env.IIKO_CLIENT_SECRET
@@ -204,6 +206,7 @@ export async function syncIikoMenu(
       for (const old of oldProducts)
         if (!syncedIds.has(old._id) && old.available)
           itemAudit.push({
+            ...(actor ? { actor } : {}),
             action: 'product.iiko_update',
             id: old._id,
             changes: [{ field: 'available', before: true, after: false }],
@@ -218,6 +221,7 @@ export async function syncIikoMenu(
         if (result.upsertedCount) {
           imported++
           itemAudit.push({
+            ...(actor ? { actor } : {}),
             action: 'product.iiko_create',
             id: product._id,
             changes: [{ field: 'product', before: null, after: product }],
@@ -247,6 +251,7 @@ export async function syncIikoMenu(
           if (changes.length) {
             updated++
             itemAudit.push({
+              ...(actor ? { actor } : {}),
               action: 'product.iiko_update',
               id: product._id,
               changes,
@@ -259,6 +264,7 @@ export async function syncIikoMenu(
       await db.collection('admin_audit').insertOne(
         {
           action: 'iiko.sync',
+          ...(actor ? { actor } : {}),
           imported,
           updated,
           skipped: mapped.skipped,
@@ -280,9 +286,9 @@ export async function syncIikoMenu(
 }
 
 export function registerIikoRoutes(app: FastifyInstance, db: Db, mongo: MongoClient) {
-  app.post('/api/admin/iiko/sync', async (_request, reply) => {
+  app.post('/api/admin/iiko/sync', async (request, reply) => {
     try {
-      const result = await syncIikoMenu(db, mongo)
+      const result = await syncIikoMenu(db, mongo, process.env, request.adminPrincipal)
       notifySiteUpdate(app, 'catalog')
       return result
     } catch (error) {

@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useLayoutEffect } from 'react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { defaultSiteContent, type SiteContent } from '../../../shared/site-content'
@@ -8,6 +9,7 @@ import {
   useSiteContent,
 } from '../../features/site-content/SiteContentProvider'
 import { AdminScreen } from './AdminScreen'
+import { permissions } from '../../../shared/admin-access'
 import { ApiError } from '../../features/auth/api/authApi'
 
 const request = vi.hoisted(() => vi.fn())
@@ -40,7 +42,18 @@ test('an already expired session does not leave logout pending forever', async (
 test('failed logout hides administrative data and retries revocation before restoring a session', async () => {
   let online = false
   request.mockImplementation(async (path: string) => {
-    if (path === '/admin/session') return { authenticated: true }
+    if (path === '/admin/activity') return undefined
+    if (path === '/admin/session')
+      return {
+        authenticated: true,
+        principal: {
+          id: 'owner',
+          name: 'Владелец',
+          role: 'owner',
+          permissions,
+          mustChangePassword: false,
+        },
+      }
     if (path === '/admin/dashboard')
       return { content: defaultSiteContent, categories: [], products: [], iikoConfigured: false }
     if (path.startsWith('/admin/orders?')) return { orders: [], nextBefore: null }
@@ -66,7 +79,12 @@ test('failed logout hides administrative data and retries revocation before rest
       <AdminScreen />
     </MemoryRouter>,
   )
-  await waitFor(() => expect(request).toHaveBeenCalledWith('/admin/logout', { method: 'POST' }))
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith('/admin/logout', {
+      method: 'POST',
+      headers: { 'X-Admin-Account-Id': 'owner' },
+    }),
+  )
   expect(request.mock.calls.some(([path]) => path === '/admin/session')).toBe(false)
   expect(screen.queryByRole('navigation', { name: 'Разделы панели' })).not.toBeInTheDocument()
   online = true
@@ -77,7 +95,18 @@ test('failed logout hides administrative data and retries revocation before rest
 test('a logout in another tab prevents a late initial dashboard from restoring access', async () => {
   let resolveDashboard!: (data: unknown) => void
   request.mockImplementation(async (path: string) => {
-    if (path === '/admin/session') return { authenticated: true }
+    if (path === '/admin/activity') return undefined
+    if (path === '/admin/session')
+      return {
+        authenticated: true,
+        principal: {
+          id: 'owner',
+          name: 'Владелец',
+          role: 'owner',
+          permissions,
+          mustChangePassword: false,
+        },
+      }
     if (path === '/admin/dashboard')
       return new Promise((resolve) => {
         resolveDashboard = resolve
@@ -112,7 +141,18 @@ test('сохранение в админке сразу обновляет са�
   let content: SiteContent = { ...defaultSiteContent, brandName: 'Первое имя' }
   const patches: Partial<SiteContent>[] = []
   request.mockImplementation(async (path: string, init?: RequestInit) => {
-    if (path === '/admin/session') return { authenticated: true }
+    if (path === '/admin/activity') return undefined
+    if (path === '/admin/session')
+      return {
+        authenticated: true,
+        principal: {
+          id: 'owner',
+          name: 'Владелец',
+          role: 'owner',
+          permissions,
+          mustChangePassword: false,
+        },
+      }
     if (path === '/admin/dashboard')
       return { content, categories: [], products: [], iikoConfigured: false }
     if (path === '/admin/orders?stage=new&limit=50') return { orders: [], nextBefore: null }
@@ -153,7 +193,18 @@ test('сохранение в админке сразу обновляет са�
 
 test('меню разделов сворачивается при нехватке места и раскрывается после расширения окна', async () => {
   request.mockImplementation(async (path: string) => {
-    if (path === '/admin/session') return { authenticated: true }
+    if (path === '/admin/activity') return undefined
+    if (path === '/admin/session')
+      return {
+        authenticated: true,
+        principal: {
+          id: 'owner',
+          name: 'Владелец',
+          role: 'owner',
+          permissions,
+          mustChangePassword: false,
+        },
+      }
     if (path === '/admin/dashboard')
       return { content: defaultSiteContent, categories: [], products: [], iikoConfigured: false }
     if (path === '/admin/orders?stage=new&limit=50') return { orders: [], nextBefore: null }
@@ -181,6 +232,8 @@ test('меню разделов сворачивается при нехватк
   expect(toggle).toHaveAttribute('aria-expanded', 'false')
   expect(await screen.findByRole('textbox', { name: 'Название кафе' })).toBeInTheDocument()
 
+  expect(request.mock.calls.some(([path]) => path === '/admin/activity')).toBe(false)
+
   Object.defineProperty(nav, 'clientWidth', { configurable: true, writable: true, value: 1400 })
   fireEvent.resize(window)
   await waitFor(() => expect(within(nav).queryByRole('button', { name: 'Разделы' })).toBeNull())
@@ -188,4 +241,135 @@ test('меню разделов сворачивается при нехватк
     'aria-current',
     'page',
   )
+})
+
+test('a delayed logout remains bound to the old session across reload and a new login notification', async () => {
+  let online = false
+  request.mockImplementation(async (path: string) => {
+    if (path === '/admin/session')
+      return {
+        authenticated: true,
+        sessionId: 'old-session',
+        principal: {
+          id: 'owner',
+          name: 'Владелец',
+          role: 'owner',
+          permissions,
+          mustChangePassword: false,
+        },
+      }
+    if (path === '/admin/dashboard')
+      return { content: defaultSiteContent, categories: [], products: [], iikoConfigured: false }
+    if (path.startsWith('/admin/orders?')) return { orders: [], nextBefore: null }
+    if (path === '/admin/logout') {
+      if (!online) throw new Error('offline')
+      throw new ApiError('ADMIN_SESSION_CHANGED', 'Another session is active', 0, 409)
+    }
+    throw new Error(path)
+  })
+  const user = userEvent.setup()
+  const view = render(
+    <MemoryRouter>
+      <AdminScreen />
+    </MemoryRouter>,
+  )
+  await user.click(await screen.findByRole('button', { name: 'Выйти' }))
+  const stored = JSON.parse(localStorage.getItem('drop-of-taste:admin-logout-pending')!)
+  expect(stored).toMatchObject({ accountId: 'owner', sessionId: 'old-session' })
+  view.unmount()
+  render(
+    <MemoryRouter>
+      <AdminScreen />
+    </MemoryRouter>,
+  )
+  await act(async () =>
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: 'drop-of-taste:admin-session-changed',
+        newValue: 'new-login',
+      }),
+    ),
+  )
+  online = true
+  act(() => window.dispatchEvent(new Event('online')))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Войти' })).toBeEnabled())
+  const calls = request.mock.calls.filter(([path]) => path === '/admin/logout')
+  expect(calls.length).toBeGreaterThanOrEqual(2)
+  expect(calls.every(([, init]) => init.headers['X-Admin-Session-Id'] === 'old-session')).toBe(true)
+  expect(localStorage.getItem('drop-of-taste:admin-logout-pending')).toBeNull()
+  expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+})
+
+test('checking the session on focus detects a different login of the same account', async () => {
+  let currentSession = 'first-session'
+  request.mockImplementation(async (path: string) => {
+    if (path === '/admin/session')
+      return {
+        authenticated: true,
+        sessionId: currentSession,
+        principal: {
+          id: 'owner',
+          name: 'Владелец',
+          role: 'owner',
+          permissions,
+          mustChangePassword: false,
+        },
+      }
+    if (path === '/admin/dashboard')
+      return { content: defaultSiteContent, categories: [], products: [], iikoConfigured: false }
+    if (path.startsWith('/admin/orders?')) return { orders: [], nextBefore: null }
+    throw new Error(path)
+  })
+  render(
+    <MemoryRouter>
+      <AdminScreen />
+    </MemoryRouter>,
+  )
+  await screen.findByRole('button', { name: 'Выйти' })
+  currentSession = 'second-session'
+  act(() => window.dispatchEvent(new Event('focus')))
+  expect(await screen.findByRole('button', { name: 'Войти' })).toBeInTheDocument()
+  expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+})
+
+test('finishing another tab’s logout between render and effects does not restore a different session automatically', async () => {
+  const key = 'drop-of-taste:admin-logout-pending'
+  localStorage.setItem(
+    key,
+    JSON.stringify({ id: 'old-intent', accountId: 'owner', sessionId: 'old-session' }),
+  )
+  function OtherTabFinishes() {
+    useLayoutEffect(() => {
+      localStorage.removeItem(key)
+    }, [])
+    return null
+  }
+  request.mockImplementation(async (path: string) => {
+    if (path === '/admin/logout')
+      throw new ApiError('ADMIN_SESSION_CHANGED', 'New session already exists', 0, 409)
+    if (path === '/admin/session')
+      return {
+        authenticated: true,
+        sessionId: 'new-session',
+        principal: {
+          id: 'owner',
+          name: 'Владелец',
+          role: 'owner',
+          permissions,
+          mustChangePassword: false,
+        },
+      }
+    if (path === '/admin/dashboard')
+      return { content: defaultSiteContent, categories: [], products: [], iikoConfigured: false }
+    throw new Error(path)
+  })
+  render(
+    <MemoryRouter>
+      <AdminScreen />
+      <OtherTabFinishes />
+    </MemoryRouter>,
+  )
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Войти' })).toBeEnabled())
+  expect(request.mock.calls.some(([path]) => path === '/admin/session')).toBe(false)
+  expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
 })

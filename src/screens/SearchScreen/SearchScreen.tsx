@@ -26,14 +26,13 @@ export function SearchScreen() {
           <p className={styles.message}>Введите название блюда в строке поиска.</p>
         ) : (
           <>
-            {catalog?.data && !catalog.error && (
+            {catalog?.data && (
               <p className={styles.summary}>
                 По запросу «{query}» найдено: {results.length}
               </p>
             )}
             <CatalogStatus />
             {catalog?.data &&
-              !catalog.error &&
               (results.length ? (
                 <div className={styles.grid}>
                   {results.map(({ product, categoryId, categoryTitle }) => (

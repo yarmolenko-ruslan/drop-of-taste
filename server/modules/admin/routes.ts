@@ -1,24 +1,29 @@
 import { parseOrdersCursor, encodeOrdersCursor } from '../orders/cursor.ts'
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Db, MongoClient } from 'mongodb'
 import { z } from 'zod'
-import type { FastifyInstance, FastifyReply } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { invalidateCatalogCache } from '../catalog/mongo-catalog.ts'
 import type { CatalogDoc } from '../catalog/template.ts'
 import { getSiteContent } from '../content/service.ts'
 import { notifySiteUpdate } from '../content/updates.ts'
 import type { SiteContent } from '../../../shared/site-content.ts'
-import { createOriginChecker } from '../../http/origins.ts'
+import { noteActivityTarget } from './activity.ts'
+import { ensureAdminLogRetention } from './log-retention.ts'
+import { adminLogCutoff } from '../../../shared/admin-log-policy.ts'
+import { registerAdminAccess } from './access.ts'
+import { can } from '../../../shared/admin-access.ts'
+import {
+  adminContent,
+  clientProjection,
+  orderContactProjection,
+  employeeOrderProjection,
+} from './response-access.ts'
 import { normalizeBonusCode, type BonusCode } from '../../../shared/bonus-code.ts'
 import { siteSettingsSchema } from '../../../shared/validation/site-settings.ts'
 import { isInternalPath, isHttpsUrl } from '../../../shared/validation/urls.ts'
-import {
-  deriveAdminPassword,
-  isAdminCredentialCurrent,
-  loadAdminCredentials,
-} from './credentials.ts'
 
 const image = z
   .string()
@@ -240,11 +245,6 @@ function changes(
     : [{ field: prefix, before: before ?? null, after: after ?? null }]
 }
 
-const SESSION_MS = 12 * 60 * 60 * 1000
-const MAX_PASSWORD_CHECKS = 8
-const MAX_LOGIN_BUCKETS = 1024
-const cookieName = 'admin_session'
-const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const failure = (code: string, message: string) => ({ error: { code, message } })
 type CategoryDoc = {
   _id: string
@@ -261,28 +261,26 @@ export async function registerAdminRoutes(
   password: string,
   mongo: MongoClient,
 ) {
-  const loginAttempts = new Map<string, { count: number; until: number }>()
-  let passwordChecks = 0
-  const checkOrigin = createOriginChecker(origins)
-  const {
-    salt,
-    passwordHash,
-    version: credentialVersion,
-  } = await loadAdminCredentials(db, password)
-  const sessions = db.collection<{ tokenHash: string; expiresAt: Date; credentialVersion: string }>(
-    'admin_sessions',
-  )
-  await sessions.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
-  await sessions.createIndex({ tokenHash: 1 }, { unique: true })
+  await ensureAdminLogRetention(db)
+  await registerAdminAccess(app, db, origins, password, mongo)
   const audit = db.collection('admin_audit')
   const record = async (
     action: string,
     id: string | undefined,
     before: unknown,
     after: unknown,
+    request: Pick<FastifyRequest, 'adminPrincipal' | 'adminActivity'>,
   ) => {
+    noteActivityTarget(request, id)
     const diff = changes(before, after)
-    if (diff.length) await audit.insertOne({ action, id, changes: diff, at: new Date() })
+    if (diff.length)
+      await audit.insertOne({
+        action,
+        id,
+        actor: request.adminPrincipal,
+        changes: diff,
+        at: new Date(),
+      })
   }
   await audit.createIndex({ at: -1 })
   const bonusCodes = db.collection<BonusCode>('bonus_codes')
@@ -293,123 +291,39 @@ export async function registerAdminRoutes(
     { parseAs: 'buffer', bodyLimit: 5_000_000 },
     (_request, body, done) => done(null, body),
   )
-  app.addHook('onRequest', async (request, reply) => {
-    // Проверяем найденный маршрут: raw URL может содержать %61 вместо «a».
-    const route = request.routeOptions.url
-    if (!route?.startsWith('/api/admin/')) return
-    reply.header('Cache-Control', 'no-store')
-    if (!['GET', 'HEAD'].includes(request.method) && !checkOrigin(request.headers.origin)) {
-      return reply.code(403).send(failure('INVALID_ORIGIN', 'Запрос отклонён'))
-    }
-    if (route === '/api/admin/login') return
-    const token = /(?:^|;\s*)admin_session=([a-f0-9]{64})(?:;|$)/.exec(
-      request.headers.cookie ?? '',
-    )?.[1]
-    if (
-      !token ||
-      !(await sessions.findOne({
-        tokenHash: hash(token),
-        expiresAt: { $gt: new Date() },
-        credentialVersion,
-      })) ||
-      !(await isAdminCredentialCurrent(db, credentialVersion))
-    ) {
-      return reply.code(401).send(failure('ADMIN_UNAUTHORIZED', 'Войдите в панель администратора'))
-    }
-  })
-
-  app.post('/api/admin/login', async (request, reply) => {
-    const parsed = z.object({ password: z.string().min(1).max(1024) }).safeParse(request.body)
-    if (!parsed.success) return reply.code(400).send(failure('INVALID_BODY', 'Введите пароль'))
-    const now = Date.now()
-    for (const [ip, attempt] of loginAttempts) {
-      if (attempt.until <= now) loginAttempts.delete(ip)
-    }
-    const previous = loginAttempts.get(request.ip)
-    if (previous && previous.until > now && previous.count >= 5)
-      return reply
-        .code(429)
-        .send(failure('RATE_LIMITED', 'Слишком много попыток. Попробуйте через 15 минут'))
-    if (
-      passwordChecks >= MAX_PASSWORD_CHECKS ||
-      (!previous && loginAttempts.size >= MAX_LOGIN_BUCKETS)
-    )
-      return reply
-        .header('Retry-After', '1')
-        .code(503)
-        .send(failure('ADMIN_LOGIN_BUSY', 'Сервис входа занят. Повторите позже'))
-    // Занимаем попытку до асинхронного хеширования, чтобы параллельные
-    // запросы не обходили лимит и не заполняли очередь crypto.
-    loginAttempts.set(request.ip, {
-      count: (previous?.until ?? 0) > now ? previous!.count + 1 : 1,
-      until: now + 15 * 60_000,
-    })
-    let candidate: Buffer
-    passwordChecks++
-    try {
-      candidate = await deriveAdminPassword(parsed.data.password, salt)
-    } finally {
-      passwordChecks--
-    }
-    if (!timingSafeEqual(candidate, passwordHash)) {
-      return reply.code(401).send(failure('INVALID_PASSWORD', 'Неверный пароль'))
-    }
-    if (!(await isAdminCredentialCurrent(db, credentialVersion)))
-      return reply
-        .code(409)
-        .send(failure('ADMIN_CREDENTIALS_CHANGED', 'Настройки входа изменились. Повторите позже'))
-    loginAttempts.delete(request.ip)
-    const token = randomBytes(32).toString('hex')
-    await sessions.insertOne({
-      tokenHash: hash(token),
-      expiresAt: new Date(now + SESSION_MS),
-      credentialVersion,
-    })
-    reply.header(
-      'Set-Cookie',
-      `${cookieName}=${token}; Path=/api/admin; HttpOnly; SameSite=Strict; Max-Age=43200`,
-    )
-    return { authenticated: true }
-  })
-  app.get('/api/admin/session', async () => ({ authenticated: true }))
-  app.post('/api/admin/logout', async (request, reply) => {
-    const token = /(?:^|;\s*)admin_session=([a-f0-9]{64})(?:;|$)/.exec(
-      request.headers.cookie ?? '',
-    )?.[1]
-    if (token) await sessions.deleteOne({ tokenHash: hash(token) })
-    reply.header(
-      'Set-Cookie',
-      `${cookieName}=; Path=/api/admin; HttpOnly; SameSite=Strict; Max-Age=0`,
-    )
-    return { authenticated: false }
-  })
-  app.get('/api/admin/dashboard', async () => ({
-    content: await getSiteContent(db),
-    categories: await db
-      .collection<CategoryDoc>('catalog_categories')
-      .find({})
-      .sort({ sortOrder: 1 })
-      .toArray(),
-    products: (
-      await db
-        .collection<CatalogDoc>('catalog')
-        .find({})
-        .sort({ categoryId: 1, sortOrder: 1 })
-        .toArray()
-    ).map((product) => ({
-      ...product,
-      image: product.image ?? '',
-      imageAlt: product.imageAlt ?? '',
-      allergenNote: product.allergenNote ?? '',
-      portions: product.portions ?? '',
-    })),
-    iikoConfigured: Boolean(
-      process.env.IIKO_APP_ID &&
-      process.env.IIKO_CLIENT_SECRET &&
-      process.env.IIKO_API_KEY &&
-      process.env.IIKO_ORGANIZATION_ID &&
-      process.env.IIKO_EXTERNAL_MENU_ID,
-    ),
+  app.get('/api/admin/dashboard', async (request) => ({
+    content: adminContent(await getSiteContent(db), request.adminPrincipal),
+    categories: !can(request.adminPrincipal, 'catalog.read')
+      ? []
+      : await db
+          .collection<CategoryDoc>('catalog_categories')
+          .find({})
+          .sort({ sortOrder: 1 })
+          .toArray(),
+    products: !can(request.adminPrincipal, 'catalog.read')
+      ? []
+      : (
+          await db
+            .collection<CatalogDoc>('catalog')
+            .find({})
+            .sort({ categoryId: 1, sortOrder: 1 })
+            .toArray()
+        ).map((product) => ({
+          ...product,
+          image: product.image ?? '',
+          imageAlt: product.imageAlt ?? '',
+          allergenNote: product.allergenNote ?? '',
+          portions: product.portions ?? '',
+        })),
+    iikoConfigured:
+      request.adminPrincipal?.role === 'owner' &&
+      Boolean(
+        process.env.IIKO_APP_ID &&
+        process.env.IIKO_CLIENT_SECRET &&
+        process.env.IIKO_API_KEY &&
+        process.env.IIKO_ORGANIZATION_ID &&
+        process.env.IIKO_EXTERNAL_MENU_ID,
+      ),
   }))
   const orderStages = ['new', 'preparing', 'delivering', 'completed'] as const
   const orders = db.collection<{
@@ -480,21 +394,37 @@ export async function registerAdminRoutes(
         : {}),
     }
     const page = await orders
-      .find({
-        ...filter,
-        canceledAt: { $exists: false },
-        $nor: [
-          { requiresPayment: true, 'payment.status': { $ne: 'succeeded' } },
-          { 'payment.status': { $in: ['creating', 'error', 'pending', 'canceled'] } },
-          { 'quote.totalKopecks': 0, status: { $ne: 'completed' } },
-        ],
-      })
+      .find(
+        {
+          ...filter,
+          canceledAt: { $exists: false },
+          $nor: [
+            { requiresPayment: true, 'payment.status': { $ne: 'succeeded' } },
+            { 'payment.status': { $in: ['creating', 'error', 'pending', 'canceled'] } },
+            { 'quote.totalKopecks': 0, status: { $ne: 'completed' } },
+          ],
+        },
+        {
+          projection:
+            request.adminPrincipal?.role === 'owner' ? undefined : employeeOrderProjection,
+        },
+      )
       .sort({ createdAt: -1, _id: -1 })
       .limit(limit + 1)
       .toArray()
     const visible = page.slice(0, limit)
     const owners = await users
-      .find({ _id: { $in: [...new Set(visible.map((order) => order.accountId))] } })
+      .find(
+        { _id: { $in: [...new Set(visible.map((order) => order.accountId))] } },
+        {
+          projection:
+            request.adminPrincipal?.role === 'owner'
+              ? undefined
+              : can(request.adminPrincipal, 'clients.read')
+                ? clientProjection
+                : orderContactProjection,
+        },
+      )
       .toArray()
     const byId = new Map(owners.map((owner) => [owner._id, owner]))
     return {
@@ -541,12 +471,32 @@ export async function registerAdminRoutes(
           ...(parsed.data.stage === 'completed' ? { fulfilledAt: new Date() } : {}),
         },
       },
-      { returnDocument: 'after' },
+      {
+        returnDocument: 'after',
+        projection: request.adminPrincipal?.role === 'owner' ? undefined : employeeOrderProjection,
+      },
     )
     if (!result)
       return reply
         .code(409)
         .send(failure('STAGE_CHANGED', 'Этап заказа уже изменился. Обновите список'))
+    noteActivityTarget(
+      request,
+      id,
+      {
+        preparing: 'order.accept',
+        delivering: 'order.deliver',
+        completed: 'order.complete',
+        new: 'order.stage',
+      }[parsed.data.stage],
+    )
+    await record(
+      'order.stage',
+      id,
+      { fulfillmentStatus: previous },
+      { fulfillmentStatus: parsed.data.stage },
+      request,
+    )
     return { order: result }
   })
   app.get('/api/admin/clients', async (request, reply) => {
@@ -579,7 +529,13 @@ export async function registerAdminRoutes(
     const match = { ...query, ...(before ? { _id: { $lt: before } } : {}) }
     const page =
       filter === 'all'
-        ? await users.find(match).sort({ _id: -1 }).limit(51).toArray()
+        ? await users
+            .find(match, {
+              projection: request.adminPrincipal?.role === 'owner' ? undefined : clientProjection,
+            })
+            .sort({ _id: -1 })
+            .limit(51)
+            .toArray()
         : await users
             .aggregate<{
               _id: string
@@ -601,7 +557,10 @@ export async function registerAdminRoutes(
                 },
               },
               { $match: { 'orderMatch.0': { $exists: filter === 'ordered' } } },
-              { $project: { orderMatch: 0 } },
+              {
+                $project:
+                  request.adminPrincipal?.role === 'owner' ? { orderMatch: 0 } : clientProjection,
+              },
               { $limit: 51 },
             ])
             .toArray()
@@ -614,11 +573,20 @@ export async function registerAdminRoutes(
       return reply.code(400).send(failure('INVALID_CURSOR', 'Проверьте страницу заказов'))
     const limit = 50
     const id = (request.params as { id: string }).id
-    const client = await users.findOne({ _id: id })
+    const client = await users.findOne(
+      { _id: id },
+      { projection: request.adminPrincipal?.role === 'owner' ? undefined : clientProjection },
+    )
     if (!client) return reply.code(404).send(failure('NOT_FOUND', 'Клиент не найден'))
     const [history, addresses] = await Promise.all([
       orders
-        .find({ accountId: id, ...(cursor && { $or: cursor }) })
+        .find(
+          { accountId: id, ...(cursor && { $or: cursor }) },
+          {
+            projection:
+              request.adminPrincipal?.role === 'owner' ? undefined : employeeOrderProjection,
+          },
+        )
         .sort({ createdAt: -1, _id: -1 })
         .limit(limit + 1)
         .toArray(),
@@ -639,16 +607,26 @@ export async function registerAdminRoutes(
     }
   })
   app.get('/api/admin/logs', async () => {
+    const cutoff = adminLogCutoff()
     const [changes, events, orders] = await Promise.all([
-      audit.find({}).sort({ at: -1 }).limit(100).toArray(),
-      db.collection('payment_events').find({}).sort({ at: -1 }).limit(100).toArray(),
+      audit
+        .find({ at: { $gte: cutoff } })
+        .sort({ at: -1 })
+        .limit(100)
+        .toArray(),
+      db
+        .collection('payment_events')
+        .find({ at: { $gte: cutoff } })
+        .sort({ at: -1 })
+        .limit(100)
+        .toArray(),
       db
         .collection<{
           _id: string
           quote: { totalKopecks: number }
           payment?: { status: string; id?: string; updatedAt: Date }
         }>('orders')
-        .find({ payment: { $exists: true } })
+        .find({ 'payment.updatedAt': { $gte: cutoff } })
         .sort({ 'payment.updatedAt': -1 })
         .limit(100)
         .toArray(),
@@ -687,7 +665,7 @@ export async function registerAdminRoutes(
         return reply.code(409).send(failure('CODE_EXISTS', 'Такой код уже есть'))
       throw error
     }
-    await record('bonus_code.create', item._id, null, item)
+    await record('bonus_code.create', item._id, null, item, request)
     return reply.code(201).send({ code: item })
   })
   app.put('/api/admin/bonus-codes/:code', async (request, reply) => {
@@ -704,14 +682,14 @@ export async function registerAdminRoutes(
     void _code
     const item: BonusCode = { _id: id, ...fields }
     await bonusCodes.replaceOne({ _id: id }, item)
-    await record('bonus_code.update', id, before, item)
+    await record('bonus_code.update', id, before, item, request)
     return { code: item }
   })
   app.delete('/api/admin/bonus-codes/:code', async (request, reply) => {
     const id = normalizeBonusCode((request.params as { code: string }).code)
     const before = await bonusCodes.findOneAndDelete({ _id: id })
     if (!before) return reply.code(404).send(failure('NOT_FOUND', 'Код не найден'))
-    await record('bonus_code.delete', id, before, null)
+    await record('bonus_code.delete', id, before, null, request)
     return reply.code(204).send()
   })
   app.put('/api/admin/content', { bodyLimit: 1_000_000 }, async (request, reply) => {
@@ -726,9 +704,9 @@ export async function registerAdminRoutes(
         { $set: { ...parsed.data, contentVersion: 1 } },
         { upsert: true },
       )
-    await record('content.update', undefined, before, parsed.data)
+    await record('content.update', undefined, before, parsed.data, request)
     notifySiteUpdate(app, 'content')
-    return { content: parsed.data }
+    return { content: adminContent(parsed.data, request.adminPrincipal) }
   })
   app.patch('/api/admin/content', { bodyLimit: 1_000_000 }, async (request, reply) => {
     const parsed = contentPatchSchema.safeParse(request.body)
@@ -754,10 +732,10 @@ export async function registerAdminRoutes(
           { $set: { ...parsed.data, contentVersion: 1 } },
           { upsert: true },
         )
-      await record('content.update', undefined, before, content.data)
+      await record('content.update', undefined, before, content.data, request)
       notifySiteUpdate(app, 'content')
     }
-    return { content: content.data }
+    return { content: adminContent(content.data, request.adminPrincipal) }
   })
   app.post('/api/admin/categories', async (request, reply) => {
     const parsed = categorySchema.safeParse(request.body)
@@ -765,7 +743,7 @@ export async function registerAdminRoutes(
     const category = { _id: `cat-${randomUUID()}`, ...parsed.data }
     await db.collection<CategoryDoc>('catalog_categories').insertOne(category)
     invalidateCatalogCache(db)
-    await record('category.create', category._id, null, category)
+    await record('category.create', category._id, null, category, request)
     notifySiteUpdate(app, 'catalog')
     return reply.code(201).send({ category })
   })
@@ -780,7 +758,7 @@ export async function registerAdminRoutes(
     if (!result.matchedCount)
       return reply.code(404).send(failure('NOT_FOUND', 'Категория не найдена'))
     invalidateCatalogCache(db)
-    await record('category.update', id, before, { _id: id, ...parsed.data })
+    await record('category.update', id, before, { _id: id, ...parsed.data }, request)
     notifySiteUpdate(app, 'catalog')
     return { category: { _id: id, ...parsed.data } }
   })
@@ -822,11 +800,15 @@ export async function registerAdminRoutes(
     }
     const { before } = result
     invalidateCatalogCache(db)
-    await record('category.delete', id, before, null)
+    await record('category.delete', id, before, null, request)
     notifySiteUpdate(app, 'catalog')
     return reply.code(204).send()
   })
-  const saveProduct = async (request: { body: unknown }, reply: FastifyReply, id?: string) => {
+  const saveProduct = async (
+    request: Pick<FastifyRequest, 'body' | 'adminPrincipal' | 'adminActivity'>,
+    reply: FastifyReply,
+    id?: string,
+  ) => {
     const parsed = productSchema.safeParse(request.body)
     if (!parsed.success)
       return reply.code(400).send(failure('INVALID_BODY', 'Проверьте карточку товара'))
@@ -860,7 +842,7 @@ export async function registerAdminRoutes(
         )
     const { before } = result
     invalidateCatalogCache(db)
-    await record(id ? 'product.update' : 'product.create', product._id, before, product)
+    await record(id ? 'product.update' : 'product.create', product._id, before, product, request)
     notifySiteUpdate(app, 'catalog')
     return reply.code(id ? 200 : 201).send({ product })
   }
@@ -873,7 +855,7 @@ export async function registerAdminRoutes(
     const before = await db.collection<CatalogDoc>('catalog').findOneAndDelete({ _id: id })
     if (!before) return reply.code(404).send(failure('NOT_FOUND', 'Товар не найден'))
     invalidateCatalogCache(db)
-    await record('product.delete', id, before, null)
+    await record('product.delete', id, before, null, request)
     notifySiteUpdate(app, 'catalog')
     return reply.code(204).send()
   })
@@ -892,7 +874,7 @@ export async function registerAdminRoutes(
     await mkdir(directory, { recursive: true })
     const filename = `${randomUUID()}.${ext}`
     await writeFile(join(directory, filename), body, { flag: 'wx' })
-    await record('image.upload', filename, null, { url: `/uploads/${filename}` })
+    await record('image.upload', filename, null, { url: `/uploads/${filename}` }, request)
     return reply.code(201).send({ url: `/uploads/${filename}` })
   })
 }

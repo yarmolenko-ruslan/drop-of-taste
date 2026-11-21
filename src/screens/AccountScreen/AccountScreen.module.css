@@ -776,8 +776,7 @@ dialog.confirmDialog {
   font-weight: 700;
 }
 
-.field input,
-.birthDate select {
+.field input {
   width: 100%;
   min-width: 0;
   min-height: 50px;
@@ -791,23 +790,12 @@ dialog.confirmDialog {
   font-size: 14px;
 }
 
-.birthDate select {
-  padding-right: 38px;
-  appearance: none;
-  background-color: var(--color-bg);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='m4 6 4 4 4-4' stroke='%23a70d22' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 13px center;
-  cursor: pointer;
-}
-
 .field input[readonly] {
   color: #8a7770;
   background: #f2ebe2;
 }
 
-.field input:focus,
-.birthDate select:focus {
+.field input:focus {
   border-color: var(--color-brand-red);
   box-shadow: 0 0 0 3px rgb(167 13 34 / 10%);
 }
@@ -952,9 +940,30 @@ dialog.confirmDialog {
   border: 0;
 }
 
-.root :is(a, button, input, select):focus-visible {
+.root :is(a, button, input):focus-visible {
   outline: 3px solid var(--color-gold);
   outline-offset: 3px;
+}
+
+@media (max-width: 1000px) {
+  .orderSteps {
+    grid-template-columns: repeat(4, minmax(max-content, 1fr));
+    grid-template-rows: 26px auto auto;
+  }
+
+  .orderStep {
+    grid-row: span 3;
+    grid-template-rows: subgrid;
+    align-items: start;
+  }
+
+  .orderStep:not(:first-child)::before {
+    width: calc(100% + 12px);
+  }
+
+  .orderStepLabel {
+    white-space: nowrap;
+  }
 }
 
 @media (max-width: 900px) {
@@ -969,6 +978,57 @@ dialog.confirmDialog {
 
   .card h1 {
     font-size: 35px;
+  }
+
+  .orderSteps {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    gap: 18px;
+  }
+
+  .orderStep {
+    grid-row: auto;
+    grid-template-columns: 26px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: 12px;
+    row-gap: 5px;
+    justify-items: start;
+    text-align: left;
+  }
+
+  .orderStep:not(:first-child)::before {
+    content: none;
+  }
+
+  .orderStep:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 13px;
+    left: 12px;
+    width: 2px;
+    height: calc(100% + 18px);
+    background: #ecdfc9;
+  }
+
+  .orderStepDone:not(:last-child)::after {
+    background: var(--color-brand-red);
+  }
+
+  .orderDot {
+    grid-row: 1 / -1;
+  }
+
+  .orderStepLabel,
+  .orderStepSub {
+    grid-column: 2;
+  }
+
+  .orderStepLabel {
+    white-space: normal;
+  }
+
+  .orderTiles {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1028,13 +1088,13 @@ dialog.confirmDialog {
   .profileForm {
     grid-template-columns: 1fr;
   }
-
-  .orderTiles {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 600px) {
+  .orderActions {
+    justify-content: center;
+  }
+
   .sidebarActions {
     grid-template-columns: 1fr;
   }
@@ -1046,6 +1106,12 @@ dialog.confirmDialog {
   .logout {
     border-top: 1px solid #ead9c3;
     border-left: 0;
+  }
+}
+
+@media (max-width: 540px) {
+  .orderActions {
+    flex-direction: column;
   }
 }
 
@@ -1156,7 +1222,7 @@ dialog.confirmDialog {
 }
 
 .paymentCountdown {
-  margin: 0;
+  margin: 16px 0 0;
   padding: 12px 16px;
   border-radius: 12px;
   background: var(--color-bg-soft, #fff4de);

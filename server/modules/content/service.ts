@@ -8,8 +8,14 @@ export async function getSiteContent(db: Db): Promise<SiteContent> {
     .collection<SiteContent & { _id: string; contentVersion?: number }>('site_content')
     .findOne({ _id: 'public' })
   if (!saved) return defaultSiteContent
-  const { _id: _ignored, contentVersion, ...content } = saved
-  void _ignored
+  const { contentVersion } = saved
+  // This collection may gain internal metadata; only declared site fields belong
+  // in public responses or content editors, including before legacy migrations.
+  const content = Object.fromEntries(
+    Object.keys(defaultSiteContent)
+      .filter((key) => Object.hasOwn(saved, key))
+      .map((key) => [key, saved[key as keyof SiteContent]]),
+  ) as Partial<SiteContent>
   const merged = {
     ...defaultSiteContent,
     ...content,

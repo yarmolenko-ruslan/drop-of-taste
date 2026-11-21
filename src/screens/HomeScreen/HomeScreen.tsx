@@ -24,7 +24,7 @@ export function HomeScreen({ onLogin }: { onLogin?: () => void }) {
         <h1 className={styles.title}>{content.siteTitle}</h1>
         <HeroSlider />
         <CatalogStatus />
-        {catalog?.data && !catalog.error && (
+        {catalog?.data && (
           <>
             {catalog.data.categories.length === 0 && <p role="status">Меню пока пусто.</p>}
             {content.settings.sections.newArrivals && (
